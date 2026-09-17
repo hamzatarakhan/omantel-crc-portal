@@ -39,22 +39,22 @@ const VENDOR_PALETTE = ['#2d13ea', '#ea6e00', '#0f9c8f', '#0e9f6e', '#e3a008', '
       <app-kpi-card label="Sync Errors (30d)" [value]="0" level="normal" icon="error_outline"></app-kpi-card>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6 items-start">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6 lg:h-[360px]">
       <app-chart-card class="lg:col-span-2" title="Contracts Expiring by Month" type="bar" [data]="expiryChart"></app-chart-card>
 
-      <div class="surface-card p-4 sm:p-5 flex flex-col gap-3">
+      <div class="surface-card p-4 sm:p-5 flex flex-col gap-2 h-full min-h-0">
         <div>
           <h3 class="text-[13.5px] font-bold text-ink-900">Contract Value by Vendor</h3>
           <p class="text-xs text-ink-400 mt-0.5">Click a vendor for a full breakdown</p>
         </div>
-        <div class="h-[160px]">
+        <div class="h-[110px] shrink-0">
           <canvas baseChart [data]="vendorChart" type="doughnut" [options]="vendorChartOptions"></canvas>
         </div>
-        <div class="flex flex-col gap-1">
+        <div class="flex flex-col gap-1 flex-1 min-h-0 overflow-y-auto">
           @for (v of vendorSummary; track v.name) {
             <button
               (click)="openVendor(v)"
-              class="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-surface-subtle transition-colors text-left"
+              class="flex items-center gap-2.5 px-2 py-1 rounded-lg hover:bg-surface-subtle transition-colors text-left shrink-0"
             >
               <span class="w-2.5 h-2.5 rounded-full shrink-0" [style.background]="v.color"></span>
               <span class="text-xs text-ink-700 flex-1 truncate">{{ v.name }}</span>
