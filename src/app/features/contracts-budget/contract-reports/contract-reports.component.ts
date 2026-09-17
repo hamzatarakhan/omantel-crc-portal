@@ -1,6 +1,7 @@
-import { Component } from '@angular/core';
+import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { PageHeaderComponent } from '../../../shared/components/page-header/page-header.component';
 
 interface ReportDef { title: string; description: string; icon: string; }
@@ -17,7 +18,10 @@ interface ReportDef { title: string; description: string; icon: string; }
     ></app-page-header>
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       @for (r of reports; track r.title) {
-        <button class="surface-card p-4 text-left hover:border-brand-300 hover:shadow transition-all flex items-start gap-3">
+        <button
+          (click)="generate(r)"
+          class="surface-card p-4 text-left hover:border-brand-300 transition-colors flex items-start gap-3"
+        >
           <div class="w-9 h-9 rounded-md bg-brand-50 text-brand-600 flex items-center justify-center shrink-0">
             <mat-icon class="!text-lg">{{ r.icon }}</mat-icon>
           </div>
@@ -31,6 +35,8 @@ interface ReportDef { title: string; description: string; icon: string; }
   `,
 })
 export class ContractReportsComponent {
+  private snack = inject(MatSnackBar);
+
   reports: ReportDef[] = [
     { title: 'Contracts Expiring in Period', description: 'All contracts expiring within a selected date range.', icon: 'event_busy' },
     { title: 'Expired Contracts', description: 'Contracts past their end date, with renewal status.', icon: 'history_toggle_off' },
@@ -42,4 +48,8 @@ export class ContractReportsComponent {
     { title: 'Synchronization Errors', description: 'All sync failures and their resolution status.', icon: 'sync_problem' },
     { title: 'Notification Delivery History', description: 'Email/SMS/in-app delivery log for expiry alerts.', icon: 'mark_email_read' },
   ];
+
+  generate(report: ReportDef) {
+    this.snack.open(`Generating "${report.title}"… it will download as a CSV shortly.`, 'Dismiss', { duration: 3000 });
+  }
 }

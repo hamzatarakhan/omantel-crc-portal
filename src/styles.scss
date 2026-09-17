@@ -98,6 +98,18 @@ h1, h2, h3, h4 {
   letter-spacing: -0.01em;
 }
 
+// Every icon-plus-label button across the app pairs a mat-icon (many with a custom
+// !text-* size override) with sibling text. mat-icon's ligature glyph renders via normal
+// text flow inside its box, so it follows the font's own baseline/leading rather than
+// true visual center — the mismatch is what reads as "icon not centered with label".
+// Forcing the icon itself to center its glyph removes that, for every size, everywhere.
+.mat-icon {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
 // Shared status-color language (Section 9.1 of the requirements doc), reused everywhere
 .status-chip {
   display: inline-flex;
@@ -152,6 +164,27 @@ h1, h2, h3, h4 {
   padding: 0 !important;
 }
 
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-thumb { background: #d8d7e6; border-radius: 999px; }
+// Vendor drill-down and any future modal — rounded, borderless surface with a real
+// but soft shadow (a true overlay above a backdrop is the other place shadow still fits).
+.app-dialog-panel .mat-mdc-dialog-surface {
+  border-radius: 16px !important;
+  padding: 0 !important;
+  box-shadow: 0 20px 60px rgba(25, 23, 51, 0.22) !important;
+  overflow: hidden;
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: rgba(25, 23, 51, 0.15); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(25, 23, 51, 0.28); }
 ::-webkit-scrollbar-track { background: transparent; }
+* { scrollbar-width: thin; scrollbar-color: rgba(25, 23, 51, 0.15) transparent; }
+
+// The sidebar sits on a dark gradient — the default dark-on-light scrollbar thumb
+// above would be invisible there, so it gets its own light, low-opacity thumb.
+// (`.bg-sidebar-gradient *` — not just the element itself — because the universal
+// `*` rule above sets scrollbar-color directly on every descendant too, which beats
+// simple inheritance from the ancestor.)
+.bg-sidebar-gradient ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.18); }
+.bg-sidebar-gradient ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.3); }
+.bg-sidebar-gradient,
+.bg-sidebar-gradient * { scrollbar-color: rgba(255, 255, 255, 0.18) transparent; }

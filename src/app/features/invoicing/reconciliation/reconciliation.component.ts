@@ -1,22 +1,29 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { PageHeaderComponent } from '../../../shared/components/page-header/page-header.component';
+import { StatusChipComponent } from '../../../shared/components/status-chip/status-chip.component';
 import { MockDataService } from '../../../core/services/mock-data.service';
 import { PayableLine } from '../../../core/models/domain';
 
 @Component({
   selector: 'app-reconciliation',
   standalone: true,
-  imports: [CommonModule, MatButtonModule, MatIconModule, PageHeaderComponent],
+  imports: [CommonModule, MatButtonModule, MatIconModule, PageHeaderComponent, StatusChipComponent],
   template: `
     <app-page-header
       title="Reconciliation Workspace"
       subtitle="Payable calculation from synced WFO attendance/overtime + 3 Clicks incentives, for validating the vendor invoice"
       [breadcrumbs]="[{ label: 'Invoicing & Payments', link: '/invoicing/dashboard' }, { label: 'Reconciliation Workspace' }]"
     >
-      <button mat-flat-button color="primary"><mat-icon class="!text-base !mr-1">check_circle</mat-icon>Validate Invoice</button>
+      @if (validated()) {
+        <app-status-chip label="Validated" level="normal"></app-status-chip>
+      }
+      <button mat-flat-button color="primary" (click)="validate()" [disabled]="validated()">
+        <mat-icon class="!text-base !mr-1">check_circle</mat-icon>
+        {{ validated() ? 'Validated' : 'Validate Invoice' }}
+      </button>
     </app-page-header>
 
     <div class="surface-card overflow-x-auto mb-6">
@@ -65,6 +72,9 @@ import { PayableLine } from '../../../core/models/domain';
       <div class="text-xs text-ink-500">
         Calls below the configured minimum call-duration threshold have already been excluded from payable hours (see <a class="text-brand-600" href="/invoicing/rules">Payable Rule Configuration</a>).
         Vendor-submitted invoice: <span class="font-medium text-ink-700">{{ (total * 1.05) | number:'1.2-2' }} OMR</span> (incl. 5% VAT) &mdash; matches within tolerance.
+        @if (validated()) {
+          <span class="text-status-normal font-medium">Validated on {{ validatedAt() }}.</span>
+        }
       </div>
     </div>
   `,
@@ -73,4 +83,12 @@ export class ReconciliationComponent {
   private data = inject(MockDataService);
   lines: PayableLine[] = this.data.getPayableLines();
   get total() { return this.lines.reduce((s, l) => s + l.billingRate, 0); }
+
+  validated = signal(false);
+  validatedAt = signal('');
+
+  validate() {
+    this.validated.set(true);
+    this.validatedAt.set(new Date().toLocaleString());
+  }
 }
