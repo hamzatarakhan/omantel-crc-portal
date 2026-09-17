@@ -25,7 +25,11 @@ import { ChartConfiguration, ChartType } from 'chart.js';
       </div>
     </div>
   `,
-  styles: [':host { display: contents; }'],
+  // A `contents` host would let the inner div become the grid item directly, but then
+  // grid-column classes (e.g. lg:col-span-2) applied to the <app-chart-card> tag itself
+  // have nothing to attach to and are silently dropped — leaving unused track(s) empty.
+  // `block` keeps the host itself as the grid item, so span classes on the tag work.
+  styles: [':host { display: block; height: 100%; }'],
 })
 export class ChartCardComponent {
   @Input() title = '';
