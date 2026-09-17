@@ -98,6 +98,15 @@ h1, h2, h3, h4 {
   letter-spacing: -0.01em;
 }
 
+// Angular renders the routed page as the element immediately after <router-outlet>.
+// Like any custom element it defaults to display:inline unless told otherwise, so on
+// wide screens its block-level content (grids, cards) sizes to the widest *line* of
+// content rather than stretching to fill <main> — the "cards don't use the full width"
+// bug. This is the standard one-line fix, and it covers every routed screen at once.
+router-outlet + * {
+  display: block;
+}
+
 // Every icon-plus-label button across the app pairs a mat-icon (many with a custom
 // !text-* size override) with sibling text. mat-icon's ligature glyph renders via normal
 // text flow inside its box, so it follows the font's own baseline/leading rather than
