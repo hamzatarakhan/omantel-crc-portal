@@ -32,7 +32,7 @@ import { NAV_GROUPS, NavGroup } from '../../nav.config';
       >
         @if (!collapsed()) {
           <div class="flex-1 min-w-0 flex flex-col gap-1">
-            <img src="logo.svg" alt="Omantel" class="h-7 w-auto self-start" />
+            <img src="logo.svg" alt="Omantel" class="h-[21px] w-auto self-start" />
             <div class="text-[10.5px] font-bold uppercase tracking-wider text-ink-400 truncate">CRC Portal &middot; Tawasul</div>
           </div>
         }
