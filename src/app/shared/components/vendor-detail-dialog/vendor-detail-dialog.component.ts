@@ -1,4 +1,5 @@
 import { Component, Inject } from '@angular/core';
+import { Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { MatDialogModule, MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
@@ -52,7 +53,8 @@ export interface VendorDetailData {
       </div>
 
       <div class="px-6 pb-6">
-        <app-data-table [columns]="columns" [rows]="data.contracts" [pageSize]="5" [exportable]="false"></app-data-table>
+        <app-data-table [columns]="columns" [rows]="data.contracts" [pageSize]="5" [exportable]="false" (rowClick)="open($event)"></app-data-table>
+        <p class="text-xs text-ink-400 mt-2">Click a contract to open it.</p>
       </div>
     </div>
   `,
@@ -60,8 +62,14 @@ export interface VendorDetailData {
 export class VendorDetailDialogComponent {
   constructor(
     @Inject(MAT_DIALOG_DATA) public data: VendorDetailData,
-    private ref: MatDialogRef<VendorDetailDialogComponent>
+    private ref: MatDialogRef<VendorDetailDialogComponent>,
+    private router: Router,
   ) {}
+
+  open(c: Contract) {
+    this.ref.close();
+    this.router.navigate(['/contracts-budget/contracts', c.id]);
+  }
 
   get totalValue() {
     return this.data.contracts.reduce((sum, c) => sum + c.amount, 0);
@@ -80,7 +88,7 @@ export class VendorDetailDialogComponent {
     { key: 'amount', label: 'Amount', type: 'currency', align: 'right' },
     {
       key: 'status', label: 'Status', type: 'status',
-      statusFn: (row) => ({ label: row.status, level: daysRemainingToLevel(row.daysRemaining) }),
+      statusFn: (row) => ({ label: row.status, level: row.status === 'Cancelled' ? 'neutral' : row.renewalStatus === 'Renewed' ? 'info' : daysRemainingToLevel(row.daysRemaining) }),
     },
   ];
 

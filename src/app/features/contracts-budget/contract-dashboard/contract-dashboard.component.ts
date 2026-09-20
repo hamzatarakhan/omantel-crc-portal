@@ -3,7 +3,6 @@ import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
-import { MatButtonModule } from '@angular/material/button';
 import { BaseChartDirective } from 'ng2-charts';
 import { PageHeaderComponent } from '../../../shared/components/page-header/page-header.component';
 import { KpiCardComponent } from '../../../shared/components/kpi-card/kpi-card.component';
@@ -11,10 +10,11 @@ import { ChartCardComponent } from '../../../shared/components/chart-card/chart-
 import { DataTableComponent, TableColumn } from '../../../shared/components/data-table/data-table.component';
 import { VendorDetailDialogComponent } from '../../../shared/components/vendor-detail-dialog/vendor-detail-dialog.component';
 import { CrcStore } from '../../../core/services/crc-store.service';
+import { ContractOps } from '../../../core/services/contract-ops.service';
 import { UiService } from '../../../shared/services/ui.service';
 import { Contract } from '../../../core/models/domain';
 import { DIALOG_SIZE } from '../../../shared/dialog-sizes';
-import { daysRemainingToLevel } from '../../../core/models/status';
+import { requiredActionFor, statusLevelFor } from '../../../core/services/contract-monitoring';
 
 interface VendorSummary {
   name: string;
@@ -24,32 +24,60 @@ interface VendorSummary {
 }
 
 const VENDOR_PALETTE = ['#2d13ea', '#ea6e00', '#0f9c8f', '#0e9f6e', '#e3a008', '#8589a3'];
-
-import { RequiresDirective } from '../../../shared/directives/requires.directive';
+const FIELD = 'w-full px-2.5 py-2 text-xs font-semibold rounded-lg border border-surface-border bg-white text-ink-700 focus:outline-none focus:border-brand-400';
 
 @Component({
   selector: 'app-contract-dashboard',
   standalone: true,
-  imports: [RequiresDirective, CommonModule, MatDialogModule, MatIconModule, MatButtonModule, BaseChartDirective, PageHeaderComponent, KpiCardComponent, ChartCardComponent, DataTableComponent],
+  imports: [CommonModule, MatDialogModule, MatIconModule, BaseChartDirective, PageHeaderComponent, KpiCardComponent, ChartCardComponent, DataTableComponent],
   template: `
-    <app-page-header title="Contract Management Dashboard" [subtitle]="'Synced read-only from the ERP · last sync ' + lastSyncLabel()">
-      <span class="status-chip" [class.status-chip--normal]="syncHealthy()" [class.status-chip--red]="!syncHealthy()">{{ syncHealthy() ? 'Sync healthy' : 'Last sync failed' }}</span>
-      <button mat-stroked-button (click)="runSync()" appRequires="Manual Contract Sync" [disabled]="syncing()">
-        <mat-icon class="!text-base !mr-1" [class.animate-spin]="syncing()">sync</mat-icon>{{ syncing() ? 'Syncing…' : 'Run ERP sync' }}
-      </button>
+    <app-page-header title="Contract Management" [subtitle]="'Synced read-only from the ERP · ' + ops.historical().length + ' cancelled contract' + (ops.historical().length === 1 ? '' : 's') + ' kept for history'">
+      <span class="status-chip" [class.status-chip--normal]="syncHealthy()" [class.status-chip--red]="!syncHealthy()">{{ syncHealthy() ? 'Automated sync healthy' : 'Last automated sync failed' }}</span>
     </app-page-header>
 
-    <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
-      <app-kpi-card label="Total Contracts" [value]="contracts().length" icon="description"></app-kpi-card>
-      <app-kpi-card label="Active" [value]="activeCount()" level="normal" icon="check_circle"></app-kpi-card>
-      <app-kpi-card label="Expiring Soon" [value]="expiringCount()" level="amber" icon="schedule"></app-kpi-card>
-      <app-kpi-card label="Expired" [value]="expiredCount()" level="red" icon="event_busy"></app-kpi-card>
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+      <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Automated synchronization</div><div class="text-sm font-semibold mt-0.5" [class]="syncHealthy() ? 'text-status-normal' : 'text-status-red'">{{ ops.syncConfig().enabled ? (syncHealthy() ? 'Running · ' + ops.syncConfig().frequency.toLowerCase() : 'Failed — last data retained') : 'Switched off' }}</div></div>
+      <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Last synchronization</div><div class="text-sm font-semibold text-ink-900 mt-0.5">{{ lastSyncLabel() }}</div></div>
+      <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Next scheduled synchronization</div><div class="text-sm font-semibold text-ink-900 mt-0.5">{{ ops.nextRun() ? (nextRunLabel()) : 'Not scheduled' }}</div></div>
+      <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Synchronization errors</div><div class="text-sm font-semibold mt-0.5" [class]="openErrors() ? 'text-status-red' : 'text-status-normal'">{{ openErrors() }} open · {{ ops.errorLog().length }} logged</div></div>
+    </div>
+
+    <div class="surface-card px-4 py-3.5 mb-4">
+      <div class="flex items-center gap-2"><mat-icon class="!text-lg text-ink-400">filter_alt</mat-icon><span class="text-xs font-bold text-ink-500 uppercase tracking-wide">Filters</span><button (click)="clear()" class="ml-auto text-xs font-semibold text-brand-700 hover:underline">Clear filters</button></div>
+      <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2.5 mt-2.5">
+        @for (f of selects(); track f.key) {
+          <label class="block"><span class="text-[10.5px] font-bold text-ink-400 uppercase tracking-wide">{{ f.label }}</span>
+            <select [class]="field + ' mt-1'" [value]="f.value()" (change)="f.set($any($event.target).value)">
+              @for (o of f.options; track o) { <option [value]="o" [selected]="o === f.value()">{{ o === 'All' ? f.all : o }}</option> }
+            </select>
+          </label>
+        }
+        <label class="block"><span class="text-[10.5px] font-bold text-ink-400 uppercase tracking-wide">Ends from</span><input type="date" [class]="field + ' mt-1'" [value]="from()" (change)="from.set($any($event.target).value)" /></label>
+        <label class="block"><span class="text-[10.5px] font-bold text-ink-400 uppercase tracking-wide">Ends to</span><input type="date" [class]="field + ' mt-1'" [value]="to()" (change)="to.set($any($event.target).value)" /></label>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-4 mb-4">
+      <app-kpi-card label="Total Contracts" [value]="rows().length" icon="description"></app-kpi-card>
+      <app-kpi-card label="Active" [value]="count('Active')" level="normal" icon="check_circle"></app-kpi-card>
+      <app-kpi-card label="Expiring Soon" [value]="count('Expiring Soon')" level="amber" icon="schedule"></app-kpi-card>
+      <app-kpi-card label="Expired" [value]="count('Expired')" level="red" icon="event_busy"></app-kpi-card>
+      <app-kpi-card label="Parent Contracts" [value]="rows().length" icon="account_tree"></app-kpi-card>
+      <app-kpi-card label="Subcontracts" [value]="subcontracts()" icon="call_split"></app-kpi-card>
+      <app-kpi-card label="Purchase Orders" [value]="pos().length" icon="receipt_long"></app-kpi-card>
+    </div>
+    <div class="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-4 mb-6">
       <app-kpi-card label="Total Contract Value" [value]="totalValue() | number:'1.0-0'" unit="OMR" icon="payments"></app-kpi-card>
-      <app-kpi-card label="Sync Errors (30d)" [value]="syncErrors()" [level]="syncErrors() ? 'red' : 'normal'" icon="error_outline"></app-kpi-card>
+      <app-kpi-card label="Total PO Value" [value]="poValue() | number:'1.0-0'" unit="OMR" icon="request_quote"></app-kpi-card>
+      <app-kpi-card label="Requiring Action" [value]="actionCount()" level="orange" icon="assignment_late"></app-kpi-card>
+      <app-kpi-card label="Unresolved" [value]="unresolvedCount()" level="amber" icon="pending_actions"></app-kpi-card>
+      <app-kpi-card label="Escalated" [value]="escalatedCount()" [level]="escalatedCount() ? 'red' : 'normal'" icon="priority_high"></app-kpi-card>
+      <app-kpi-card label="Flagged for Review" [value]="flaggedCount()" [level]="flaggedCount() ? 'amber' : 'normal'" icon="flag"></app-kpi-card>
+      <app-kpi-card label="Sync Errors (open)" [value]="openErrors()" [level]="openErrors() ? 'red' : 'normal'" icon="error_outline"></app-kpi-card>
     </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6 lg:h-[360px]">
-      <app-chart-card class="lg:col-span-2" title="Contracts Expiring by Month" subtitle="Next 6 months, from the synced end dates" type="bar" [data]="expiryChart()"></app-chart-card>
+      <app-chart-card title="Contract Expiry Trend" subtitle="Contracts ending in the next 6 months" type="bar" [data]="expiryChart()"></app-chart-card>
 
       <div class="surface-card px-4 pt-3.5 pb-4 sm:px-5 flex flex-col gap-2 h-full min-h-0">
         <div>
@@ -61,10 +89,7 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
         </div>
         <div class="flex flex-col gap-1 flex-1 min-h-0 overflow-y-auto">
           @for (v of vendorSummary(); track v.name) {
-            <button
-              (click)="openVendor(v)"
-              class="flex items-center gap-2.5 px-2 py-1 rounded-lg hover:bg-surface-subtle transition-colors text-left shrink-0"
-            >
+            <button (click)="openVendor(v)" class="flex items-center gap-2.5 px-2 py-1 rounded-lg hover:bg-surface-subtle transition-colors text-left shrink-0">
               <span class="w-2.5 h-2.5 rounded-full shrink-0" [style.background]="v.color"></span>
               <span class="text-xs text-ink-700 flex-1 truncate">{{ v.name }}</span>
               <span class="text-xs font-semibold text-ink-900">{{ v.value | number:'1.0-0' }}</span>
@@ -73,64 +98,105 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
           }
         </div>
       </div>
+
+      <app-chart-card title="Contract Status Distribution" subtitle="Active, expiring soon and expired" type="doughnut" [data]="statusChart()"></app-chart-card>
     </div>
 
-    <app-data-table title="Contracts Expiring Soon" [columns]="columns" [rows]="expiringRows()" (rowClick)="open($event)" emptyTitle="Nothing expiring in the next 30 days" emptyDescription="Contracts due within 30 days will appear here."></app-data-table>
+    <app-data-table title="Contract Expiry Tracker" [columns]="columns" [rows]="trackerRows()" [pageSize]="8" [exportable]="store.can('Export Contract Data')" (rowClick)="open($event)" emptyTitle="Nothing expiring in the next 30 days" emptyDescription="Contracts due within 30 days, or expired without a renewal, appear here."></app-data-table>
+    <p class="text-xs text-ink-400 mt-3">Colours follow the expiry thresholds: more than 30 days normal, 30 amber, 15 orange, 5 or expired red, renewed or extended informational.</p>
   `,
 })
 export class ContractDashboardComponent {
-  private store = inject(CrcStore);
+  store = inject(CrcStore);
+  ops = inject(ContractOps);
   private dialog = inject(MatDialog);
   private router = inject(Router);
   private ui = inject(UiService);
 
-  contracts = this.store.contracts;
-  syncing = signal(false);
+  field = FIELD;
+  vendor = signal('All');
+  type = signal('All');
+  status = signal('All');
+  parent = signal('All');
+  from = signal('');
+  to = signal('');
 
-  activeCount = computed(() => this.contracts().filter((c) => c.status === 'Active').length);
-  expiringCount = computed(() => this.contracts().filter((c) => c.status === 'Expiring Soon').length);
-  expiredCount = computed(() => this.contracts().filter((c) => c.status === 'Expired').length);
-  totalValue = computed(() => this.contracts().reduce((sum, c) => sum + c.amount, 0));
-  expiringRows = computed(() => this.contracts().filter((c) => c.daysRemaining >= 0 && c.daysRemaining <= 30));
-  syncErrors = computed(() => this.store.syncRuns().filter((r) => r.status === 'Failed' && Date.now() - new Date(r.startedAt).getTime() < 30 * 86400000).length);
-  syncHealthy = computed(() => this.store.syncRuns()[0]?.status !== 'Failed');
+  private vendors = computed(() => [...new Set(this.ops.active().map((c) => c.vendorName))].sort());
+  private types = computed(() => [...new Set(this.ops.active().map((c) => c.contractType))].sort());
+  selects = computed(() => [
+    { key: 'vendor', label: 'Vendor', all: 'All vendors', value: this.vendor, set: (v: string) => this.vendor.set(v), options: ['All', ...this.vendors()] },
+    { key: 'type', label: 'Contract type', all: 'All types', value: this.type, set: (v: string) => this.type.set(v), options: ['All', ...this.types()] },
+    { key: 'status', label: 'Contract status', all: 'All statuses', value: this.status, set: (v: string) => this.status.set(v), options: ['All', 'Active', 'Expiring Soon', 'Expired'] },
+    { key: 'parent', label: 'Parent contract', all: 'All contracts', value: this.parent, set: (v: string) => this.parent.set(v), options: ['All', ...this.ops.active().map((c) => c.reference)] },
+  ]);
+
+  /** Contracts after the dashboard filters (cancelled contracts are historical and never counted here). */
+  rows = computed(() => this.ops.active().filter((c) =>
+    (this.vendor() === 'All' || c.vendorName === this.vendor()) && (this.type() === 'All' || c.contractType === this.type()) &&
+    (this.status() === 'All' || c.status === this.status()) && (this.parent() === 'All' || c.reference === this.parent()) &&
+    (!this.from() || c.endDate >= this.from()) && (!this.to() || c.endDate <= this.to())));
+
+  private children = computed(() => this.rows().flatMap((c) => this.ops.childrenOf(c)));
+  pos = computed(() => this.children().filter((k) => k.recordType === 'Purchase Order'));
+  subcontracts = computed(() => this.children().filter((k) => k.recordType === 'Subcontract').length);
+  totalValue = computed(() => this.rows().reduce((s, c) => s + c.amount, 0));
+  poValue = computed(() => this.pos().reduce((s, k) => s + k.amount, 0));
+  actionCount = computed(() => this.rows().filter((c) => this.ops.needsAction(c)).length);
+  unresolvedCount = computed(() => this.rows().filter((c) => this.ops.isUnresolved(c)).length);
+  escalatedCount = computed(() => this.rows().filter((c) => this.ops.isEscalated(c)).length);
+  flaggedCount = computed(() => this.rows().filter((c) => this.ops.issuesFor(c).length > 0).length);
+  openErrors = computed(() => this.ops.errorLog().filter((e) => e.resolution === 'Open').length);
+  count = (s: string) => this.rows().filter((c) => c.status === s).length;
+
+  syncHealthy = computed(() => this.store.syncRuns().find((r) => r.type === 'Automated')?.status !== 'Failed');
   lastSyncLabel = computed(() => {
-    const run = this.store.syncRuns()[0];
-    if (!run) return 'never';
-    const min = Math.max(0, Math.round((Date.now() - new Date(run.finishedAt).getTime()) / 60000));
-    return min < 1 ? 'just now' : min < 60 ? `${min} minutes ago` : min < 1440 ? `${Math.round(min / 60)} hours ago` : `${Math.round(min / 1440)} days ago`;
+    const run = this.store.syncRuns().find((r) => r.type === 'Automated') ?? this.store.syncRuns()[0];
+    return run ? new Date(run.finishedAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }) : 'never';
+  });
+  nextRunLabel = computed(() => {
+    const d = this.ops.nextRun();
+    return d ? d.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Muscat' }) + ' (Muscat)' : '';
   });
 
-  columns: TableColumn<Contract>[] = [
-    { key: 'reference', label: 'Reference' },
-    { key: 'vendorName', label: 'Vendor' },
-    { key: 'contractType', label: 'Type' },
+  trackerRows = computed(() => this.rows().filter((c) => c.daysRemaining <= 30 && c.renewalStatus !== 'Renewed').map((c) => ({ ...c, parentReference: '—', requiredAction: requiredActionFor(c), level: statusLevelFor(c) })));
+
+  columns: TableColumn<any>[] = [
+    { key: 'reference', label: 'Contract Reference' },
+    { key: 'name', label: 'Contract Name' },
+    { key: 'vendorName', label: 'Vendor Name' },
+    { key: 'contractType', label: 'Contract Type' },
+    { key: 'parentReference', label: 'Parent Contract' },
+    { key: 'startDate', label: 'Start Date', type: 'date' },
     { key: 'endDate', label: 'End Date', type: 'date' },
     { key: 'daysRemaining', label: 'Days Remaining', type: 'number', align: 'right' },
-    { key: 'amount', label: 'Amount', type: 'currency', align: 'right' },
-    {
-      key: 'status', label: 'Status', type: 'status',
-      statusFn: (row) => ({ label: row.status, level: daysRemainingToLevel(row.daysRemaining) }),
-    },
+    { key: 'amount', label: 'Contract Amount', type: 'currency', align: 'right' },
+    { key: 'status', label: 'Status', type: 'status', statusFn: (row) => ({ label: row.status, level: row.level }) },
+    { key: 'renewalStatus', label: 'Renewal Status' },
+    { key: 'requiredAction', label: 'Required Action' },
+    { key: 'lastSyncedAt', label: 'Last Synchronization', type: 'date' },
   ];
 
   expiryChart = computed(() => {
     const now = new Date();
     const months = Array.from({ length: 6 }, (_, i) => new Date(now.getFullYear(), now.getMonth() + i, 1));
     return {
-      labels: months.map((m) => m.toLocaleString('en-GB', { month: 'short' })),
+      labels: months.map((m) => m.toLocaleString('en-GB', { month: 'short', year: '2-digit' })),
       datasets: [{
         label: 'Contracts Expiring',
-        data: months.map((m) => this.contracts().filter((c) => { const e = new Date(c.endDate); return e.getFullYear() === m.getFullYear() && e.getMonth() === m.getMonth(); }).length),
+        data: months.map((m) => this.rows().filter((c) => { const e = new Date(c.endDate); return e.getFullYear() === m.getFullYear() && e.getMonth() === m.getMonth(); }).length),
         backgroundColor: '#2d13ea',
       }],
     };
   });
 
-  // Computed from the real synced contracts so the chart, legend and drill-down always agree.
+  statusChart = computed(() => ({
+    labels: ['Active', 'Expiring Soon', 'Expired'],
+    datasets: [{ data: [this.count('Active'), this.count('Expiring Soon'), this.count('Expired')], backgroundColor: ['#0e9f6e', '#e3a008', '#e02424'], borderWidth: 0 }],
+  }));
+
   // Infoline is pinned first; the rest follow by contract value.
   vendorSummary = computed<VendorSummary[]>(() => {
-    const all = this.contracts();
+    const all = this.rows();
     return Array.from(new Set(all.map((c) => c.vendorName)))
       .map((name, i) => {
         const vendorContracts = all.filter((c) => c.vendorName === name);
@@ -154,17 +220,14 @@ export class ContractDashboardComponent {
     },
   };
 
-  runSync() {
-    if (!this.ui.requires('Manual Contract Sync')) return;
-    this.syncing.set(true);
-    setTimeout(() => {
-      const run = this.store.runFullSync();
-      this.syncing.set(false);
-      this.ui.toast(run.updated ? `ERP sync complete — ${run.updated} contract${run.updated > 1 ? 's' : ''} updated.` : 'ERP sync complete — no changes found.');
-    }, 900);
+  clear() {
+    for (const s of [this.vendor, this.type, this.status, this.parent]) s.set('All');
+    this.from.set('');
+    this.to.set('');
   }
 
   open(row: Contract) {
+    if (!this.ui.requires('View Contract Details')) return;
     this.router.navigate(['/contracts-budget/contracts', row.id]);
   }
 

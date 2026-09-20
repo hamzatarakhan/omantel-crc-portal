@@ -7,13 +7,14 @@ import { MatIconModule } from '@angular/material/icon';
 export interface FormField {
   key: string;
   label: string;
-  type?: 'text' | 'number' | 'email' | 'date' | 'time' | 'select' | 'textarea';
+  type?: 'text' | 'number' | 'email' | 'date' | 'time' | 'select' | 'textarea' | 'multiselect';
   options?: Array<string | { value: string; label: string }>;
   required?: boolean;
   placeholder?: string;
   hint?: string;
   min?: number;
   max?: number;
+  rows?: number;
 }
 
 export interface FormDialogData {
@@ -60,8 +61,15 @@ const INPUT = 'w-full px-3 py-2.5 text-sm rounded-lg border border-surface-borde
                   <mat-icon class="!text-lg !text-ink-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none">expand_more</mat-icon>
                 </div>
               }
+              @case ('multiselect') {
+                <div class="flex flex-wrap gap-1.5">
+                  @for (o of fld.options || []; track optValue(o)) {
+                    <button type="button" (click)="toggle(fld.key, optValue(o))" class="px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-colors" [class]="has(fld.key, optValue(o)) ? 'bg-brand-50 border-brand-300 text-brand-700' : 'bg-white border-surface-border text-ink-500 hover:border-brand-200'">{{ optLabel(o) }}</button>
+                  }
+                </div>
+              }
               @case ('textarea') {
-                <textarea [name]="fld.key" [(ngModel)]="model[fld.key]" [required]="!!fld.required" rows="3" [placeholder]="fld.placeholder || ''" [class]="input + ' resize-y'"></textarea>
+                <textarea [name]="fld.key" [(ngModel)]="model[fld.key]" [required]="!!fld.required" [attr.rows]="fld.rows || 3" [placeholder]="fld.placeholder || ''" [class]="input + ' resize-y'"></textarea>
               }
               @default {
                 <input [name]="fld.key" [type]="fld.type || 'text'" [(ngModel)]="model[fld.key]" [required]="!!fld.required" [placeholder]="fld.placeholder || ''" [attr.min]="fld.min" [attr.max]="fld.max" [class]="input" />
@@ -84,17 +92,23 @@ export class FormDialogComponent {
   model: Record<string, any> = {};
 
   constructor(@Inject(MAT_DIALOG_DATA) public data: FormDialogData, public ref: MatDialogRef<FormDialogComponent>) {
-    for (const f of data.fields) this.model[f.key] = data.values?.[f.key] ?? (f.type === 'number' ? null : '');
+    for (const f of data.fields) {
+      const v = data.values?.[f.key];
+      this.model[f.key] = f.type === 'multiselect' ? (Array.isArray(v) ? [...v] : v ? String(v).split(/,\s*/) : []) : (v ?? (f.type === 'number' ? null : ''));
+    }
   }
 
+  has(key: string, v: string) { return (this.model[key] as string[]).includes(v); }
+  toggle(key: string, v: string) { const l = this.model[key] as string[]; this.model[key] = l.includes(v) ? l.filter((x) => x !== v) : [...l, v]; }
+
   /** Text-like fields span the full row; selects, numbers and dates pair up two per row when there is room. */
-  isFull(f: FormField) { return !f.type || f.type === 'text' || f.type === 'email' || f.type === 'textarea'; }
+  isFull(f: FormField) { return !f.type || f.type === 'text' || f.type === 'email' || f.type === 'textarea' || f.type === 'multiselect'; }
 
   optValue(o: string | { value: string; label: string }) { return typeof o === 'string' ? o : o.value; }
   optLabel(o: string | { value: string; label: string }) { return typeof o === 'string' ? o : o.label; }
 
   submit() {
-    const missing = this.data.fields.some((f) => f.required && (this.model[f.key] === '' || this.model[f.key] === null || this.model[f.key] === undefined));
+    const missing = this.data.fields.some((f) => f.required && (this.model[f.key] === '' || this.model[f.key] === null || this.model[f.key] === undefined || (Array.isArray(this.model[f.key]) && !this.model[f.key].length)));
     if (!missing) this.ref.close(this.model);
   }
 }
@@ -117,7 +131,7 @@ export interface ConfirmDialogData {
         <div class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" [class]="data.danger ? 'bg-red-50 text-status-red' : 'bg-brand-50 text-brand-600'"><mat-icon>{{ data.icon || (data.danger ? 'warning' : 'help_outline') }}</mat-icon></div>
         <div>
           <h2 class="text-base font-bold text-ink-900">{{ data.title }}</h2>
-          <p class="text-[13px] text-ink-500 mt-1">{{ data.message }}</p>
+          <p class="text-[13px] text-ink-500 mt-1 whitespace-pre-line">{{ data.message }}</p>
         </div>
       </div>
       <div class="flex items-center justify-end gap-2 px-6 py-4 border-t border-surface-border bg-surface-subtle">

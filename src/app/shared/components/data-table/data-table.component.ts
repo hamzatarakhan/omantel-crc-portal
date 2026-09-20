@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter, computed, signal } from '@angular/core';
+import { Component, Input, Output, EventEmitter, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatIconModule } from '@angular/material/icon';
@@ -6,6 +6,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { StatusChipComponent } from '../status-chip/status-chip.component';
 import { StatusLevel } from '../../../core/models/status';
 import { EmptyStateComponent } from '../empty-state/empty-state.component';
+import { UiService } from '../../services/ui.service';
 
 export interface TableColumn<T = any> {
   key: string;
@@ -15,6 +16,8 @@ export interface TableColumn<T = any> {
   currency?: string;
   statusFn?: (row: T) => { label: string; level: StatusLevel };
   align?: 'left' | 'right';
+  /** Renders buttons in the cell instead of a value; clicks come out of (rowAction). */
+  actions?: Array<{ id: string; label: string; icon?: string; hide?: (row: T) => boolean }>;
 }
 
 @Component({
@@ -40,6 +43,7 @@ export interface TableColumn<T = any> {
         </div>
         <div class="flex items-center gap-2 flex-wrap"><ng-content select="[toolbar]"></ng-content></div>
         @if (exportable) {
+          <div class="flex items-center gap-1.5 shrink-0">
           <button
             (click)="exportCsv()"
             class="group flex items-center gap-2 text-xs font-semibold text-brand-700 bg-brand-50 border border-brand-100 hover:bg-brand-100 hover:border-brand-200 active:scale-[0.97] rounded-lg pl-2.5 pr-3.5 py-2 transition-all shrink-0"
@@ -49,6 +53,16 @@ export interface TableColumn<T = any> {
             </span>
             <span class="hidden sm:inline">Export CSV</span>
           </button>
+          <button
+            (click)="exportXlsx()"
+            class="group flex items-center gap-2 text-xs font-semibold text-brand-700 bg-brand-50 border border-brand-100 hover:bg-brand-100 hover:border-brand-200 active:scale-[0.97] rounded-lg pl-2.5 pr-3.5 py-2 transition-all shrink-0"
+          >
+            <span class="w-5 h-5 rounded-md bg-white/70 group-hover:bg-white flex items-center justify-center shrink-0 transition-colors">
+              <mat-icon class="!text-[15px] !w-[15px] !h-[15px] !leading-[15px]">table_view</mat-icon>
+            </span>
+            <span class="hidden sm:inline">Export Excel</span>
+          </button>
+          </div>
         }
       </div>
 
@@ -82,7 +96,17 @@ export interface TableColumn<T = any> {
                 >
                   @for (col of columns; track col.key) {
                     <td class="px-4 py-3 whitespace-nowrap text-ink-700" [class.text-right]="col.align === 'right'">
-                      @if (col.type === 'status' && col.statusFn) {
+                      @if (col.actions) {
+                        <div class="flex items-center gap-1">
+                          @for (a of col.actions; track a.id) {
+                            @if (!a.hide || !a.hide(row)) {
+                              <button type="button" class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold text-brand-700 hover:bg-brand-50 transition-colors" (click)="$event.stopPropagation(); rowAction.emit({ row: row, id: a.id })">
+                                @if (a.icon) { <mat-icon class="!text-[15px] !w-[15px] !h-[15px] !leading-[15px]">{{ a.icon }}</mat-icon> }{{ a.label }}
+                              </button>
+                            }
+                          }
+                        </div>
+                      } @else if (col.type === 'status' && col.statusFn) {
                         <app-status-chip [label]="col.statusFn(row).label" [level]="col.statusFn(row).level"></app-status-chip>
                       } @else if (col.type === 'currency') {
                         <span class="font-semibold text-ink-900">{{ row[col.key] | number: '1.0-2' }}</span> <span class="text-ink-400 text-xs">{{ col.currency || 'OMR' }}</span>
@@ -132,6 +156,10 @@ export class DataTableComponent<T extends Record<string, any> = any> {
   @Input() emptyTitle = 'No records found';
   @Input() emptyDescription = 'Try adjusting your search or check back after the next sync.';
   @Output() rowClick = new EventEmitter<T>();
+  @Output() rowAction = new EventEmitter<{ row: T; id: string }>();
+  /** Extra row fields the search box also looks in (e.g. a PO number that is not a visible column). */
+  @Input() searchKeys: string[] = [];
+  private ui = inject(UiService);
 
   query = signal('');
 
@@ -149,7 +177,7 @@ export class DataTableComponent<T extends Record<string, any> = any> {
     const cols = this._columns();
     let data = !q
       ? rows
-      : rows.filter((row) => cols.some((c) => String(row[c.key] ?? '').toLowerCase().includes(q)));
+      : rows.filter((row) => cols.some((c) => String(row[c.key] ?? '').toLowerCase().includes(q)) || this.searchKeys.some((k) => String(row[k] ?? '').toLowerCase().includes(q)));
 
     const key = this.sortKey();
     if (key) {
@@ -187,16 +215,23 @@ export class DataTableComponent<T extends Record<string, any> = any> {
     }
   }
 
+  private exportRows(): Array<Record<string, any>> {
+    return this.filteredRows().map((row) => {
+      const out: Record<string, any> = {};
+      for (const c of this.columns.filter((x) => !x.actions)) out[c.label] = c.type === 'status' && c.statusFn ? c.statusFn(row).label : c.type === 'date' ? this.fmtDate(row[c.key]) : row[c.key] ?? '';
+      return out;
+    });
+  }
+
+  private exportName() {
+    return (this.title || 'export').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  }
+
   exportCsv() {
-    const header = this.columns.map((c) => c.label).join(',');
-    const lines = this.filteredRows().map((row) => this.columns.map((c) => JSON.stringify(row[c.key] ?? '')).join(','));
-    const csv = [header, ...lines].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = (this.title || 'export').toLowerCase().replace(/[^a-z0-9]+/g, '-') + '.csv';
-    a.click();
-    URL.revokeObjectURL(url);
+    this.ui.csv(this.exportName(), this.exportRows());
+  }
+
+  exportXlsx() {
+    this.ui.xlsx(this.exportName(), this.exportRows(), this.title || 'Export');
   }
 }

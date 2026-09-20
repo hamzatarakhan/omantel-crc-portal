@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { firstValueFrom } from 'rxjs';
+import { strToU8, zipSync } from 'fflate';
 import { ConfirmDialogComponent, ConfirmDialogData, FormDialogComponent, FormDialogData } from '../components/form-dialog/form-dialog.component';
 import { CrcStore } from '../../core/services/crc-store.service';
 import { DIALOG_SIZE } from '../dialog-sizes';
@@ -32,7 +33,7 @@ export class UiService {
   }
 
   /** Downloads a small, valid PDF made from the given lines (the prototype's stand-in for an ERP document). */
-  pdf(filename: string, title: string, lines: string[]) {
+  pdf(filename: string, title: string, lines: string[], mode: 'download' | 'view' = 'download') {
     const esc = (t: string) => t.replace(/[^\x20-\x7e]/g, '-').replace(/[\\()]/g, (ch) => '\\' + ch);
     const content = ['BT', '/F1 16 Tf', '50 790 Td', '22 TL', `(${esc(title)}) Tj`, '/F1 10 Tf', '16 TL', 'T*', ...lines.flatMap((l) => [`(${esc(l)}) Tj`, 'T*']), 'ET'].join('\n');
     const objects = [
@@ -52,6 +53,12 @@ export class UiService {
     pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n` + offsets.map((o) => `${String(o).padStart(10, '0')} 00000 n \n`).join('');
     pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
     const url = URL.createObjectURL(new Blob([pdf], { type: 'application/pdf' }));
+    if (mode === 'view') {
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      this.toast(`Opened ${filename}.`);
+      return;
+    }
     const a = document.createElement('a');
     a.href = url;
     a.download = filename;
@@ -74,6 +81,39 @@ export class UiService {
     a.download = filename.endsWith('.csv') ? filename : filename + '.csv';
     a.click();
     URL.revokeObjectURL(url);
+    this.store.log('Data Exported', a.download, `${rows.length} row(s) exported as CSV.`);
+    this.toast(`Downloaded ${a.download} (${rows.length} rows).`);
+  }
+
+  /** Writes a real .xlsx workbook (one sheet) — numbers stay numbers so Excel can total and filter them. */
+  xlsx(filename: string, rows: Array<Record<string, any>>, sheet = 'Data') {
+    if (!rows.length) {
+      this.toast('Nothing to export.');
+      return;
+    }
+    const cols = Object.keys(rows[0]);
+    const xml = (v: string) => v.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' } as Record<string, string>)[ch]);
+    const colName = (i: number) => (i >= 26 ? String.fromCharCode(64 + Math.floor(i / 26)) : '') + String.fromCharCode(65 + (i % 26));
+    const cell = (v: any, r: number, c: number) => {
+      const ref = colName(c) + r;
+      return typeof v === 'number' && isFinite(v) ? `<c r="${ref}"><v>${v}</v></c>` : `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${xml(String(v ?? ''))}</t></is></c>`;
+    };
+    const data = [cols, ...rows.map((r) => cols.map((k) => r[k]))].map((row, ri) => `<row r="${ri + 1}">${row.map((v, ci) => cell(v, ri + 1, ci)).join('')}</row>`).join('');
+    const head = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+    const files = {
+      '[Content_Types].xml': strToU8(`${head}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`),
+      '_rels/.rels': strToU8(`${head}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`),
+      'xl/workbook.xml': strToU8(`${head}<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${xml(sheet.slice(0, 31))}" sheetId="1" r:id="rId1"/></sheets></workbook>`),
+      'xl/_rels/workbook.xml.rels': strToU8(`${head}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>`),
+      'xl/worksheets/sheet1.xml': strToU8(`${head}<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${data}</sheetData></worksheet>`),
+    };
+    const url = URL.createObjectURL(new Blob([zipSync(files)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename.endsWith('.xlsx') ? filename : filename + '.xlsx';
+    a.click();
+    URL.revokeObjectURL(url);
+    this.store.log('Data Exported', a.download, `${rows.length} row(s) exported as Excel.`);
     this.toast(`Downloaded ${a.download} (${rows.length} rows).`);
   }
 }

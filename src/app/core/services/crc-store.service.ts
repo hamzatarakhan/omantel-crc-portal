@@ -8,24 +8,36 @@ import { StatusLevel, daysRemainingToLevel } from '../models/status';
 import { MockDataService } from './mock-data.service';
 import { NAV_GROUPS, NavGroup } from '../nav.config';
 import { attachmentsFor, childRecordsFor, enrichContract, timelineFor } from './contract-data';
+import { seedChanges } from './contract-monitoring';
 
 export const CURRENT_USER = 'Hamza Tarkan';
 /** The contract's flat management fee per employee per month (OMR). */
 export const FLAT_MANAGEMENT_FEE = 116;
 export const ROLE_SUMMARY: Record<string, string> = {
   'Contract Mgmt Team': 'Contracts, budgets and forecasts',
+  'Contract Mgmt Manager': 'Contract risk, escalations and notification rules',
   'Budget Owner': 'Contracts and budget approval',
   'CSR/Workforce Team': 'Agents, leave, recruitment and movement',
   'Team Lead': 'Agents, leave and movement requests',
   'Finance': 'Contracts, budgets, invoices and payments',
   'System Admin': 'Everything, plus access control and audit',
 };
-export const ROLES = ['Contract Mgmt Team', 'Budget Owner', 'CSR/Workforce Team', 'Team Lead', 'Finance', 'System Admin'];
+export const ROLES = ['Contract Mgmt Team', 'Contract Mgmt Manager', 'Budget Owner', 'CSR/Workforce Team', 'Team Lead', 'Finance', 'System Admin'];
 
 export interface Permission { permission: string; module: string; }
 export const PERMISSIONS: Permission[] = [
   { permission: 'View Contracts', module: 'Contracts & Budget' },
+  { permission: 'View Contract Details', module: 'Contracts & Budget' },
   { permission: 'Manual Contract Sync', module: 'Contracts & Budget' },
+  { permission: 'View Sync History', module: 'Contracts & Budget' },
+  { permission: 'View Attachments', module: 'Contracts & Budget' },
+  { permission: 'View Dashboards', module: 'Contracts & Budget' },
+  { permission: 'Export Contract Data', module: 'Contracts & Budget' },
+  { permission: 'Manage Sync Configuration', module: 'Contracts & Budget' },
+  { permission: 'Manage Notifications', module: 'Contracts & Budget' },
+  { permission: 'Manage Escalations', module: 'Contracts & Budget' },
+  { permission: 'Manage Monitoring Actions', module: 'Contracts & Budget' },
+  { permission: 'View Audit History', module: 'Contracts & Budget' },
   { permission: 'Prepare/Edit Draft Budget', module: 'Contracts & Budget' },
   { permission: 'Approve Budget', module: 'Contracts & Budget' },
   { permission: 'View Agent Profiles', module: 'CSR Management' },
@@ -97,17 +109,18 @@ export class CrcStore {
   // ---------- data ----------
   readonly contracts = signal<Contract[]>(this.mock.getContracts().map(enrichContract));
   readonly syncRuns = signal<SyncRun[]>([
+    { id: 'S5', type: 'Manual', startedAt: isoDay(0) + 'T03:29:00', finishedAt: isoDay(0) + 'T03:30:00', initiatedBy: CURRENT_USER, processed: 1, created: 0, updated: 0, rejected: 0, errors: 1, contractReference: '2025-013T-00-04', errorMessage: 'The ERP did not respond within 60 seconds (HTTP 504). Last synchronized data was kept.', status: 'Failed' },
     { id: 'S4', type: 'Automated', startedAt: isoDay(0) + 'T02:00:00', finishedAt: isoDay(0) + 'T02:04:00', initiatedBy: 'System Scheduler', processed: 214, created: 2, updated: 11, rejected: 0, status: 'Completed' },
-    { id: 'S3', type: 'Manual', startedAt: isoDay(-1) + 'T14:22:00', finishedAt: isoDay(-1) + 'T14:22:40', initiatedBy: CURRENT_USER, processed: 1, created: 0, updated: 0, rejected: 0, status: 'No Changes' },
-    { id: 'S2', type: 'Automated', startedAt: isoDay(-1) + 'T02:00:00', finishedAt: isoDay(-1) + 'T02:03:00', initiatedBy: 'System Scheduler', processed: 214, created: 0, updated: 4, rejected: 0, status: 'Completed' },
-    { id: 'S1', type: 'Automated', startedAt: isoDay(-2) + 'T02:00:00', finishedAt: isoDay(-2) + 'T02:01:10', initiatedBy: 'System Scheduler', processed: 0, created: 0, updated: 0, rejected: 0, status: 'Failed' },
+    { id: 'S3', type: 'Manual', startedAt: isoDay(-1) + 'T14:22:00', finishedAt: isoDay(-1) + 'T14:22:40', initiatedBy: CURRENT_USER, processed: 1, created: 0, updated: 0, rejected: 0, errors: 0, contractReference: '2025-013T-00-02', status: 'No Changes' },
+    { id: 'S2', type: 'Automated', startedAt: isoDay(-1) + 'T02:00:00', finishedAt: isoDay(-1) + 'T02:03:00', initiatedBy: 'System Scheduler', processed: 214, created: 0, updated: 4, rejected: 1, errors: 1, errorMessage: 'Record rejected: end date is earlier than the start date (BR-CT-003).', status: 'Completed' },
+    { id: 'S1', type: 'Automated', startedAt: isoDay(-2) + 'T02:00:00', finishedAt: isoDay(-2) + 'T02:01:10', initiatedBy: 'System Scheduler', processed: 0, created: 0, updated: 0, rejected: 0, errors: 1, errorMessage: 'ERP endpoint returned HTTP 503 (Service Unavailable). Last synchronized data was retained.', status: 'Failed' },
   ]);
   readonly notificationRules = signal<NotificationRule[]>([
-    { id: '1', contractType: 'All Contracts', thresholdDays: 60, channel: 'Email', recipients: 'Contract Management Team', active: true },
-    { id: '2', contractType: 'All Contracts', thresholdDays: 30, channel: 'Email + In-App', recipients: 'Contract Management Team', active: true },
-    { id: '3', contractType: 'All Contracts', thresholdDays: 15, channel: 'Email + SMS + In-App', recipients: 'Contract Management Manager', active: true },
-    { id: '4', contractType: 'Manpower Outsourcing', thresholdDays: 5, channel: 'SMS + In-App', recipients: 'Senior Management (Escalation)', active: true },
-    { id: '5', contractType: 'IT Support', thresholdDays: 45, channel: 'Email', recipients: 'Procurement / Finance', active: false },
+    { id: '1', contractType: 'All Contracts', thresholdDays: 60, channel: 'Email', recipients: 'Contract owner, Contract Management team', active: true, templateId: 'T1', language: 'English', vendor: 'All vendors', department: 'All departments' },
+    { id: '2', contractType: 'All Contracts', thresholdDays: 30, channel: 'Email + In-App', recipients: 'Contract owner, Contract Management team', active: true, templateId: 'T1', language: 'English', vendor: 'All vendors', department: 'All departments' },
+    { id: '3', contractType: 'All Contracts', thresholdDays: 15, channel: 'Email + SMS + In-App', recipients: 'Contract Management Manager, Responsible department', active: true, templateId: 'T1', language: 'English', vendor: 'All vendors', department: 'All departments' },
+    { id: '4', contractType: 'All Contracts', thresholdDays: 5, channel: 'Email + SMS + In-App', recipients: 'Contract Management Manager, Senior management', active: true, templateId: 'T1', language: 'English', vendor: 'All vendors', department: 'All departments' },
+    { id: '5', contractType: 'IT Support', thresholdDays: 45, channel: 'Email', recipients: 'Procurement team, Finance team', active: false, templateId: 'T1', language: 'English', vendor: 'All vendors', department: 'All departments' },
   ]);
 
   readonly budgetLines = signal<BudgetLine[]>(this.mock.getBudgetLines().filter((l) => l.category !== 'Total Budget'));
@@ -145,8 +158,6 @@ export class CrcStore {
   ]);
 
   readonly audit = signal<AuditEntry[]>(this.seedAudit());
-  /** Who acknowledged the 48-hour escalation of a contract, and when. */
-  readonly escalationAcks = signal<Record<string, { by: string; at: string; note: string }>>({});
   readonly notifications = signal<AppNotification[]>([
     { id: 'N1', message: '3 contracts expiring within 15 days.', detail: 'Contracts & Budget', level: 'amber', createdAt: Date.now() - 12 * 60000, read: false, link: '/contracts-budget/contracts' },
     { id: 'N2', message: 'Petty cash budget at 96% of allocation.', detail: 'Budget', level: 'red', createdAt: Date.now() - 60 * 60000, read: false, link: '/contracts-budget/budget-breakdown' },
@@ -259,8 +270,8 @@ export class CrcStore {
   }
 
   // ---------- audit + notifications ----------
-  log(activityType: string, reference: string, details: string, result: 'Success' | 'Failed' = 'Success', actor = CURRENT_USER) {
-    const entry: AuditEntry = { id: 'AUD-' + this.next(), timestamp: new Date().toISOString(), actor, activityType, reference, result, details };
+  log(activityType: string, reference: string, details: string, result: 'Success' | 'Failed' = 'Success', actor = CURRENT_USER, extra: Partial<AuditEntry> = {}) {
+    const entry: AuditEntry = { id: 'AUD-' + this.next(), timestamp: new Date().toISOString(), actor, activityType, reference, result, details, ...extra };
     this.audit.update((list) => [entry, ...list]);
   }
 
@@ -283,7 +294,7 @@ export class CrcStore {
   }
 
   /** A renewal that landed in the ERP: extends the end date. Only contracts flagged "Renewal in progress" change. */
-  private applyErpChanges(c: Contract): { contract: Contract; changed: boolean } {
+  applyErpChanges(c: Contract): { contract: Contract; changed: boolean } {
     if (c.renewalStatus === 'Renewal in progress' && c.daysRemaining < 30) {
       const end = new Date(c.endDate);
       end.setFullYear(end.getFullYear() + 1);
@@ -292,37 +303,15 @@ export class CrcStore {
     return { contract: { ...c, lastSyncedAt: new Date().toISOString() }, changed: false };
   }
 
-  syncContract(id: string): { changed: boolean; message: string } {
-    const current = this.contracts().find((c) => c.id === id);
-    if (!current) return { changed: false, message: 'Contract not found.' };
-    const { contract, changed } = this.applyErpChanges(current);
-    this.contracts.update((list) => list.map((c) => (c.id === id ? contract : c)));
-    const now = new Date().toISOString();
-    this.syncRuns.update((runs) => [{ id: 'S' + this.next(), type: 'Manual', startedAt: now, finishedAt: now, initiatedBy: CURRENT_USER, processed: 1, created: 0, updated: changed ? 1 : 0, rejected: 0, status: changed ? 'Completed' : 'No Changes' }, ...runs]);
-    this.log('Contract Sync', current.reference, changed ? `Manual sync: renewal found in ERP — end date extended to ${contract.endDate}.` : 'Manual sync: no changes found in the ERP.');
-    if (changed) this.notify(`${current.reference} was renewed in the ERP.`, 'Contracts & Budget', 'info', '/contracts-budget/contracts/' + id);
-    return { changed, message: changed ? `Renewal found in the ERP — end date is now ${contract.endDate}.` : 'Synchronization completed successfully — no changes found.' };
-  }
-
-  runFullSync(): SyncRun {
-    const started = new Date().toISOString();
-    let updated = 0;
-    const next = this.contracts().map((c) => {
-      const r = this.applyErpChanges(c);
-      if (r.changed) updated++;
-      return r.contract;
-    });
-    this.contracts.set(next);
-    const run: SyncRun = { id: 'S' + this.next(), type: 'Manual', startedAt: started, finishedAt: new Date().toISOString(), initiatedBy: CURRENT_USER, processed: next.length, created: 0, updated, rejected: 0, status: updated ? 'Completed' : 'No Changes' };
-    this.syncRuns.update((runs) => [run, ...runs]);
-    this.log('Contract Sync', 'FULL-SYNC', `Full ERP sync: ${next.length} records processed, ${updated} updated, 0 rejected.`);
-    if (updated) this.notify(`ERP sync updated ${updated} contract${updated > 1 ? 's' : ''}.`, 'Contracts & Budget', 'info', '/contracts-budget/sync-history');
-    return run;
-  }
-
   addNotificationRule(rule: Omit<NotificationRule, 'id' | 'active'>) {
     this.notificationRules.update((list) => [{ ...rule, id: 'R' + this.next(), active: true }, ...list]);
     this.log('Notification Rule Created', rule.contractType, `${rule.thresholdDays} days before expiry via ${rule.channel} to ${rule.recipients}.`);
+  }
+
+  updateNotificationRule(id: string, patch: Partial<NotificationRule>) {
+    const before = this.notificationRules().find((x) => x.id === id);
+    this.notificationRules.update((list) => list.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+    if (before) this.log('Notification Rule Updated', before.contractType, `${before.thresholdDays}-day rule edited.`, 'Success', CURRENT_USER, { previousValue: `${before.channel} → ${before.recipients}`, newValue: `${patch.channel ?? before.channel} → ${patch.recipients ?? before.recipients}` });
   }
 
   toggleNotificationRule(id: string) {
@@ -695,7 +684,12 @@ export class CrcStore {
     const granted = (p: Permission, role: string): boolean => {
       if (role === 'System Admin') return true;
       if (p.permission === 'Approve Budget') return role === 'Budget Owner';
-      if (p.module === 'Contracts & Budget') return role === 'Contract Mgmt Team' || role === 'Budget Owner' || role === 'Finance';
+      if (p.module === 'Contracts & Budget') {
+        if (p.permission === 'Manage Sync Configuration') return false;
+        if (['Manage Notifications', 'Manage Escalations'].includes(p.permission)) return role === 'Contract Mgmt Manager';
+        if (['Manual Contract Sync', 'Manage Monitoring Actions', 'View Audit History'].includes(p.permission)) return role === 'Contract Mgmt Team' || role === 'Contract Mgmt Manager';
+        return role === 'Contract Mgmt Team' || role === 'Contract Mgmt Manager' || role === 'Budget Owner' || role === 'Finance';
+      }
       if (p.module === 'CSR Management') return role === 'CSR/Workforce Team' || role === 'Team Lead';
       if (p.module === 'Internal Project Movement') return role === 'Team Lead' || role === 'CSR/Workforce Team';
       if (p.module === 'Invoicing & Payments') return role === 'Finance';
@@ -704,13 +698,6 @@ export class CrcStore {
     const grid: Record<string, boolean> = {};
     for (const p of PERMISSIONS) for (const r of ROLES) grid[`${p.permission}|${r}`] = granted(p, r);
     return grid;
-  }
-
-  acknowledgeEscalation(contractId: string, note: string) {
-    const c = this.contracts().find((x) => x.id === contractId);
-    if (!c) return;
-    this.escalationAcks.update((m) => ({ ...m, [contractId]: { by: CURRENT_USER, at: new Date().toISOString(), note } }));
-    this.log('Escalation Acknowledged', c.reference, note || 'Acknowledged by the contract owner.');
   }
 
   /** Per-contract ERP history (created, linked records, alerts, escalation, syncs) merged with the demo's global audit entries. */
@@ -722,6 +709,14 @@ export class CrcStore {
       for (const e of timelineFor(c, children, attachmentsFor(c, children), this.notificationRules())) {
         entries.push({ id: 'AUD-' + this.next(), timestamp: e.at, actor: e.actor, activityType: kindLabel[e.kind], reference: c.reference, result: e.result, details: e.title + ' — ' + e.details });
       }
+    }
+    for (const ch of seedChanges(this.contracts())) {
+      const c = this.contracts().find((x) => x.id === ch.contractId)!;
+      entries.push({ id: 'AUD-' + this.next(), timestamp: ch.at, actor: 'System (Scheduled Sync)', activityType: /status/i.test(ch.field) ? 'Status Change (ERP)' : 'Contract Data Updated (ERP)', reference: ch.contractReference, result: 'Success', details: `${ch.field} changed by the ERP: ${ch.previous} → ${ch.next}.`, erpReference: c.erpReference, previousValue: ch.previous, newValue: ch.next, syncType: ch.source });
+    }
+    for (const e of entries) {
+      e.erpReference ??= this.contracts().find((x) => x.reference === e.reference)?.erpReference;
+      e.syncType ??= /Sync|Linked|Attachments/.test(e.activityType) ? 'Automated sync' : undefined;
     }
     return [...entries, ...this.mock.getAuditLog()].sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1));
   }

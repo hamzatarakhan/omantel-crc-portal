@@ -8,6 +8,7 @@ import { PageHeaderComponent } from '../../../shared/components/page-header/page
 import { CrcStore, PERMISSIONS, ROLES } from '../../../core/services/crc-store.service';
 import { UiService } from '../../../shared/services/ui.service';
 import { AppUser } from '../../../core/models/domain';
+import { ContractOps, DataScope } from '../../../core/services/contract-ops.service';
 
 @Component({
   selector: 'app-access-control',
@@ -50,6 +51,32 @@ import { AppUser } from '../../../core/models/domain';
       </table>
     </div>
 
+    <div class="surface-card overflow-x-auto mb-6">
+      <div class="px-4 pt-3.5"><h3 class="text-[13.5px] font-bold text-ink-900">Contract data scope</h3><p class="text-xs text-ink-400 mt-0.5">Limit which contracts a role can see, by vendor, contract type or department. Switch role from the profile menu to check the result.</p></div>
+      <table class="crc-table w-full mt-3">
+        <thead>
+          <tr class="bg-surface-subtle text-left text-xs text-ink-500 uppercase tracking-wide">
+            <th class="px-4 py-2.5 font-medium">Role</th><th class="px-4 py-2.5 font-medium">Vendor</th><th class="px-4 py-2.5 font-medium">Contract type</th><th class="px-4 py-2.5 font-medium">Department</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (role of scopeRoles; track role) {
+            <tr class="border-t border-surface-border">
+              <td class="px-4 py-2 font-medium text-ink-700">{{ role }}</td>
+              @for (f of scopeFields; track f.key) {
+                <td class="px-4 py-2">
+                  <select class="border border-surface-border rounded-lg px-2 py-1 text-xs font-semibold bg-white focus:outline-none focus:border-brand-400 max-w-[210px]" (change)="setScope(role, f.key, $any($event.target).value)">
+                    <option value="All" [selected]="scopeOf(role, f.key) === 'All'">{{ f.all }}</option>
+                    @for (o of options(f.key); track o) { <option [value]="o" [selected]="scopeOf(role, f.key) === o">{{ o }}</option> }
+                  </select>
+                </td>
+              }
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
     <div class="surface-card overflow-x-auto">
       <div class="px-4 pt-3.5"><h3 class="text-[13.5px] font-bold text-ink-900">Users</h3></div>
       <table class="crc-table w-full mt-3">
@@ -80,8 +107,23 @@ export class AccessControlComponent {
   store = inject(CrcStore);
   private ui = inject(UiService);
 
+  ops = inject(ContractOps);
   roles = ROLES;
   permissions = PERMISSIONS;
+  scopeRoles = ROLES.filter((r) => r !== 'System Admin');
+  scopeFields: Array<{ key: keyof DataScope; all: string }> = [{ key: 'vendor', all: 'All vendors' }, { key: 'contractType', all: 'All types' }, { key: 'department', all: 'All departments' }];
+
+  scopeOf(role: string, key: keyof DataScope) { return this.ops.scopeFor(role)[key]; }
+  options(key: keyof DataScope): string[] {
+    const cs = this.store.contracts();
+    const pick = key === 'vendor' ? (c: any) => c.vendorName : key === 'contractType' ? (c: any) => c.contractType : (c: any) => c.department ?? '';
+    return [...new Set(cs.map(pick))].filter(Boolean).sort();
+  }
+  setScope(role: string, key: keyof DataScope, value: string) {
+    if (!this.admin()) { this.ops.roleScopes.update((m) => ({ ...m })); return; }
+    this.ops.setScope(role, { [key]: value });
+    this.ui.toast(`Data scope for ${role} updated.`);
+  }
 
   private admin(): boolean {
     if (this.store.currentRole() === 'System Admin') return true;

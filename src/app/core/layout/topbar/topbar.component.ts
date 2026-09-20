@@ -7,6 +7,7 @@ import { MatMenuModule } from '@angular/material/menu';
 import { MatBadgeModule } from '@angular/material/badge';
 import { CrcStore, ROLES, ROLE_SUMMARY, timeAgo } from '../../services/crc-store.service';
 import { UiService } from '../../../shared/services/ui.service';
+import { ContractOps } from '../../services/contract-ops.service';
 import { AppNotification } from '../../models/domain';
 
 interface SearchResult {
@@ -210,6 +211,7 @@ export class TopbarComponent {
 
   private router = inject(Router);
   store = inject(CrcStore);
+  private ops = inject(ContractOps);
   private ui = inject(UiService);
   roles = ROLES;
   summary = ROLE_SUMMARY;
@@ -226,7 +228,7 @@ export class TopbarComponent {
       this.results.set([]);
       return;
     }
-    const contracts: SearchResult[] = this.store.contracts()
+    const contracts: SearchResult[] = this.ops.scoped()
       .filter((c) => c.reference.toLowerCase().includes(q) || c.name.toLowerCase().includes(q) || c.vendorName.toLowerCase().includes(q))
       .slice(0, 4)
       .map((c) => ({ id: 'contract-' + c.id, icon: 'description', title: c.name, subtitle: `${c.reference} · ${c.vendorName}`, link: ['/contracts-budget/contracts', c.id] }));

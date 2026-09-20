@@ -1,5 +1,17 @@
 import { Contract, ContractAttachment, ContractRecord, ContractTimelineEvent, NotificationRule } from '../models/domain';
 
+export const DEPARTMENT_BY_TYPE: Record<string, string> = {
+  'Manpower Outsourcing': 'Customer Care — Contact Centre', 'Facilities Management': 'Facilities & Administration', 'IT Support': 'IT Operations',
+  'Training Services': 'Learning & Development', 'Recruitment Services': 'HR & Talent Acquisition',
+};
+
+/** Does a notification rule apply to this contract (type, vendor and department scope)? */
+export function ruleApplies(r: NotificationRule, c: Contract): boolean {
+  return r.active && (r.contractType === 'All Contracts' || r.contractType === c.contractType)
+    && (!r.vendor || r.vendor === 'All vendors' || r.vendor === c.vendorName)
+    && (!r.department || r.department === 'All departments' || r.department === c.department);
+}
+
 /**
  * Sample ERP data behind every contract's detail tabs. Everything here is derived from the contract itself
  * (dates, amount, type, vendor) with a stable hash, so each contract always shows the same, internally
@@ -68,14 +80,14 @@ export function enrichContract(c: Contract, i: number): Contract {
     parentReference: undefined,
     description: t.description(c.vendorName),
     scope: t.scope,
-    department: 'Customer Care — Contact Centre',
+    department: DEPARTMENT_BY_TYPE[c.contractType] ?? 'Customer Care — Contact Centre',
     contractManager: MANAGERS[i % MANAGERS.length],
     paymentTerms: t.terms,
     signedDate: signed,
     signatory: `Chief Consumer Officer (Omantel) · Managing Director (${c.vendorName})`,
     renewalOption: t.renewal,
     erpVendorId: 'VEN-' + (7000 + (hash(c.vendorName) % 900)),
-    erpStatus: c.daysRemaining < 0 ? 'Expired' : 'Open',
+    erpStatus: c.status === 'Cancelled' ? 'Cancelled' : c.daysRemaining < 0 ? 'Expired' : 'Open',
     erpCreatedAt: addDays(signed, 1),
     erpModifiedAt: addDays(today(), -(3 + (i % 9))),
     poNumber: '3251' + String(hash(c.reference) % 100000).padStart(5, '0'),
@@ -83,6 +95,7 @@ export function enrichContract(c: Contract, i: number): Contract {
 }
 
 /** Purchase orders, subcontracts, amendments and time extensions linked to the contract in the ERP. */
+const OVERRUN_REF = '2025-013T-00-06';
 const PO_CATEGORY: Record<ContractRecord['recordType'], ContractRecord['poCategory']> = { 'Purchase Order': 'Original PO', Amendment: 'Amendment', 'Time Extension': 'Time extension', Subcontract: 'Subcontract' };
 
 export function childRecordsFor(c: Contract): ContractRecord[] {
@@ -104,6 +117,8 @@ export function childRecordsFor(c: Contract): ContractRecord[] {
   mk(1, 'Purchase Order', 'PO', `First ${t.poLabel}`, c.vendorName, s, s, cut(4), 0.35);
   if (cut(4) < e) mk(2, 'Purchase Order', 'PO', `Second ${t.poLabel}`, c.vendorName, cut(4), cut(4), cut(8), 0.3);
   if (cut(8) < e) mk(3, 'Purchase Order', 'PO', `Third ${t.poLabel}`, c.vendorName, cut(8), cut(8), e, 0.2);
+  // Seeded on one contract to demonstrate BR-CT-007: PO value above the contract amount is flagged for review.
+  if (c.reference === OVERRUN_REF && cut(12) < e) mk(4, 'Purchase Order', 'PO', `Additional ${t.poLabel}`, c.vendorName, cut(12), cut(12), e, 0.3);
   mk(1, 'Amendment', 'AM', 'Amendment No. 1 — rate revision', c.vendorName, cut(3), cut(3), e, 0.02);
   const sub = SUBVENDOR[c.contractType];
   if (sub) mk(1, 'Subcontract', 'SC', `Subcontract — ${t.subScope}`, sub, cut(1), cut(1), e, 0.1);
@@ -119,20 +134,20 @@ export function attachmentsFor(c: Contract, children: ContractRecord[]): Contrac
   const base: Array<[string, string]> = [['Signed agreement', 'signed-agreement'], ['Commercial offer / BOQ', 'commercial-offer'], ['Vendor registration & tax certificate', 'vendor-tax-certificate']];
   if (c.amount >= 60000) base.push(['Performance bank guarantee', 'bank-guarantee']);
   if (c.contractType === 'Manpower Outsourcing' || c.contractType === 'Facilities Management') base.push(['Insurance certificate', 'insurance-certificate']);
-  const items: Array<{ name: string; type: string; linkedTo: string; uploadedAt: string }> = base.map(([type, file]) => ({ name: `${c.reference}-${file}.pdf`, type, linkedTo: c.reference, uploadedAt: c.signedDate ?? c.startDate }));
-  for (const ch of children) items.push({ name: `${ch.reference}-${slug(DOC_LABEL[ch.recordType])}.pdf`, type: DOC_LABEL[ch.recordType], linkedTo: ch.reference, uploadedAt: ch.issuedDate });
+  const items: Array<{ name: string; type: string; category: string; linkedTo: string; uploadedAt: string }> = base.map(([type, file]) => ({ name: `${c.reference}-${file}.pdf`, type, category: 'Contract document', linkedTo: c.reference, uploadedAt: c.signedDate ?? c.startDate }));
+  for (const ch of children) items.push({ name: `${ch.reference}-${slug(DOC_LABEL[ch.recordType])}.pdf`, type: DOC_LABEL[ch.recordType], category: ch.recordType === 'Purchase Order' ? 'Purchase order document' : 'Contract change document', linkedTo: ch.reference, uploadedAt: ch.issuedDate });
   return items.map((it, i) => {
     const h = hash(c.reference + it.name);
     return {
       id: `${c.id}-A${i + 1}`, name: it.name, type: it.type, linkedTo: it.linkedTo,
       erpAttachmentId: `ATT-${10000 + (h % 89999)}`, erpDocumentRef: `${c.erpReference}/DOC-${String(i + 1).padStart(2, '0')}`,
-      sizeKb: 90 + (h % 2300), uploadedBy: ERP_USERS[h % ERP_USERS.length], uploadedAt: it.uploadedAt, syncedAt: c.lastSyncedAt.slice(0, 10),
+      sizeKb: 90 + (h % 2300), category: it.category, version: `v${1 + (h % 3)}.0`, source: 'ERP document store', uploadedBy: ERP_USERS[h % ERP_USERS.length], uploadedAt: it.uploadedAt, syncedAt: c.lastSyncedAt.slice(0, 10),
     };
   });
 }
 
 /** Everything that has happened to the contract: ERP sync events, links, alerts sent and escalation. Newest first. */
-export function timelineFor(c: Contract, children: ContractRecord[], attachments: ContractAttachment[], rules: NotificationRule[]): ContractTimelineEvent[] {
+export function timelineFor(c: Contract, children: ContractRecord[], attachments: ContractAttachment[], rules: NotificationRule[], esc: { hours: number; applies: boolean } = { hours: 48, applies: true }): ContractTimelineEvent[] {
   const now = Date.now();
   const at = (date: string, time: string) => `${date}T${time}`;
   const past = (iso: string) => new Date(iso + 'Z').getTime() - 4 * 3600000 <= now;
@@ -149,7 +164,9 @@ export function timelineFor(c: Contract, children: ContractRecord[], attachments
   for (const ch of children) push({ at: at(ch.issuedDate, '02:06:00'), kind: 'linked', title: `${ch.recordType} linked`, details: `${ch.reference} (${ch.erpReference}) · ${ch.amount.toLocaleString()} ${ch.currency} · ${ch.description}.`, actor: 'System (Scheduled Sync)' });
   if (c.renewalStatus) push({ at: at(addDays(c.endDate, -45), '09:12:00'), kind: 'renewal', title: 'Renewal initiated in ERP', details: `${c.renewalStatus} — flagged by ${c.contractManager}.`, actor: c.contractManager ?? 'Contract Manager' });
 
-  for (const r of rules.filter((x) => x.active && (x.contractType === 'All Contracts' || x.contractType === c.contractType))) {
+  const cancelled = c.status === 'Cancelled';
+  if (cancelled) push({ at: at(addDays(c.endDate, -20), '02:00:00'), kind: 'sync', title: 'Status changed in ERP: Active → Cancelled', details: 'The contract was cancelled in the ERP. It is removed from active screens and kept for historical reporting.', actor: 'System (Scheduled Sync)' });
+  for (const r of cancelled ? [] : rules.filter((x) => ruleApplies(x, c))) {
     const failed = hash(c.reference + r.id) % 11 === 0;
     push({
       at: at(addDays(c.endDate, -r.thresholdDays), '08:00:00'), kind: 'alert', title: `Expiry alert — ${r.thresholdDays} days before expiry`,
@@ -157,8 +174,8 @@ export function timelineFor(c: Contract, children: ContractRecord[], attachments
       actor: 'System (Notification Engine)', channel: r.channel, recipients: r.recipients, ruleLabel: `${r.contractType} · ${r.thresholdDays} days`, result: failed ? 'Failed' : 'Success',
     });
   }
-  push({
-    at: at(addDays(c.endDate, -2), '08:00:00'), kind: 'escalation', title: 'Escalated to Senior Management (48 hours before expiry)',
+  if (!cancelled && esc.applies && c.renewalStatus !== 'Renewed') push({
+    at: at(addDays(c.endDate, -Math.ceil(esc.hours / 24)), '08:00:00'), kind: 'escalation', title: `Escalated to Senior Management (${esc.hours} hours before expiry)`,
     details: c.renewalStatus ? `Renewal status: ${c.renewalStatus}.` : 'No renewal on record — action required.', actor: 'System (Notification Engine)', channel: 'Email + SMS + In-App', recipients: 'Senior Management (Escalation)',
   });
 

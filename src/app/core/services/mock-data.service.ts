@@ -57,7 +57,7 @@ export class MockDataService {
     const vendors = ['Infoline LLC', 'Green Umbrella Services', 'Al-Waha Facilities', 'Tech Bridge Solutions', 'Reliance Outsourcing'];
     const types = ['Manpower Outsourcing', 'Facilities Management', 'IT Support', 'Training Services', 'Recruitment Services'];
     const offsets = [-10, 4, 12, 28, 45, 120, 200, -30, 60, 8];
-    return offsets.map((offset, i) => {
+    const seeded = offsets.map((offset, i) => {
       const daysRemaining = offset;
       const level = daysRemainingToLevel(daysRemaining);
       return {
@@ -77,8 +77,14 @@ export class MockDataService {
         erpReference: `ERP-VEN-${5000 + i}`,
         lastSyncedAt: new Date().toISOString(),
         daysRemaining,
-      };
+      } as Contract;
     });
+    // ERP-side edge cases the SRS calls out: a contract cancelled in the ERP (kept for history) and one that was renewed.
+    const extra: Contract[] = [
+      { id: 'CT-1010', reference: '2024-009T-00-11', name: 'Security Services Agreement 2024', recordType: 'Parent Contract', contractType: 'Facilities Management', vendorName: 'Al-Waha Facilities', startDate: '2024-03-01', endDate: addDays(-95), amount: 38000, currency: 'OMR', status: 'Cancelled', erpReference: 'ERP-VEN-5010', lastSyncedAt: new Date().toISOString(), daysRemaining: -95 },
+      { id: 'CT-1011', reference: '2024-011T-00-12', name: 'Training Services Agreement 2024', recordType: 'Parent Contract', contractType: 'Training Services', vendorName: 'Tech Bridge Solutions', startDate: '2024-06-01', endDate: addDays(210), amount: 29500, currency: 'OMR', status: 'Active', renewalStatus: 'Renewed', erpReference: 'ERP-VEN-5011', lastSyncedAt: new Date().toISOString(), daysRemaining: 210 },
+    ];
+    return [...seeded, ...extra];
   }
 
   getBudgetLines(): BudgetLine[] {

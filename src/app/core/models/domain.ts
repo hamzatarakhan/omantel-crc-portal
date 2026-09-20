@@ -177,6 +177,10 @@ export interface AuditEntry {
   reference: string;
   result: 'Success' | 'Failed';
   details: string;
+  erpReference?: string;
+  previousValue?: string;
+  newValue?: string;
+  syncType?: string;
 }
 
 // ---------- Cross-cutting ----------
@@ -190,6 +194,9 @@ export interface SyncRun {
   created: number;
   updated: number;
   rejected: number;
+  errors?: number;
+  contractReference?: string;
+  errorMessage?: string;
   status: 'Completed' | 'Failed' | 'No Changes';
 }
 
@@ -210,6 +217,10 @@ export interface NotificationRule {
   channel: string;
   recipients: string;
   active: boolean;
+  templateId?: string;
+  language?: string;
+  vendor?: string;
+  department?: string;
 }
 
 export type BudgetPlanStatus = 'Draft' | 'Submitted' | 'Approved' | 'Rejected';
@@ -327,6 +338,9 @@ export interface ContractAttachment {
   erpAttachmentId: string;
   erpDocumentRef: string;
   sizeKb: number;
+  category: string;
+  version: string;
+  source: string;
   uploadedBy: string;
   uploadedAt: string;
   syncedAt: string;

@@ -16,7 +16,7 @@ import { CrcStore } from '../../../core/services/crc-store.service';
       [breadcrumbs]="[{ label: 'Administration' }, { label: 'Audit Log' }]"
     ></app-page-header>
 
-    <app-data-table title="Activity" [columns]="columns" [rows]="rows()">
+    <app-data-table title="Activity" [columns]="columns" [rows]="rows()" [exportable]="store.can('Export Contract Data') || store.currentRole() === 'System Admin'">
       <div toolbar class="flex items-center gap-2 flex-wrap">
         <div class="flex items-center gap-1 bg-surface-subtle border border-surface-border rounded-lg p-0.5">
           @for (r of results; track r) {
@@ -39,7 +39,7 @@ import { CrcStore } from '../../../core/services/crc-store.service';
   `,
 })
 export class AuditLogComponent {
-  private store = inject(CrcStore);
+  store = inject(CrcStore);
 
   results = ['All', 'Success', 'Failed'];
   result = signal('All');
@@ -57,6 +57,10 @@ export class AuditLogComponent {
     { key: 'actor', label: 'Actor' },
     { key: 'activityType', label: 'Activity Type' },
     { key: 'reference', label: 'Reference' },
+    { key: 'erpReference', label: 'ERP reference' },
+    { key: 'syncType', label: 'Sync type' },
+    { key: 'previousValue', label: 'Previous value' },
+    { key: 'newValue', label: 'New value' },
     { key: 'result', label: 'Result', type: 'status', statusFn: (r) => ({ label: r.result, level: r.result === 'Success' ? 'normal' : 'red' }) },
     { key: 'details', label: 'Details' },
   ];
