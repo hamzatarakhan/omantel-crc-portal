@@ -28,7 +28,7 @@ interface BudgetVsActualRow { category: string; allocated: number; actual: numbe
       <app-kpi-card label="Completed this Cycle" [value]="count('Completed')" level="normal" icon="task_alt"></app-kpi-card>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6 lg:h-[320px]">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
       <app-chart-card class="lg:col-span-2" title="Budget vs. Actual by Category" subtitle="Updates when payments are completed" type="bar" [data]="chart()"></app-chart-card>
       <app-chart-card title="Payments by Status" type="doughnut" [data]="statusChart()"></app-chart-card>
     </div>
