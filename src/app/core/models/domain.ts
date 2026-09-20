@@ -18,6 +18,20 @@ export interface Contract {
   erpReference: string;
   lastSyncedAt: string;
   daysRemaining: number;
+  // ERP / commercial details (filled in by the ERP sync)
+  description?: string;
+  scope?: string[];
+  department?: string;
+  contractManager?: string;
+  paymentTerms?: string;
+  signedDate?: string;
+  signatory?: string;
+  renewalOption?: string;
+  erpVendorId?: string;
+  erpStatus?: string;
+  erpCreatedAt?: string;
+  erpModifiedAt?: string;
+  poNumber?: string;
 }
 
 export interface BudgetLine {
@@ -280,4 +294,49 @@ export interface AnnexureImport {
   employees: Array<{ employeeId: string; name: string; queue: string; degree: Agent['degree']; nationality: string; joinDate: string; pay: PayrollLine }>;
   attendance: { days: string[]; rows: Record<string, string[]> };
   resignations: Array<Omit<ResignationRecord, 'id' | 'vendor'>>;
+}
+
+// ---------- Contract details (children, attachments, timeline) ----------
+export interface ContractRecord {
+  id: string;
+  parentId: string;
+  reference: string;
+  recordType: 'Purchase Order' | 'Subcontract' | 'Amendment' | 'Time Extension';
+  description: string;
+  counterparty: string;
+  erpReference: string;
+  issuedDate: string;
+  startDate: string;
+  endDate: string;
+  amount: number;
+  currency: 'OMR' | 'USD';
+  status: 'Active' | 'Expiring Soon' | 'Closed';
+  daysRemaining: number;
+  attachments: number;
+}
+
+export interface ContractAttachment {
+  id: string;
+  name: string;
+  type: string;
+  linkedTo: string;
+  erpAttachmentId: string;
+  erpDocumentRef: string;
+  sizeKb: number;
+  uploadedBy: string;
+  uploadedAt: string;
+  syncedAt: string;
+}
+
+export interface ContractTimelineEvent {
+  id: string;
+  at: string;
+  kind: 'created' | 'attachments' | 'linked' | 'notice' | 'alert' | 'escalation' | 'sync' | 'renewal';
+  title: string;
+  details: string;
+  actor: string;
+  channel?: string;
+  recipients?: string;
+  ruleLabel?: string;
+  result: 'Success' | 'Failed';
 }

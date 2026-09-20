@@ -4,6 +4,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { PageHeaderComponent } from '../../../shared/components/page-header/page-header.component';
 import { CrcStore } from '../../../core/services/crc-store.service';
 import { UiService } from '../../../shared/services/ui.service';
+import { childRecordsFor } from '../../../core/services/contract-data';
 
 interface ReportDef {
   title: string;
@@ -74,10 +75,10 @@ export class ContractReportsComponent {
     },
     {
       title: 'Contract vs PO Value', description: 'Compare parent contract amount to total PO value.', icon: 'compare_arrows', file: 'contract-vs-po',
-      build: () => this.store.contracts().filter((c) => !c.parentReference).map((p) => {
-        const kids = this.store.contracts().filter((c) => c.parentReference === p.reference);
-        const kidsTotal = kids.reduce((s, k) => s + k.amount, 0);
-        return { Parent: p.reference, Vendor: p.vendorName, 'Parent amount': p.amount, 'Linked records': kids.length, 'Linked value': kidsTotal, 'Remaining headroom': p.amount - kidsTotal };
+      build: () => this.store.contracts().map((p) => {
+        const pos = childRecordsFor(p).filter((k) => k.recordType === 'Purchase Order');
+        const posTotal = pos.reduce((s, k) => s + k.amount, 0);
+        return { Contract: p.reference, Vendor: p.vendorName, 'Contract amount': p.amount, 'Purchase orders': pos.length, 'PO value': posTotal, 'Remaining headroom': p.amount - posTotal };
       }),
     },
     { title: 'Renewed & Extended Contracts', description: 'Contracts renewed or extended this period.', icon: 'autorenew', file: 'contracts-renewed', build: () => this.store.contracts().filter((c) => !!c.renewalStatus).map(this.base) },

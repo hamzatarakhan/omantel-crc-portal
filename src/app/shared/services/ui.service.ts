@@ -31,6 +31,35 @@ export class UiService {
     return false;
   }
 
+  /** Downloads a small, valid PDF made from the given lines (the prototype's stand-in for an ERP document). */
+  pdf(filename: string, title: string, lines: string[]) {
+    const esc = (t: string) => t.replace(/[^\x20-\x7e]/g, '-').replace(/[\\()]/g, (ch) => '\\' + ch);
+    const content = ['BT', '/F1 16 Tf', '50 790 Td', '22 TL', `(${esc(title)}) Tj`, '/F1 10 Tf', '16 TL', 'T*', ...lines.flatMap((l) => [`(${esc(l)}) Tj`, 'T*']), 'ET'].join('\n');
+    const objects = [
+      '<< /Type /Catalog /Pages 2 0 R >>',
+      '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+      '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>',
+      `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
+      '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+    ];
+    let pdf = '%PDF-1.4\n';
+    const offsets: number[] = [];
+    objects.forEach((o, i) => {
+      offsets.push(pdf.length);
+      pdf += `${i + 1} 0 obj\n${o}\nendobj\n`;
+    });
+    const xref = pdf.length;
+    pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n` + offsets.map((o) => `${String(o).padStart(10, '0')} 00000 n \n`).join('');
+    pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+    const url = URL.createObjectURL(new Blob([pdf], { type: 'application/pdf' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+    this.toast(`Downloaded ${filename}.`);
+  }
+
   csv(filename: string, rows: Array<Record<string, any>>) {
     if (!rows.length) {
       this.toast('Nothing to export.');

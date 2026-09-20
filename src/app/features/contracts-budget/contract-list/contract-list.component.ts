@@ -66,7 +66,7 @@ export class ContractListComponent {
     { key: 'name', label: 'Name' },
     { key: 'vendorName', label: 'Vendor' },
     { key: 'contractType', label: 'Type' },
-    { key: 'parentReference', label: 'Parent Contract' },
+    { key: 'erpReference', label: 'ERP reference' },
     { key: 'endDate', label: 'End Date', type: 'date' },
     { key: 'daysRemaining', label: 'Days Remaining', type: 'number', align: 'right' },
     { key: 'amount', label: 'Amount', type: 'currency', align: 'right' },

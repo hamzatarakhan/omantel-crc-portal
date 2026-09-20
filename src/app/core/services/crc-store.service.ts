@@ -7,6 +7,7 @@ import {
 import { StatusLevel, daysRemainingToLevel } from '../models/status';
 import { MockDataService } from './mock-data.service';
 import { NAV_GROUPS, NavGroup } from '../nav.config';
+import { attachmentsFor, childRecordsFor, enrichContract, timelineFor } from './contract-data';
 
 export const CURRENT_USER = 'Hamza Tarkan';
 /** The contract's flat management fee per employee per month (OMR). */
@@ -94,7 +95,7 @@ export class CrcStore {
   readonly permissionGrid = signal<Record<string, boolean>>(this.seedPermissions());
 
   // ---------- data ----------
-  readonly contracts = signal<Contract[]>(this.mock.getContracts());
+  readonly contracts = signal<Contract[]>(this.mock.getContracts().map(enrichContract));
   readonly syncRuns = signal<SyncRun[]>([
     { id: 'S4', type: 'Automated', startedAt: isoDay(0) + 'T02:00:00', finishedAt: isoDay(0) + 'T02:04:00', initiatedBy: 'System Scheduler', processed: 214, created: 2, updated: 11, rejected: 0, status: 'Completed' },
     { id: 'S3', type: 'Manual', startedAt: isoDay(-1) + 'T14:22:00', finishedAt: isoDay(-1) + 'T14:22:40', initiatedBy: CURRENT_USER, processed: 1, created: 0, updated: 0, rejected: 0, status: 'No Changes' },
@@ -143,7 +144,9 @@ export class CrcStore {
     { id: 'U6', name: 'Talal Al-Amri', email: 'talal.alamri@omantel.om', role: 'Team Lead', active: false },
   ]);
 
-  readonly audit = signal<AuditEntry[]>(this.mock.getAuditLog());
+  readonly audit = signal<AuditEntry[]>(this.seedAudit());
+  /** Who acknowledged the 48-hour escalation of a contract, and when. */
+  readonly escalationAcks = signal<Record<string, { by: string; at: string; note: string }>>({});
   readonly notifications = signal<AppNotification[]>([
     { id: 'N1', message: '3 contracts expiring within 15 days.', detail: 'Contracts & Budget', level: 'amber', createdAt: Date.now() - 12 * 60000, read: false, link: '/contracts-budget/contracts' },
     { id: 'N2', message: 'Petty cash budget at 96% of allocation.', detail: 'Budget', level: 'red', createdAt: Date.now() - 60 * 60000, read: false, link: '/contracts-budget/budget-breakdown' },
@@ -701,6 +704,26 @@ export class CrcStore {
     const grid: Record<string, boolean> = {};
     for (const p of PERMISSIONS) for (const r of ROLES) grid[`${p.permission}|${r}`] = granted(p, r);
     return grid;
+  }
+
+  acknowledgeEscalation(contractId: string, note: string) {
+    const c = this.contracts().find((x) => x.id === contractId);
+    if (!c) return;
+    this.escalationAcks.update((m) => ({ ...m, [contractId]: { by: CURRENT_USER, at: new Date().toISOString(), note } }));
+    this.log('Escalation Acknowledged', c.reference, note || 'Acknowledged by the contract owner.');
+  }
+
+  /** Per-contract ERP history (created, linked records, alerts, escalation, syncs) merged with the demo's global audit entries. */
+  private seedAudit(): AuditEntry[] {
+    const kindLabel: Record<string, string> = { created: 'Contract Sync', attachments: 'Attachments Synced', linked: 'Record Linked', notice: 'Notification Sent', alert: 'Expiry Alert Sent', escalation: 'Escalation Sent', sync: 'Contract Sync', renewal: 'Renewal Initiated' };
+    const entries: AuditEntry[] = [];
+    for (const c of this.contracts()) {
+      const children = childRecordsFor(c);
+      for (const e of timelineFor(c, children, attachmentsFor(c, children), this.notificationRules())) {
+        entries.push({ id: 'AUD-' + this.next(), timestamp: e.at, actor: e.actor, activityType: kindLabel[e.kind], reference: c.reference, result: e.result, details: e.title + ' — ' + e.details });
+      }
+    }
+    return [...entries, ...this.mock.getAuditLog()].sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1));
   }
 
   private makePayroll(id: string, degree: Agent['degree']): PayrollLine {
