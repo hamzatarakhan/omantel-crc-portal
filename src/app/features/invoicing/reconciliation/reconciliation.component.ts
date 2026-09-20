@@ -30,16 +30,16 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
       <app-status-chip [label]="status()" [level]="statusLevel()"></app-status-chip>
     </app-page-header>
 
-    <div class="flex items-center gap-3 flex-wrap mb-4">
+    <div class="flex items-stretch gap-3 flex-wrap mb-4">
       <div class="flex items-center gap-1 bg-white border border-surface-border rounded-lg p-0.5">
         @for (v of vendors; track v) {
-          <button (click)="vendor.set(v)" class="px-3 py-1.5 text-xs font-semibold rounded-md transition-colors" [class]="vendor() === v ? 'bg-brand-50 text-brand-700' : 'text-ink-500 hover:text-ink-900'">{{ v }}</button>
+          <button (click)="vendor.set(v)" class="h-8 inline-flex items-center px-3 text-xs font-semibold rounded-md transition-colors" [class]="vendor() === v ? 'bg-brand-50 text-brand-700' : 'text-ink-500 hover:text-ink-900'">{{ v }}</button>
         }
       </div>
       <div class="flex items-center gap-1 bg-white border border-surface-border rounded-lg p-0.5">
-        <button (click)="view.set('calc')" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors" [class]="view() === 'calc' ? 'bg-brand-50 text-brand-700' : 'text-ink-500 hover:text-ink-900'"><mat-icon class="!text-base">calculate</mat-icon>Calculation</button>
-        <button (click)="view.set('invoice')" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors" [class]="view() === 'invoice' ? 'bg-brand-50 text-brand-700' : 'text-ink-500 hover:text-ink-900'"><mat-icon class="!text-base">receipt_long</mat-icon>Invoice preview</button>
-        <button (click)="view.set('annexure')" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors" [class]="view() === 'annexure' ? 'bg-brand-50 text-brand-700' : 'text-ink-500 hover:text-ink-900'"><mat-icon class="!text-base">table_view</mat-icon>Annexure</button>
+        <button (click)="view.set('calc')" class="h-8 inline-flex items-center gap-1.5 px-3 text-xs font-semibold rounded-md transition-colors" [class]="view() === 'calc' ? 'bg-brand-50 text-brand-700' : 'text-ink-500 hover:text-ink-900'"><mat-icon class="!text-base">calculate</mat-icon>Calculation</button>
+        <button (click)="view.set('invoice')" class="h-8 inline-flex items-center gap-1.5 px-3 text-xs font-semibold rounded-md transition-colors" [class]="view() === 'invoice' ? 'bg-brand-50 text-brand-700' : 'text-ink-500 hover:text-ink-900'"><mat-icon class="!text-base">receipt_long</mat-icon>Invoice preview</button>
+        <button (click)="view.set('annexure')" class="h-8 inline-flex items-center gap-1.5 px-3 text-xs font-semibold rounded-md transition-colors" [class]="view() === 'annexure' ? 'bg-brand-50 text-brand-700' : 'text-ink-500 hover:text-ink-900'"><mat-icon class="!text-base">table_view</mat-icon>Annexure</button>
       </div>
     </div>
 
