@@ -31,9 +31,9 @@ import { NAV_GROUPS, NavGroup } from '../../nav.config';
         [class.py-4]="collapsed()"
       >
         @if (!collapsed()) {
-          <div class="flex-1 min-w-0 flex flex-col gap-1">
+          <div class="flex-1 min-w-0 flex flex-col gap-0.5">
             <img src="logo.svg" alt="Omantel" class="h-[21px] w-auto self-start" />
-            <div class="text-[10.5px] font-bold uppercase tracking-wider text-ink-400 truncate">CRC Portal &middot; Tawasul</div>
+            <div class="text-[9px] font-semibold uppercase tracking-[0.08em] text-ink-400 truncate">CRC Portal &middot; Tawasul</div>
           </div>
         }
         <button
