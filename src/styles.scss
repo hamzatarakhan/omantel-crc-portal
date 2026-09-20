@@ -217,6 +217,40 @@ router-outlet + * {
   padding: 0 !important;
 }
 
+// Option list for every <select> (see shared/select-menu.ts) — same white panel as the account menu.
+.app-select-panel {
+  position: fixed;
+  z-index: 3000;
+  overflow-y: auto;
+  padding: 6px 0;
+  background: #fff;
+  border: 1px solid var(--surface-border);
+  border-radius: 14px;
+  box-shadow: 0 8px 28px rgba(25, 23, 51, 0.1);
+  max-width: min(420px, 92vw);
+}
+.app-select-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 16px;
+  text-align: left;
+  font-size: 13px;
+  line-height: 18px;
+  color: #413e5c;
+  background: none;
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+.app-select-label { flex: 1; min-width: 0; }
+.app-select-check { width: 16px; height: 16px; flex-shrink: 0; opacity: 0; }
+.app-select-item:hover,
+.app-select-item.is-active { background: #f7f7fa; }
+.app-select-item.is-selected { color: #ea6e00; font-weight: 600; background: #fff4e9; }
+.app-select-item.is-selected .app-select-check { opacity: 1; }
+.app-select-item:disabled { color: #b4b6c8; cursor: not-allowed; }
+
 // Vendor drill-down and any future modal — rounded, borderless surface with a real
 // but soft shadow (a true overlay above a backdrop is the other place shadow still fits).
 // Material caps a dialog at 560px / 80vw by default, which clipped wider content. Each dialog now sets its
