@@ -1,9 +1,9 @@
 import { Component, EventEmitter, Input, Output, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { RouterModule } from '@angular/router';
+import { Router, RouterModule } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
-import { NavGroup } from '../../nav.config';
+import { NavGroup, NavItem } from '../../nav.config';
 import { CrcStore } from '../../services/crc-store.service';
 
 @Component({
@@ -75,7 +75,30 @@ import { CrcStore } from '../../services/crc-store.service';
                 {{ group.label }}
               </div>
             }
-            @for (item of group.items; track item.path) {
+            @for (entry of entries(group); track entry.key) {
+             @if (entry.section; as sec) {
+              @if (collapsed()) {
+                @for (item of entry.items; track item.path) {
+                  <a [routerLink]="group.basePath + '/' + item.path" routerLinkActive="!bg-brand-50 !text-brand-600" (click)="closeMobile.emit()" [title]="sec + ' · ' + item.label" class="flex items-center justify-center py-2 mb-0.5 rounded-xl text-ink-500 hover:bg-surface-subtle"><mat-icon class="!text-[19px] !w-5 !h-5">{{ item.icon }}</mat-icon></a>
+                }
+              } @else {
+                <button type="button" (click)="toggle(group, sec, entry.items)" class="w-full flex items-center gap-3 px-2.5 py-2 mb-0.5 rounded-xl text-[13.5px] font-medium hover:bg-surface-subtle hover:text-ink-900 transition-colors" [class]="hasActive(group, entry.items) ? 'text-brand-600 font-semibold' : 'text-ink-500'">
+                  <mat-icon class="!text-[19px] !w-5 !h-5 shrink-0" [class.!text-brand-600]="hasActive(group, entry.items)">{{ group.sections?.[sec] || 'folder' }}</mat-icon>
+                  <span class="flex-1 text-left truncate">{{ sec }}</span>
+                  <mat-icon class="!text-lg !w-5 !h-5 text-ink-400 transition-transform" [class.rotate-180]="isOpen(group, sec, entry.items)">expand_more</mat-icon>
+                </button>
+                @if (isOpen(group, sec, entry.items)) {
+                  <div class="ml-[19px] pl-2 mb-1 border-l border-surface-border">
+                    @for (item of entry.items; track item.path) {
+                      <a [routerLink]="group.basePath + '/' + item.path" routerLinkActive="!bg-brand-50 !text-brand-600 !font-semibold" (click)="closeMobile.emit()" class="flex items-center gap-2.5 px-2.5 py-1.5 mb-0.5 rounded-lg text-[13px] font-medium text-ink-500 hover:bg-surface-subtle hover:text-ink-900 transition-colors">
+                        <mat-icon class="!text-[17px] !w-[18px] !h-[18px] shrink-0">{{ item.icon }}</mat-icon><span class="truncate">{{ item.label }}</span>
+                      </a>
+                    }
+                  </div>
+                }
+              }
+             } @else {
+              @for (item of entry.items; track item.path) {
               <a
                 [routerLink]="group.basePath + '/' + item.path"
                 routerLinkActive="!bg-brand-50 !text-brand-600 !font-semibold before:!opacity-100"
@@ -92,6 +115,8 @@ import { CrcStore } from '../../services/crc-store.service';
                   <span class="truncate">{{ item.label }}</span>
                 }
               </a>
+              }
+             }
             }
           </div>
         }
@@ -107,6 +132,34 @@ export class SidebarComponent {
   @Output() closeMobile = new EventEmitter<void>();
 
   private store = inject(CrcStore);
+  private router = inject(Router);
+  private open = signal<Record<string, boolean>>({});
+
+  /** Groups consecutive items that share a section into one collapsible entry. */
+  entries(group: NavGroup): Array<{ key: string; section?: string; items: NavItem[] }> {
+    const out: Array<{ key: string; section?: string; items: NavItem[] }> = [];
+    for (const item of group.items) {
+      const last = out[out.length - 1];
+      if (item.section && last?.section === item.section) last.items.push(item);
+      else out.push({ key: (item.section ?? '') + '|' + item.path, section: item.section, items: [item] });
+    }
+    return out;
+  }
+
+  hasActive(group: NavGroup, items: NavItem[]): boolean {
+    const url = this.router.url.split('?')[0];
+    return items.some((i) => url === group.basePath + '/' + i.path || url.startsWith(group.basePath + '/' + i.path + '/'));
+  }
+
+  /** A sub-menu is open when you opened it, or by default when the page you are on belongs to it (or a search is running). */
+  isOpen(group: NavGroup, section: string, items: NavItem[]): boolean {
+    return this.open()[group.label + section] ?? (!!this.query.trim() || this.hasActive(group, items));
+  }
+
+  toggle(group: NavGroup, section: string, items: NavItem[]) {
+    this.open.update((m) => ({ ...m, [group.label + section]: !this.isOpen(group, section, items) }));
+  }
+
   get groups(): NavGroup[] {
     return this.store.visibleGroups();
   }

@@ -26,7 +26,7 @@ const join = (v: string[] | string, sep: string, order?: string[]) => (Array.isA
     <app-page-header
       title="Notification Configuration"
       subtitle="Expiry alert rules, message templates and the escalation rule &middot; alerts are generated in the organisation time zone ({{ ops.syncConfig().timezone }})"
-      [breadcrumbs]="[{ label: 'Contracts & Budget', link: '/contracts-budget/dashboard' }, { label: 'Notification Configuration' }]"
+      [breadcrumbs]="[{ label: 'Contracts & Budget', link: '/contracts-budget/dashboard' }, { label: 'Monitoring' }, { label: 'Alerts & Escalation' }]"
     ></app-page-header>
 
     <mat-tab-group>

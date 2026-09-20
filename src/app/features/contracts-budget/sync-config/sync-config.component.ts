@@ -20,7 +20,7 @@ const INPUT = 'w-full px-3 py-2.5 text-sm rounded-lg border border-surface-borde
     <app-page-header
       title="Synchronization Configuration"
       subtitle="How often CRC pulls vendors, contracts, subcontracts and purchase orders from the ERP"
-      [breadcrumbs]="[{ label: 'Contracts & Budget', link: '/contracts-budget/dashboard' }, { label: 'Sync Configuration' }]"
+      [breadcrumbs]="[{ label: 'Contracts & Budget', link: '/contracts-budget/dashboard' }, { label: 'Synchronization' }, { label: 'Configuration' }]"
     >
       <button mat-stroked-button (click)="runNow()" appRequires="Manage Sync Configuration" [disabled]="running()"><mat-icon class="!text-base !mr-1" [class.animate-spin]="running()">play_arrow</mat-icon>{{ running() ? 'Running…' : 'Run scheduled sync now (demo)' }}</button>
     </app-page-header>

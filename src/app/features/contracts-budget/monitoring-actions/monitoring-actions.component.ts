@@ -22,7 +22,7 @@ const FILTERS = ['All', 'Open', 'In progress', 'Completed', 'Closed'];
     <app-page-header
       title="Monitoring Actions"
       subtitle="Follow-up actions on contracts — recorded in CRC only; the contract data is never changed"
-      [breadcrumbs]="[{ label: 'Contracts & Budget', link: '/contracts-budget/dashboard' }, { label: 'Monitoring Actions' }]"
+      [breadcrumbs]="[{ label: 'Contracts & Budget', link: '/contracts-budget/dashboard' }, { label: 'Monitoring' }, { label: 'Monitoring Actions' }]"
     >
       <button mat-flat-button color="primary" (click)="create()" appRequires="Manage Monitoring Actions"><mat-icon class="!text-base !mr-1">add</mat-icon>New action</button>
     </app-page-header>

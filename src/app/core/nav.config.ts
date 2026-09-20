@@ -4,6 +4,8 @@ export interface NavItem {
   icon: string;
   /** Visible when the current role has ANY of these permissions. Omit = everyone. */
   perms?: string[];
+  /** Items that share a section are shown together under a collapsible sub-menu. */
+  section?: string;
 }
 
 export interface NavGroup {
@@ -12,6 +14,8 @@ export interface NavGroup {
   basePath: string;
   items: NavItem[];
   adminOnly?: boolean;
+  /** Icon for each sub-menu label used by `section`. */
+  sections?: Record<string, string>;
 }
 
 const VIEW_CONTRACTS = ['View Contracts'];
@@ -23,16 +27,20 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Contracts & Budget',
     icon: 'description',
     basePath: '/contracts-budget',
+    sections: { Monitoring: 'fact_check', Synchronization: 'sync' },
     items: [
       { label: 'Contract Dashboard', path: 'dashboard', icon: 'dashboard', perms: ['View Dashboards'] },
       { label: 'Contract Trends', path: 'trends', icon: 'show_chart', perms: ['View Dashboards'] },
       { label: 'Contract List', path: 'contracts', icon: 'list_alt', perms: VIEW_CONTRACTS },
-      { label: 'Monitoring Actions', path: 'actions', icon: 'assignment_turned_in', perms: ['Manage Monitoring Actions'] },
-      { label: 'Sync History', path: 'sync-history', icon: 'sync', perms: ['View Sync History'] },
-      { label: 'Sync Configuration', path: 'sync-config', icon: 'schedule', perms: ['Manage Sync Configuration'] },
-      { label: 'Notification Config', path: 'notifications', icon: 'notifications', perms: ['Manage Notifications', 'Manage Escalations'] },
       { label: 'Contract Reports', path: 'reports', icon: 'summarize', perms: VIEW_CONTRACTS },
-      { label: 'Audit History', path: 'audit-history', icon: 'history', perms: ['View Audit History'] },
+      { label: 'Needs Attention', path: 'needs-attention', icon: 'assignment_late', perms: ['View Dashboards'], section: 'Monitoring' },
+      { label: 'Monitoring Actions', path: 'actions', icon: 'assignment_turned_in', perms: ['Manage Monitoring Actions'], section: 'Monitoring' },
+      { label: 'Alerts & Escalation', path: 'notifications', icon: 'notifications', perms: ['Manage Notifications', 'Manage Escalations'], section: 'Monitoring' },
+      { label: 'Sync Overview', path: 'sync', icon: 'monitor_heart', perms: ['View Sync History'], section: 'Synchronization' },
+      { label: 'Run History', path: 'sync-history', icon: 'history', perms: ['View Sync History'], section: 'Synchronization' },
+      { label: 'Error Log', path: 'sync-errors', icon: 'error_outline', perms: ['View Sync History'], section: 'Synchronization' },
+      { label: 'Configuration', path: 'sync-config', icon: 'schedule', perms: ['Manage Sync Configuration'], section: 'Synchronization' },
+      { label: 'Audit History', path: 'audit-history', icon: 'manage_search', perms: ['View Audit History'] },
       { label: 'Budget Dashboard', path: 'budget-dashboard', icon: 'account_balance_wallet', perms: VIEW_CONTRACTS },
       { label: 'Budget Preparation', path: 'budget-preparation', icon: 'edit_note', perms: ['Prepare/Edit Draft Budget', 'Approve Budget'] },
       { label: 'Budget Breakdown', path: 'budget-breakdown', icon: 'pie_chart', perms: VIEW_CONTRACTS },
