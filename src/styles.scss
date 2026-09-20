@@ -10,12 +10,21 @@ html {
   @include mat.theme((
     color: (
       theme-type: light,
-      primary: mat.$violet-palette,
-      tertiary: mat.$orange-palette,
+      primary: mat.$orange-palette,
+      tertiary: mat.$violet-palette,
     ),
     typography: 'Plus Jakarta Sans',
     density: -1,
   ));
+
+  // The stock M3 orange tones are muddy brown-orange; pin primary to Omantel's actual #ea6e00.
+  --mat-sys-primary: #ea6e00;
+  --mat-sys-on-primary: #fff;
+  --mat-sys-primary-container: #fff2e6;
+  --mat-sys-on-primary-container: #7d3b00;
+  --mat-sys-secondary-container: #fff2e6;
+  --mat-sys-on-secondary-container: #7d3b00;
+  --mat-sys-surface-tint: transparent;
 }
 
 :root {
@@ -27,7 +36,7 @@ html {
   --color-status-neutral: #8589a3;
   --surface-subtle: #f8f8fb;
   --surface-border: #e3e2ec;
-  --brand-600: #2d13ea;
+  --brand-600: #ea6e00;
 }
 
 html,
@@ -187,13 +196,3 @@ router-outlet + * {
 ::-webkit-scrollbar-thumb:hover { background: rgba(25, 23, 51, 0.28); }
 ::-webkit-scrollbar-track { background: transparent; }
 * { scrollbar-width: thin; scrollbar-color: rgba(25, 23, 51, 0.15) transparent; }
-
-// The sidebar sits on a dark gradient — the default dark-on-light scrollbar thumb
-// above would be invisible there, so it gets its own light, low-opacity thumb.
-// (`.bg-sidebar-gradient *` — not just the element itself — because the universal
-// `*` rule above sets scrollbar-color directly on every descendant too, which beats
-// simple inheritance from the ancestor.)
-.bg-sidebar-gradient ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.18); }
-.bg-sidebar-gradient ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.3); }
-.bg-sidebar-gradient,
-.bg-sidebar-gradient * { scrollbar-color: rgba(255, 255, 255, 0.18) transparent; }

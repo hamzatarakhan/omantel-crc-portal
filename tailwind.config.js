@@ -5,8 +5,21 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // Omantel brand — exact hexes pulled from omantel.om's own logo.svg (.a = wordmark, .b = accent mark)
+        // Omantel brand, sampled from omantel.om: orange (#ea6e00) is the UI/action colour (buttons,
+        // outlines, active states) on white surfaces; the logo violet (#2d13ea) is the secondary/data colour.
         brand: {
+          50: '#fff2e6',
+          100: '#ffe3c6',
+          200: '#ffc589',
+          300: '#ffa34d',
+          400: '#ff8c1f',
+          500: '#ff7800',
+          600: '#ea6e00',
+          700: '#c25b00',
+          800: '#9c4900',
+          900: '#7d3b00',
+        },
+        accent: {
           50: '#eeecfe',
           100: '#dcd6fd',
           200: '#bfb3fb',
@@ -17,18 +30,6 @@ module.exports = {
           700: '#2410c4',
           800: '#1e0f9f',
           900: '#190f72',
-        },
-        accent: {
-          50: '#fff4e9',
-          100: '#ffe3c6',
-          200: '#ffc589',
-          300: '#ffa34d',
-          400: '#ff8c1f',
-          500: '#ff7800',
-          600: '#ea6e00',
-          700: '#c25b00',
-          800: '#9c4900',
-          900: '#7d3b00',
           teal: '#0f9c8f',
         },
         status: {
@@ -58,8 +59,7 @@ module.exports = {
         card: '14px',
       },
       backgroundImage: {
-        'brand-gradient': 'linear-gradient(135deg, #2d13ea 0%, #6c3cf0 100%)',
-        'sidebar-gradient': 'linear-gradient(180deg, #1d0f8c 0%, #14082e 100%)',
+        'brand-gradient': 'linear-gradient(135deg, #ff7800 0%, #ea6e00 100%)',
       },
       screens: {
         xs: '480px',

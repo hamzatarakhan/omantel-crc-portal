@@ -102,13 +102,13 @@ interface SearchResult {
             } @else {
               <div class="max-h-96 overflow-y-auto divide-y divide-surface-border">
                 @for (n of notifications(); track n.id) {
-                  <div class="flex items-center gap-3.5 px-5 py-3.5 hover:bg-surface-subtle transition-colors" [class.bg-brand-50]="!n.read">
-                    <span class="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" [class]="badgeClass(n.level)">
-                      <mat-icon class="!text-[19px]">{{ iconFor(n.level) }}</mat-icon>
+                  <div class="flex items-center gap-3 px-4 py-2.5 hover:bg-surface-subtle transition-colors" [class.bg-brand-50]="!n.read">
+                    <span class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" [class]="badgeClass(n.level)">
+                      <mat-icon class="!text-[18px]">{{ iconFor(n.level) }}</mat-icon>
                     </span>
                     <div class="min-w-0 flex-1">
-                      <p class="text-[13px] text-ink-800 leading-snug" [class.font-semibold]="!n.read">{{ n.message }}</p>
-                      <p class="text-[11.5px] text-ink-400 mt-1">{{ n.detail }} &middot; {{ n.time }}</p>
+                      <p class="m-0 text-[13px] text-ink-900 leading-snug" [class.font-semibold]="!n.read">{{ n.message }}</p>
+                      <p class="m-0 text-[11.5px] text-ink-400 mt-0.5">{{ n.detail }} &middot; {{ n.time }}</p>
                     </div>
                     @if (!n.read) {
                       <span class="w-2 h-2 rounded-full bg-brand-600 shrink-0"></span>

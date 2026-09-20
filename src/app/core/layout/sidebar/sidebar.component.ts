@@ -16,14 +16,14 @@ import { NAV_GROUPS, NavGroup } from '../../nav.config';
     }
 
     <aside
-      class="bg-sidebar-gradient flex flex-col shrink-0 transition-all duration-200 fixed lg:static inset-y-0 left-0 z-40 h-full lg:!translate-x-0"
+      class="bg-white border-r border-surface-border flex flex-col shrink-0 transition-all duration-200 fixed lg:static inset-y-0 left-0 z-40 h-full lg:!translate-x-0"
       [class.w-64]="!collapsed()"
       [class.w-16]="collapsed()"
       [class.-translate-x-full]="!mobileOpen"
       [class.translate-x-0]="mobileOpen"
     >
       <div
-        class="flex items-center shrink-0 border-b border-white/10 gap-2"
+        class="flex items-center shrink-0 border-b border-surface-border gap-2"
         [class.justify-between]="!collapsed()"
         [class.px-4]="!collapsed()"
         [class.h-16]="!collapsed()"
@@ -31,20 +31,19 @@ import { NAV_GROUPS, NavGroup } from '../../nav.config';
         [class.py-4]="collapsed()"
       >
         @if (!collapsed()) {
-          <div class="w-9 h-9 rounded-xl bg-brand-gradient text-white flex items-center justify-center font-extrabold text-sm shrink-0">C</div>
-          <div class="leading-tight flex-1 min-w-0">
-            <div class="text-sm font-bold text-white truncate">CRC Portal</div>
-            <div class="text-[11px] text-white/45 truncate">Omantel &middot; Tawasul</div>
+          <div class="flex-1 min-w-0 flex flex-col gap-1">
+            <img src="logo.svg" alt="Omantel" class="h-7 w-auto self-start" />
+            <div class="text-[10.5px] font-bold uppercase tracking-wider text-ink-400 truncate">CRC Portal &middot; Tawasul</div>
           </div>
         }
         <button
-          class="w-7 h-7 rounded-lg items-center justify-center text-white/50 hover:text-white hover:bg-white/10 shrink-0 hidden lg:flex"
+          class="w-7 h-7 rounded-lg items-center justify-center text-ink-400 hover:text-brand-600 hover:bg-brand-50 shrink-0 hidden lg:flex"
           (click)="collapsed.set(!collapsed())"
           [title]="collapsed() ? 'Expand sidebar' : 'Collapse sidebar'"
         >
           <mat-icon class="!text-lg">{{ collapsed() ? 'chevron_right' : 'chevron_left' }}</mat-icon>
         </button>
-        <button class="w-8 h-8 rounded-lg flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 lg:hidden shrink-0" (click)="closeMobile.emit()">
+        <button class="w-8 h-8 rounded-lg flex items-center justify-center text-ink-500 hover:text-brand-600 hover:bg-brand-50 lg:hidden shrink-0" (click)="closeMobile.emit()">
           <mat-icon class="!text-lg">close</mat-icon>
         </button>
       </div>
@@ -52,14 +51,14 @@ import { NAV_GROUPS, NavGroup } from '../../nav.config';
       @if (!collapsed()) {
         <div class="px-3 pt-3 pb-2 shrink-0">
           <div class="relative">
-            <mat-icon class="!text-base !text-white/35 absolute left-2.5 top-1/2 -translate-y-1/2">search</mat-icon>
+            <mat-icon class="!text-base !text-ink-400 absolute left-2.5 top-1/2 -translate-y-1/2">search</mat-icon>
             <input
               [(ngModel)]="query"
               placeholder="Search menu..."
-              class="w-full pl-8 pr-7 py-1.5 text-[12.5px] rounded-lg bg-white/[0.06] text-white placeholder:text-white/35 focus:outline-none focus:bg-white/[0.1] transition-colors"
+              class="w-full pl-8 pr-7 py-1.5 text-[12.5px] rounded-lg bg-surface-subtle border border-surface-border text-ink-900 placeholder:text-ink-400 focus:outline-none focus:bg-white focus:border-brand-400 transition-colors"
             />
             @if (query) {
-              <button class="absolute right-1.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded-md flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10" (click)="query = ''">
+              <button class="absolute right-1.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded-md flex items-center justify-center text-ink-400 hover:text-ink-700 hover:bg-white" (click)="query = ''">
                 <mat-icon class="!text-sm">close</mat-icon>
               </button>
             }
@@ -71,22 +70,22 @@ import { NAV_GROUPS, NavGroup } from '../../nav.config';
         @for (group of filteredGroups; track group.label) {
           <div class="mb-4">
             @if (!collapsed()) {
-              <div class="px-2.5 pt-1 pb-2 text-[10.5px] font-bold uppercase tracking-wider text-white/35">
+              <div class="px-2.5 pt-1 pb-2 text-[10.5px] font-bold uppercase tracking-wider text-ink-400">
                 {{ group.label }}
               </div>
             }
             @for (item of group.items; track item.path) {
               <a
                 [routerLink]="group.basePath + '/' + item.path"
-                routerLinkActive="!bg-white/[0.08] !text-white before:!opacity-100"
+                routerLinkActive="!bg-brand-50 !text-brand-600 !font-semibold before:!opacity-100"
                 #rla="routerLinkActive"
                 (click)="closeMobile.emit()"
-                class="relative flex items-center gap-3 px-2.5 py-2 mb-0.5 rounded-xl text-[13.5px] font-medium text-white/60 hover:bg-white/5 hover:text-white/90 transition-colors before:content-[''] before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-4 before:w-[3px] before:rounded-full before:bg-accent-500 before:opacity-0 before:transition-opacity"
+                class="relative flex items-center gap-3 px-2.5 py-2 mb-0.5 rounded-xl text-[13.5px] font-medium text-ink-500 hover:bg-surface-subtle hover:text-ink-900 transition-colors before:content-[''] before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-4 before:w-[3px] before:rounded-full before:bg-brand-500 before:opacity-0 before:transition-opacity"
                 [title]="item.label"
               >
                 <mat-icon
                   class="!text-[19px] !w-5 !h-5 shrink-0"
-                  [class.!text-accent-400]="rla.isActive"
+                  [class.!text-brand-600]="rla.isActive"
                 >{{ item.icon }}</mat-icon>
                 @if (!collapsed()) {
                   <span class="truncate">{{ item.label }}</span>
@@ -96,7 +95,7 @@ import { NAV_GROUPS, NavGroup } from '../../nav.config';
           </div>
         }
         @if (query && filteredGroups.length === 0) {
-          <div class="px-3 py-6 text-center text-xs text-white/35">No menu items match "{{ query }}"</div>
+          <div class="px-3 py-6 text-center text-xs text-ink-400">No menu items match "{{ query }}"</div>
         }
       </nav>
     </aside>
