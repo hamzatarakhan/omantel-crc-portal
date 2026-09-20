@@ -83,6 +83,8 @@ export function enrichContract(c: Contract, i: number): Contract {
 }
 
 /** Purchase orders, subcontracts, amendments and time extensions linked to the contract in the ERP. */
+const PO_CATEGORY: Record<ContractRecord['recordType'], ContractRecord['poCategory']> = { 'Purchase Order': 'Original PO', Amendment: 'Amendment', 'Time Extension': 'Time extension', Subcontract: 'Subcontract' };
+
 export function childRecordsFor(c: Contract): ContractRecord[] {
   const t = templateFor(c);
   const now = today();
@@ -93,7 +95,8 @@ export function childRecordsFor(c: Contract): ContractRecord[] {
   const mk = (n: number, recordType: ContractRecord['recordType'], prefix: string, description: string, counterparty: string, issued: string, start: string, end: string, share: number) => {
     const days = diffDays(end, now);
     out.push({
-      id: `${c.id}-${prefix}${n}`, parentId: c.id, reference: `${c.reference}-${prefix}-${String(n).padStart(2, '0')}`, recordType, description, counterparty,
+      id: `${c.id}-${prefix}${n}`, parentId: c.id, parentReference: c.reference, reference: String(325000000 + (hash(c.reference + prefix + n + 'po') % 999999)),
+      poType: recordType === 'Subcontract' ? 'Outsource PO' : 'Standard PO', poCategory: PO_CATEGORY[recordType], recordType, description, counterparty,
       erpReference: `ERP-${prefix}-${10000 + (hash(c.reference + prefix + n) % 90000)}`, issuedDate: issued, startDate: start, endDate: end,
       amount: Math.round(c.amount * share), currency: c.currency, status: days < 0 ? 'Closed' : days <= 30 ? 'Expiring Soon' : 'Active', daysRemaining: days, attachments: 1,
     });

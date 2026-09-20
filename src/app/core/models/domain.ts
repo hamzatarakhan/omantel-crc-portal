@@ -300,7 +300,11 @@ export interface AnnexureImport {
 export interface ContractRecord {
   id: string;
   parentId: string;
+  parentReference: string;
+  /** ERP purchase order number. */
   reference: string;
+  poType: 'Standard PO' | 'Outsource PO';
+  poCategory: 'Original PO' | 'Amendment' | 'Time extension' | 'Subcontract';
   recordType: 'Purchase Order' | 'Subcontract' | 'Amendment' | 'Time Extension';
   description: string;
   counterparty: string;

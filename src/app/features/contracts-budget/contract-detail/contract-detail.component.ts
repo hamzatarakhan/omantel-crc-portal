@@ -212,15 +212,17 @@ export class ContractDetailComponent {
   });
 
   childColumns: TableColumn<any>[] = [
-    { key: 'reference', label: 'Reference' },
-    { key: 'recordType', label: 'Type' },
+    { key: 'reference', label: 'PO number' },
+    { key: 'poType', label: 'PO type' },
+    { key: 'poCategory', label: 'PO category' },
     { key: 'description', label: 'Description' },
-    { key: 'counterparty', label: 'Counterparty' },
+    { key: 'parentReference', label: 'Parent contract' },
     { key: 'erpReference', label: 'ERP reference' },
-    { key: 'issuedDate', label: 'Issued', type: 'date' },
-    { key: 'startDate', label: 'Start', type: 'date' },
-    { key: 'endDate', label: 'End', type: 'date' },
-    { key: 'amount', label: 'Amount', type: 'currency', align: 'right' },
+    { key: 'issuedDate', label: 'PO date', type: 'date' },
+    { key: 'startDate', label: 'PO start date', type: 'date' },
+    { key: 'endDate', label: 'PO end date', type: 'date' },
+    { key: 'amount', label: 'PO amount', type: 'currency', align: 'right' },
+    { key: 'attachments', label: 'Attachments', type: 'number', align: 'right' },
     { key: 'status', label: 'Status', type: 'status', statusFn: (r) => ({ label: r.status, level: r.status === 'Closed' ? 'neutral' : r.status === 'Expiring Soon' ? daysRemainingToLevel(r.daysRemaining) : 'normal' }) },
   ];
 
