@@ -111,7 +111,7 @@ export class ContractDashboardComponent {
         contracts: vendorContracts,
       };
     })
-    .sort((a, b) => b.value - a.value);
+    .sort((a, b) => Number(/infoline/i.test(b.name)) - Number(/infoline/i.test(a.name)) || b.value - a.value);
 
   vendorChart = {
     labels: this.vendorSummary.map((v) => v.name),
