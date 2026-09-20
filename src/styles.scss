@@ -136,6 +136,22 @@ router-outlet + * {
   flex-shrink: 0;
 }
 
+// Secondary (outlined) buttons: Material's default outline is a brownish grey. Omantel's own
+// outlined buttons are white with an orange border and orange label, so use the same here.
+// Destructive ones (color="warn", e.g. Reject) stay red.
+.mat-mdc-outlined-button:not(:disabled) {
+  --mdc-outlined-button-outline-color: #ea6e00;
+  --mdc-outlined-button-label-text-color: #ea6e00;
+  --mat-outlined-button-state-layer-color: #ea6e00;
+  --mat-outlined-button-ripple-color: rgba(234, 110, 0, 0.12);
+}
+.mat-mdc-outlined-button.mat-warn:not(:disabled) {
+  --mdc-outlined-button-outline-color: #e02424;
+  --mdc-outlined-button-label-text-color: #e02424;
+  --mat-outlined-button-state-layer-color: #e02424;
+  --mat-outlined-button-ripple-color: rgba(224, 36, 36, 0.12);
+}
+
 // Shared status-color language (Section 9.1 of the requirements doc), reused everywhere
 .status-chip {
   display: inline-flex;
