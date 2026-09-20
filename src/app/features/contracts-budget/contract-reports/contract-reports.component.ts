@@ -72,14 +72,14 @@ export class ContractReportsComponent {
     { title: 'Contracts by Vendor', description: 'Contract count and value grouped by vendor.', icon: 'store', file: 'contracts-by-vendor', build: () => this.group((c) => c.vendorName, 'Vendor') },
     { title: 'Contracts by Type', description: 'Breakdown by contract classification.', icon: 'category', file: 'contracts-by-type', build: () => this.group((c) => c.contractType, 'Type') },
     {
-      title: 'Contract vs PO Value', description: 'Compare parent contract amount to total PO value, and flag contracts for review.', icon: 'compare_arrows', file: 'contract-vs-po',
+      title: 'Contracts & Subcontracts', description: 'Each contract with its PO number, subcontract lines, amendments and extensions, and any review flag.', icon: 'account_tree', file: 'contracts-subcontracts',
       build: () => this.live().map((p) => {
-        const pos = this.ops.childrenOf(p).filter((k) => k.recordType === 'Purchase Order');
-        const posTotal = pos.reduce((s, k) => s + k.amount, 0);
+        const kids = this.ops.childrenOf(p);
         const issues = this.ops.issuesFor(p);
-        return { Contract: p.reference, Vendor: p.vendorName, 'Contract amount': p.amount, 'Purchase orders': pos.length, 'PO value': posTotal, 'Remaining headroom': p.amount - posTotal, 'Review flag': issues.map((i) => i.code).join(', ') || 'OK' };
+        return { Contract: p.reference, Vendor: p.vendorName, 'PO number': p.poNumber ?? '', Subcontracts: kids.filter((k) => k.recordType === 'Subcontract').length, Amendments: kids.filter((k) => k.recordType === 'Amendment').length, 'Time extensions': kids.filter((k) => k.recordType === 'Time Extension').length, 'Contract amount': p.amount, 'Review flag': issues.map((i) => i.code).join(', ') || 'OK' };
       }),
     },
+
     { title: 'Renewed & Extended Contracts', description: 'Contracts renewed or extended this period.', icon: 'autorenew', file: 'contracts-renewed', build: () => this.live().filter((c) => !!c.renewalStatus).map((c) => ({ ...this.base(c), 'Time extensions': this.ops.childrenOf(c).filter((k) => k.recordType === 'Time Extension').length })) },
     {
       title: 'Unresolved Contracts', description: 'Contracts expiring or expired with no resolution recorded, and their open monitoring actions.', icon: 'report', file: 'contracts-unresolved',

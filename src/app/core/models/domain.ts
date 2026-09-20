@@ -5,7 +5,7 @@ export interface Contract {
   id: string;
   reference: string;
   name: string;
-  recordType: 'Parent Contract' | 'Subcontract' | 'Purchase Order' | 'Amendment' | 'Time Extension';
+  recordType: 'Parent Contract' | 'Subcontract' | 'Amendment' | 'Time Extension';
   parentReference?: string;
   contractType: string;
   vendorName: string;
@@ -41,6 +41,20 @@ export interface BudgetLine {
   item: string;
   allocated: number;
   spent: number;
+}
+
+/** A line added to next year's budget on top of the auto-drafted lines: typed in by hand, or coming from a kept project request. */
+export interface BudgetAddition {
+  id: string;
+  category: BudgetLine['category'];
+  poLayer?: BudgetLine['poLayer'];
+  item: string;
+  amount: number;
+  source: 'Manual' | 'Project request';
+  projectId?: string;
+  note?: string;
+  addedBy: string;
+  addedAt: string;
 }
 
 // ---------- CSR Management ----------
@@ -312,18 +326,20 @@ export interface ContractRecord {
   id: string;
   parentId: string;
   parentReference: string;
-  /** ERP purchase order number. */
+  /** Line reference under the contract, e.g. 2025-013T-00-01/L01. */
   reference: string;
-  poType: 'Standard PO' | 'Outsource PO';
-  poCategory: 'Original PO' | 'Amendment' | 'Time extension' | 'Subcontract';
-  recordType: 'Purchase Order' | 'Subcontract' | 'Amendment' | 'Time Extension';
+  /** The contract's single PO number; a line shows its own PO number when the ERP gives one. */
+  poNumber: string;
+  recordType: 'Subcontract' | 'Amendment' | 'Time Extension';
+  /** Scope of work of the line. */
   description: string;
   counterparty: string;
   erpReference: string;
   issuedDate: string;
   startDate: string;
   endDate: string;
-  amount: number;
+  /** Not read from the ERP yet for subcontract lines, so it is shown as "—". */
+  amount?: number;
   currency: 'OMR' | 'USD';
   status: 'Active' | 'Expiring Soon' | 'Closed';
   daysRemaining: number;

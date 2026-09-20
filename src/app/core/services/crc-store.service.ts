@@ -1,6 +1,6 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import {
-  Agent, AnnexureImport, AppNotification, AppUser, AuditEntry, BudgetLine, BudgetPlan, Candidate, CandidateStatus, Contract, IdDocument,
+  Agent, AnnexureImport, AppNotification, AppUser, AuditEntry, BudgetAddition, BudgetLine, BudgetPlan, Candidate, CandidateStatus, Contract, IdDocument,
   InterviewQuestion, InvoiceRun, MovementAnnouncement, MovementRequest, NotificationRule, PayableLine,
   PayableRules, PaymentRecord, PayrollLine, PerformanceRecord, ResignationRecord, SyncRun, WorkforceSnapshot,
 } from '../models/domain';
@@ -9,6 +9,7 @@ import { MockDataService } from './mock-data.service';
 import { NAV_GROUPS, NavGroup } from '../nav.config';
 import { attachmentsFor, childRecordsFor, enrichContract, timelineFor } from './contract-data';
 import { seedChanges } from './contract-monitoring';
+import { SEED_PROJECTS } from './project-data';
 
 export const CURRENT_USER = 'Hamza Tarkan';
 /** The contract's flat management fee per employee per month (OMR). */
@@ -18,7 +19,7 @@ export const ROLE_SUMMARY: Record<string, string> = {
   'Contract Mgmt Manager': 'Contract risk, escalations and notification rules',
   'Budget Owner': 'Contracts and budget approval',
   'CSR/Workforce Team': 'Agents, leave, recruitment and movement',
-  'Team Lead': 'Agents, leave and movement requests',
+  'Team Lead': 'Agents, leave, movement and project requests',
   'Finance': 'Contracts, budgets, invoices and payments',
   'System Admin': 'Everything, plus access control and audit',
 };
@@ -40,6 +41,8 @@ export const PERMISSIONS: Permission[] = [
   { permission: 'View Audit History', module: 'Contracts & Budget' },
   { permission: 'Prepare/Edit Draft Budget', module: 'Contracts & Budget' },
   { permission: 'Approve Budget', module: 'Contracts & Budget' },
+  { permission: 'Submit Project Requests', module: 'Contracts & Budget' },
+  { permission: 'Approve Projects', module: 'Contracts & Budget' },
   { permission: 'View Agent Profiles', module: 'CSR Management' },
   { permission: 'Manage Recruitment', module: 'CSR Management' },
   { permission: 'Manage Leave & Attendance', module: 'CSR Management' },
@@ -125,6 +128,12 @@ export class CrcStore {
 
   readonly budgetLines = signal<BudgetLine[]>(this.mock.getBudgetLines().filter((l) => l.category !== 'Total Budget'));
   readonly budgetPlan = signal<BudgetPlan>({ status: 'Draft', drafts: {} });
+  /** Next-year lines added by hand or from kept project requests, on top of the auto-drafted ones. */
+  readonly budgetAdditions = signal<BudgetAddition[]>(
+    SEED_PROJECTS.filter((p) => p.status === 'Kept').map((p) => ({
+      id: 'ADD-' + p.id, category: 'Projects' as const, item: p.name, amount: p.budget, source: 'Project request' as const, projectId: p.id, note: p.scope, addedBy: p.decidedBy ?? '', addedAt: p.decidedAt ?? new Date().toISOString(),
+    })),
+  );
 
   readonly agents = signal<Agent[]>(this.mock.getAgents(48));
   readonly attendanceDays = signal<string[]>(Array.from({ length: 14 }, (_, i) => isoDay(i - 13)));
@@ -329,14 +338,35 @@ export class CrcStore {
   // ---------- budget ----------
   readonly nextYearTotal = computed(() => {
     const drafts = this.budgetPlan().drafts;
-    return this.budgetLines().reduce((s, l) => s + (drafts[l.id] ?? Math.round(l.allocated * 1.03)), 0);
+    return this.budgetLines().reduce((s, l) => s + (drafts[l.id] ?? Math.round(l.allocated * 1.03)), 0) + this.budgetAdditions().reduce((s, a) => s + (drafts[a.id] ?? a.amount), 0);
   });
 
   setDraft(lineId: string, value: number) {
     this.budgetPlan.update((p) => ({ ...p, status: p.status === 'Approved' ? p.status : 'Draft', drafts: { ...p.drafts, [lineId]: value } }));
   }
 
+  addBudgetAddition(a: Omit<BudgetAddition, 'id' | 'addedBy' | 'addedAt'> & { id?: string }) {
+    const line: BudgetAddition = { ...a, id: a.id ?? 'ADD-' + this.next(), addedBy: CURRENT_USER, addedAt: new Date().toISOString() };
+    this.budgetAdditions.update((l) => [...l, line]);
+    this.log(a.source === 'Manual' ? 'Budget Line Added' : 'Project Added to Budget', a.item, `${a.category}: ${a.amount.toLocaleString()} OMR added to next year's budget (${a.source.toLowerCase()}).`, 'Success', CURRENT_USER, { newValue: String(a.amount) });
+    return line;
+  }
+
+  updateBudgetAddition(id: string, patch: Partial<BudgetAddition>) {
+    const before = this.budgetAdditions().find((x) => x.id === id);
+    this.budgetAdditions.update((l) => l.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+    if (before) this.log('Budget Line Edited', before.item, `Next-year line updated.`, 'Success', CURRENT_USER, { previousValue: String(before.amount), newValue: String(patch.amount ?? before.amount) });
+  }
+
+  removeBudgetAddition(id: string) {
+    const before = this.budgetAdditions().find((x) => x.id === id);
+    this.budgetAdditions.update((l) => l.filter((x) => x.id !== id));
+    this.budgetPlan.update((p) => { const { [id]: _drop, ...rest } = p.drafts; return { ...p, drafts: rest }; });
+    if (before) this.log('Budget Line Removed', before.item, `${before.amount.toLocaleString()} OMR removed from next year's budget.`, 'Success', CURRENT_USER, { previousValue: String(before.amount) });
+  }
+
   regenerateDraft() {
+    // The +3% draft is rebuilt for the existing lines; manual and project lines keep their own amounts.
     this.budgetPlan.set({ status: 'Draft', drafts: {} });
     this.log('Budget Draft Regenerated', 'FY-NEXT', 'Draft regenerated at 3% above the prior approved budget.');
   }
@@ -683,7 +713,8 @@ export class CrcStore {
   private seedPermissions(): Record<string, boolean> {
     const granted = (p: Permission, role: string): boolean => {
       if (role === 'System Admin') return true;
-      if (p.permission === 'Approve Budget') return role === 'Budget Owner';
+      if (p.permission === 'Approve Budget' || p.permission === 'Approve Projects') return role === 'Budget Owner';
+      if (p.permission === 'Submit Project Requests') return role === 'Team Lead' || role === 'CSR/Workforce Team';
       if (p.module === 'Contracts & Budget') {
         if (p.permission === 'Manage Sync Configuration') return false;
         if (['Manage Notifications', 'Manage Escalations'].includes(p.permission)) return role === 'Contract Mgmt Manager';

@@ -128,15 +128,15 @@ export class ContractOps {
     for (const c of this.scoped()) {
       const syncStatus = sync[c.id]?.status === 'Failed' ? 'Failed' : 'Synced';
       rows.push({
-        id: c.id, parentId: c.id, reference: c.reference, name: c.name, recordType: c.recordType, poCategory: '', parentReference: '', contractType: c.contractType, vendorName: c.vendorName,
+        id: c.id, parentId: c.id, reference: c.reference, name: c.name, recordType: c.recordType, parentReference: '', contractType: c.contractType, vendorName: c.vendorName,
         vendorRef: c.erpVendorId ?? '', poNumber: c.poNumber ?? '', startDate: c.startDate, endDate: c.endDate, daysRemaining: c.daysRemaining, amount: c.amount, currency: c.currency,
         status: c.status, level: statusLevelFor(c), renewalStatus: c.renewalStatus ?? '', erpReference: c.erpReference, lastSyncedAt: c.lastSyncedAt, syncStatus, department: c.department ?? '',
       });
       for (const k of this.childrenOf(c)) {
         const status = k.status === 'Closed' ? 'Expired' : k.status;
         rows.push({
-          id: k.id, parentId: c.id, reference: k.reference, name: k.description, recordType: k.recordType, poCategory: k.poCategory, parentReference: c.reference, contractType: c.contractType, vendorName: k.counterparty,
-          vendorRef: c.erpVendorId ?? '', poNumber: k.reference, startDate: k.startDate, endDate: k.endDate, daysRemaining: k.daysRemaining, amount: k.amount, currency: k.currency,
+          id: k.id, parentId: c.id, reference: k.reference, name: k.description, recordType: k.recordType, parentReference: c.reference, contractType: c.contractType, vendorName: k.counterparty,
+          vendorRef: c.erpVendorId ?? '', poNumber: k.poNumber, startDate: k.startDate, endDate: k.endDate, daysRemaining: k.daysRemaining, amount: k.amount ?? null, currency: k.currency,
           status, level: c.status === 'Cancelled' ? 'neutral' : statusLevelFor({ status: status as Contract['status'], daysRemaining: k.daysRemaining, renewalStatus: undefined }), renewalStatus: '', erpReference: k.erpReference, lastSyncedAt: c.lastSyncedAt, syncStatus, department: c.department ?? '',
         });
       }

@@ -141,7 +141,7 @@ export function seedChanges(contracts: Contract[]): ContractChange[] {
   for (const c of contracts) {
     const kids = childRecordsFor(c);
     const am = kids.find((k) => k.recordType === 'Amendment');
-    if (am && c.status !== 'Cancelled') push(c, `${am.issuedDate}T02:06:00`, 'Contract amount (OMR)', String(c.amount - am.amount), String(c.amount));
+    if (am && c.status !== 'Cancelled') push(c, `${am.issuedDate}T02:06:00`, 'Contract amount (OMR)', String(c.amount - (am.amount ?? 0)), String(c.amount));
     if (c.status === 'Cancelled') {
       push(c, `${addDays(c.endDate, -20)}T02:00:00`, 'Contract status', 'Active', 'Cancelled');
       push(c, `${addDays(c.endDate, -20)}T02:00:00`, 'ERP status', 'Open', 'Cancelled');
@@ -213,13 +213,14 @@ export const SEED_TEMPLATES: NotificationTemplate[] = [
 // ---------- Business rules ----------
 export interface DataIssue { code: 'BR-CT-003' | 'BR-CT-007'; message: string }
 
-/** BR-CT-003 (dates) and BR-CT-007 (PO value above the contract amount, unless amendments/extensions explain it). */
+/** BR-CT-003 (dates) and BR-CT-007 (line amounts above the contract amount, checked once the ERP provides line amounts, unless amendments/extensions explain it). */
 export function dataIssuesFor(c: Contract, children: ContractRecord[]): DataIssue[] {
   const issues: DataIssue[] = [];
   if (c.endDate < c.startDate) issues.push({ code: 'BR-CT-003', message: `The end date (${c.endDate}) is earlier than the start date (${c.startDate}).` });
-  const pos = children.filter((k) => k.recordType === 'Purchase Order').reduce((s, k) => s + k.amount, 0);
-  const explained = children.filter((k) => k.recordType === 'Amendment' || k.recordType === 'Time Extension').reduce((s, k) => s + k.amount, 0);
-  if (pos > c.amount + explained) issues.push({ code: 'BR-CT-007', message: `Purchase orders total ${pos.toLocaleString('en-GB')} ${c.currency}, above the contract amount of ${c.amount.toLocaleString('en-GB')} ${c.currency}; the amendments and extensions on record (${explained.toLocaleString('en-GB')} ${c.currency}) do not explain the difference.` });
+  const lines = children.filter((k) => k.recordType === 'Subcontract' && k.amount !== undefined);
+  const pos = lines.reduce((s, k) => s + (k.amount ?? 0), 0);
+  const explained = children.filter((k) => k.recordType === 'Amendment' || k.recordType === 'Time Extension').reduce((s, k) => s + (k.amount ?? 0), 0);
+  if (lines.length && pos > c.amount + explained) issues.push({ code: 'BR-CT-007', message: `Subcontract lines total ${pos.toLocaleString('en-GB')} ${c.currency}, above the contract amount of ${c.amount.toLocaleString('en-GB')} ${c.currency}; the amendments and extensions on record (${explained.toLocaleString('en-GB')} ${c.currency}) do not explain the difference.` });
   return issues;
 }
 
@@ -243,7 +244,6 @@ export interface ListRow {
   reference: string;
   name: string;
   recordType: string;
-  poCategory: string;
   parentReference: string;
   contractType: string;
   vendorName: string;
@@ -252,7 +252,7 @@ export interface ListRow {
   startDate: string;
   endDate: string;
   daysRemaining: number;
-  amount: number;
+  amount: number | null;
   currency: string;
   status: string;
   level: StatusLevel;

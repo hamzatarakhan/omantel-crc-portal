@@ -6,6 +6,7 @@ import { PageHeaderComponent } from '../../../shared/components/page-header/page
 import { KpiCardComponent } from '../../../shared/components/kpi-card/kpi-card.component';
 import { ChartCardComponent } from '../../../shared/components/chart-card/chart-card.component';
 import { CrcStore } from '../../../core/services/crc-store.service';
+import { ProjectRequests } from '../../../core/services/project-requests.service';
 import { percentUsedToLevel } from '../../../core/models/status';
 
 @Component({
@@ -36,6 +37,15 @@ import { percentUsedToLevel } from '../../../core/models/status';
       <mat-icon class="!text-ink-400">chevron_right</mat-icon>
     </a>
 
+    <a routerLink="/contracts-budget/projects" class="surface-card flex items-center gap-3 px-4 py-3 mb-6 hover:border-brand-300 transition-colors">
+      <mat-icon class="!text-brand-600">rocket_launch</mat-icon>
+      <div class="flex-1 text-sm text-ink-700">
+        Project requests: <span class="font-semibold text-ink-900">{{ projects.kept().length }} kept</span> ({{ projects.keptBudget() | number:'1.0-0' }} OMR added to next year)
+        <span class="text-ink-400"> &middot; {{ projects.waiting().length }} waiting for a decision</span>
+      </div>
+      <mat-icon class="!text-ink-400">chevron_right</mat-icon>
+    </a>
+
     @if (alerts().length) {
       <div class="surface-card px-4 py-3 mb-6 flex flex-col gap-1.5">
         @for (a of alerts(); track a.category) {
@@ -55,6 +65,7 @@ import { percentUsedToLevel } from '../../../core/models/status';
 })
 export class BudgetDashboardComponent {
   store = inject(CrcStore);
+  projects = inject(ProjectRequests);
 
   totals = this.store.budgetTotals;
   level = computed(() => percentUsedToLevel(this.totals().pct));

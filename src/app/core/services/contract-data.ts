@@ -15,7 +15,7 @@ export function ruleApplies(r: NotificationRule, c: Contract): boolean {
 /**
  * Sample ERP data behind every contract's detail tabs. Everything here is derived from the contract itself
  * (dates, amount, type, vendor) with a stable hash, so each contract always shows the same, internally
- * consistent set of child POs, attachments and history — and follows the contract when an ERP sync moves its dates.
+ * consistent set of subcontract lines, attachments and history — and follows the contract when an ERP sync moves its dates.
  */
 
 const DAY = 86400000;
@@ -38,34 +38,41 @@ export function hash(s: string): number {
 
 const MANAGERS = ['Salim Al-Habsi', 'Mariam Al-Kindi', 'Khalid Al-Farsi', 'Noor Al-Rawahi', 'Talal Al-Amri'];
 const ERP_USERS = ['Contracts Admin (ERP)', 'Procurement Officer (ERP)', 'Legal Counsel (ERP)'];
-const SUBVENDOR: Record<string, string> = { 'Manpower Outsourcing': 'Tech Bridge Solutions', 'IT Support': 'Reliance Outsourcing', 'Facilities Management': 'Al-Waha Facilities' };
+/** The main Infoline contract: its scope-of-work lines exactly as they appear in Omantel's current sheet. */
+const INFOLINE_REF = '2025-013T-00-01';
+const INFOLINE_PO = '325100185';
+const INFOLINE_LINES: Array<[string, string?]> = [
+  ['Infoline Salary'], ['Non Voice', '325100186'], ['Voice', '325100186'], ['Manage service Incentive'], ['Performance Allowance'], ['Over time'], ['CSR leave settlement'],
+  ['Incentive Telesales'], ['Incentive EBU - Telesales'], ['Incentive Retention & Device'], ['Incentive Debt collection'],
+  ['End year Performance Telesales'], ['End year Performance Telesales EBU'], ['End year Performance Retention'], ['End year Performance Debt collection'],
+];
 
-interface Template { description: (vendor: string) => string; scope: string[]; terms: string; renewal: string; poLabel: string; subScope: string }
+interface Template { description: (vendor: string) => string; scope: string[]; terms: string; renewal: string; lines: string[] }
 const TEMPLATES: Record<string, Template> = {
   'Manpower Outsourcing': {
     description: (v) => `Secondment of bilingual customer service representatives by ${v} to Omantel's Customer Care contact centre, including payroll, management fee, overtime and replacement cover.`,
     scope: ['Bilingual (Arabic/English) agents for Sales, Retention, Complaints and Billing queues', 'Monthly payroll, management fee and overtime billed against attendance', 'Agent onboarding, OJT and replacement within 10 working days'],
-    terms: 'Monthly in arrears, net 30 days from a validated tax invoice', renewal: 'Renewable for one further year by mutual written agreement', poLabel: 'manpower call-off', subScope: 'Training and quality-coaching services',
+    terms: 'Monthly in arrears, net 30 days from a validated tax invoice', renewal: 'Renewable for one further year by mutual written agreement', lines: ['Salary', 'Incentive', 'Over time', 'Management fee'],
   },
   'Facilities Management': {
     description: (v) => `Integrated facilities management of Omantel Customer Care premises by ${v}: cleaning, maintenance, security and pantry services.`,
     scope: ['Daily cleaning and waste management', 'Preventive and corrective maintenance (HVAC, electrical, plumbing)', 'Access control and on-site security cover'],
-    terms: 'Quarterly in advance, net 45 days', renewal: 'Renewable annually, subject to performance review', poLabel: 'facilities call-off', subScope: 'Specialist HVAC maintenance',
+    terms: 'Quarterly in advance, net 45 days', renewal: 'Renewable annually, subject to performance review', lines: ['Cleaning and waste management', 'Maintenance (HVAC, electrical, plumbing)', 'Security and access control'],
   },
   'IT Support': {
     description: (v) => `Level 1 and Level 2 IT support for contact-centre systems (CRM, telephony, workstations) delivered by ${v}.`,
     scope: ['Service desk 07:00–23:00, Sunday to Thursday', 'Workstation, headset and telephony support', 'Monthly SLA and incident reporting'],
-    terms: 'Monthly in arrears, net 30 days', renewal: 'Renewable for two further 12-month terms', poLabel: 'IT support call-off', subScope: 'Telephony platform licences',
+    terms: 'Monthly in arrears, net 30 days', renewal: 'Renewable for two further 12-month terms', lines: ['Service desk', 'Workstation and telephony support', 'SLA and incident reporting'],
   },
   'Training Services': {
     description: (v) => `Product, process and soft-skills training for Omantel Customer Care agents delivered by ${v}.`,
     scope: ['Induction training for new joiners', 'Refresher and product-launch training', 'Assessment and certification reports'],
-    terms: 'Per training batch, net 30 days from completion certificate', renewal: 'Renewable annually', poLabel: 'training batch', subScope: 'Course content development',
+    terms: 'Per training batch, net 30 days from completion certificate', renewal: 'Renewable annually', lines: ['Induction training', 'Refresher and product-launch training', 'Assessment and certification'],
   },
   'Recruitment Services': {
     description: (v) => `Sourcing, screening and interview coordination of contact-centre candidates by ${v}, integrated with the WFO recruitment pool.`,
     scope: ['Candidate sourcing and CV screening', 'Interview scheduling with scored question banks', 'Onboarding paperwork and joining follow-up'],
-    terms: 'Per successful hire, net 30 days after joining date', renewal: 'Renewable annually', poLabel: 'recruitment batch', subScope: 'Background verification services',
+    terms: 'Per successful hire, net 30 days after joining date', renewal: 'Renewable annually', lines: ['Candidate sourcing and screening', 'Interview coordination', 'Onboarding follow-up'],
   },
 };
 const templateFor = (c: Contract): Template => TEMPLATES[c.contractType] ?? TEMPLATES['Manpower Outsourcing'];
@@ -90,14 +97,14 @@ export function enrichContract(c: Contract, i: number): Contract {
     erpStatus: c.status === 'Cancelled' ? 'Cancelled' : c.daysRemaining < 0 ? 'Expired' : 'Open',
     erpCreatedAt: addDays(signed, 1),
     erpModifiedAt: addDays(today(), -(3 + (i % 9))),
-    poNumber: '3251' + String(hash(c.reference) % 100000).padStart(5, '0'),
+    poNumber: c.reference === INFOLINE_REF ? INFOLINE_PO : '3251' + String(hash(c.reference) % 100000).padStart(5, '0'),
   };
 }
 
-/** Purchase orders, subcontracts, amendments and time extensions linked to the contract in the ERP. */
-const OVERRUN_REF = '2025-013T-00-06';
-const PO_CATEGORY: Record<ContractRecord['recordType'], ContractRecord['poCategory']> = { 'Purchase Order': 'Original PO', Amendment: 'Amendment', 'Time Extension': 'Time extension', Subcontract: 'Subcontract' };
-
+/**
+ * What the ERP holds under a contract: its single PO's lines (shown as Subcontracts, each with a scope of work), plus amendments and
+ * time extensions. Line amounts are not read from the ERP yet, so they stay empty and show as "—".
+ */
 export function childRecordsFor(c: Contract): ContractRecord[] {
   const t = templateFor(c);
   const now = today();
@@ -105,28 +112,31 @@ export function childRecordsFor(c: Contract): ContractRecord[] {
   const e = c.endDate;
   const cut = (n: number) => minIso(addMonths(s, n), e);
   const out: ContractRecord[] = [];
-  const mk = (n: number, recordType: ContractRecord['recordType'], prefix: string, description: string, counterparty: string, issued: string, start: string, end: string, share: number) => {
+  const status = (end: string, days: number): ContractRecord['status'] => (days < 0 ? 'Closed' : days <= 30 ? 'Expiring Soon' : 'Active');
+  const base = (id: string, prefix: string, key: string) => ({ id: `${c.id}-${id}`, parentId: c.id, parentReference: c.reference, erpReference: `ERP-${prefix}-${10000 + (hash(c.reference + key) % 90000)}`, currency: c.currency });
+
+  const lines: Array<[string, string?]> = c.reference === INFOLINE_REF ? INFOLINE_LINES : t.lines.map((l) => [l] as [string, string?]);
+  lines.forEach(([scope, po], i) => {
+    const days = diffDays(e, now);
+    out.push({
+      ...base(`L${i + 1}`, 'SC', 'L' + i), reference: `${c.reference}/L${String(i + 1).padStart(2, '0')}`, poNumber: po ?? c.poNumber ?? '', recordType: 'Subcontract', description: scope, counterparty: c.vendorName,
+      issuedDate: s, startDate: s, endDate: e, status: status(e, days), daysRemaining: days, attachments: 0,
+    });
+  });
+
+  const extra = (n: number, recordType: 'Amendment' | 'Time Extension', prefix: string, description: string, issued: string, start: string, end: string, amount: number) => {
     const days = diffDays(end, now);
     out.push({
-      id: `${c.id}-${prefix}${n}`, parentId: c.id, parentReference: c.reference, reference: String(325000000 + (hash(c.reference + prefix + n + 'po') % 999999)),
-      poType: recordType === 'Subcontract' ? 'Outsource PO' : 'Standard PO', poCategory: PO_CATEGORY[recordType], recordType, description, counterparty,
-      erpReference: `ERP-${prefix}-${10000 + (hash(c.reference + prefix + n) % 90000)}`, issuedDate: issued, startDate: start, endDate: end,
-      amount: Math.round(c.amount * share), currency: c.currency, status: days < 0 ? 'Closed' : days <= 30 ? 'Expiring Soon' : 'Active', daysRemaining: days, attachments: 1,
+      ...base(prefix + n, prefix, prefix + n), reference: `${c.reference}/${prefix}-${String(n).padStart(2, '0')}`, poNumber: c.poNumber ?? '', recordType, description, counterparty: c.vendorName,
+      issuedDate: issued, startDate: start, endDate: end, amount, status: status(end, days), daysRemaining: days, attachments: 1,
     });
   };
-  mk(1, 'Purchase Order', 'PO', `First ${t.poLabel}`, c.vendorName, s, s, cut(4), 0.35);
-  if (cut(4) < e) mk(2, 'Purchase Order', 'PO', `Second ${t.poLabel}`, c.vendorName, cut(4), cut(4), cut(8), 0.3);
-  if (cut(8) < e) mk(3, 'Purchase Order', 'PO', `Third ${t.poLabel}`, c.vendorName, cut(8), cut(8), e, 0.2);
-  // Seeded on one contract to demonstrate BR-CT-007: PO value above the contract amount is flagged for review.
-  if (c.reference === OVERRUN_REF && cut(12) < e) mk(4, 'Purchase Order', 'PO', `Additional ${t.poLabel}`, c.vendorName, cut(12), cut(12), e, 0.3);
-  mk(1, 'Amendment', 'AM', 'Amendment No. 1 — rate revision', c.vendorName, cut(3), cut(3), e, 0.02);
-  const sub = SUBVENDOR[c.contractType];
-  if (sub) mk(1, 'Subcontract', 'SC', `Subcontract — ${t.subScope}`, sub, cut(1), cut(1), e, 0.1);
-  if (c.renewalStatus) mk(1, 'Time Extension', 'TE', 'Time extension — end date extended by 90 days', c.vendorName, addDays(e, -20), addDays(e, 1), addDays(e, 90), 0);
+  extra(1, 'Amendment', 'AM', 'Amendment No. 1 — rate revision', cut(3), cut(3), e, Math.round(c.amount * 0.02));
+  if (c.renewalStatus) extra(1, 'Time Extension', 'TE', 'Time extension — end date extended by 90 days', addDays(e, -20), addDays(e, 1), addDays(e, 90), 0);
   return out;
 }
 
-const DOC_LABEL: Record<ContractRecord['recordType'], string> = { 'Purchase Order': 'Purchase order', Subcontract: 'Subcontract agreement', Amendment: 'Amendment letter', 'Time Extension': 'Time-extension letter' };
+const DOC_LABEL: Record<ContractRecord['recordType'], string> = { Subcontract: 'Subcontract agreement', Amendment: 'Amendment letter', 'Time Extension': 'Time-extension letter' };
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 
 /** Documents held in the ERP for the contract and for each linked record. */
@@ -135,7 +145,7 @@ export function attachmentsFor(c: Contract, children: ContractRecord[]): Contrac
   if (c.amount >= 60000) base.push(['Performance bank guarantee', 'bank-guarantee']);
   if (c.contractType === 'Manpower Outsourcing' || c.contractType === 'Facilities Management') base.push(['Insurance certificate', 'insurance-certificate']);
   const items: Array<{ name: string; type: string; category: string; linkedTo: string; uploadedAt: string }> = base.map(([type, file]) => ({ name: `${c.reference}-${file}.pdf`, type, category: 'Contract document', linkedTo: c.reference, uploadedAt: c.signedDate ?? c.startDate }));
-  for (const ch of children) items.push({ name: `${ch.reference}-${slug(DOC_LABEL[ch.recordType])}.pdf`, type: DOC_LABEL[ch.recordType], category: ch.recordType === 'Purchase Order' ? 'Purchase order document' : 'Contract change document', linkedTo: ch.reference, uploadedAt: ch.issuedDate });
+  for (const ch of children.filter((k) => k.attachments > 0)) items.push({ name: `${ch.reference.replace('/', '-')}-${slug(DOC_LABEL[ch.recordType])}.pdf`, type: DOC_LABEL[ch.recordType], category: 'Contract change document', linkedTo: ch.reference, uploadedAt: ch.issuedDate });
   return items.map((it, i) => {
     const h = hash(c.reference + it.name);
     return {
@@ -161,7 +171,9 @@ export function timelineFor(c: Contract, children: ContractRecord[], attachments
   push({ at: at(created, '02:04:00'), kind: 'created', title: 'Record created from ERP', details: `${c.erpReference} imported for ${c.vendorName} (${c.contractType}).`, actor: 'System (Scheduled Sync)' });
   push({ at: at(created, '02:05:00'), kind: 'attachments', title: `${attachments.length} attachments synced`, details: 'Signed agreement and supporting documents pulled from the ERP document store.', actor: 'System (Scheduled Sync)' });
   push({ at: at(created, '02:10:00'), kind: 'notice', title: 'New contract registered', details: `${c.contractManager} was notified that ${c.reference} is now tracked in CRC.`, actor: 'System (Notification Engine)', channel: 'Email + In-App', recipients: 'Contract Management Team' });
-  for (const ch of children) push({ at: at(ch.issuedDate, '02:06:00'), kind: 'linked', title: `${ch.recordType} linked`, details: `${ch.reference} (${ch.erpReference}) · ${ch.amount.toLocaleString()} ${ch.currency} · ${ch.description}.`, actor: 'System (Scheduled Sync)' });
+  const lineCount = children.filter((k) => k.recordType === 'Subcontract').length;
+  if (lineCount) push({ at: at(c.startDate, '02:06:00'), kind: 'linked', title: `${lineCount} subcontract lines linked`, details: `PO ${c.poNumber}: ${children.filter((k) => k.recordType === 'Subcontract').slice(0, 4).map((k) => k.description).join(', ')}${lineCount > 4 ? ` and ${lineCount - 4} more` : ''}.`, actor: 'System (Scheduled Sync)' });
+  for (const ch of children.filter((k) => k.recordType !== 'Subcontract')) push({ at: at(ch.issuedDate, '02:06:00'), kind: 'linked', title: `${ch.recordType} linked`, details: `${ch.reference} (${ch.erpReference})${ch.amount ? ' · ' + ch.amount.toLocaleString() + ' ' + ch.currency : ''} · ${ch.description}.`, actor: 'System (Scheduled Sync)' });
   if (c.renewalStatus) push({ at: at(addDays(c.endDate, -45), '09:12:00'), kind: 'renewal', title: 'Renewal initiated in ERP', details: `${c.renewalStatus} — flagged by ${c.contractManager}.`, actor: c.contractManager ?? 'Contract Manager' });
 
   const cancelled = c.status === 'Cancelled';

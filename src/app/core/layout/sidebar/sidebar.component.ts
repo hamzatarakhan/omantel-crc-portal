@@ -143,7 +143,7 @@ export class SidebarComponent {
       if (item.section && last?.section === item.section) last.items.push(item);
       else out.push({ key: (item.section ?? '') + '|' + item.path, section: item.section, items: [item] });
     }
-    return out;
+    return out.map((e) => (e.items.length === 1 ? { ...e, section: undefined } : e));
   }
 
   hasActive(group: NavGroup, items: NavItem[]): boolean {
@@ -173,7 +173,7 @@ export class SidebarComponent {
       .map((group): NavGroup => ({
         ...group,
         items: group.items.filter(
-          (item) => item.label.toLowerCase().includes(q) || group.label.toLowerCase().includes(q)
+          (item) => item.label.toLowerCase().includes(q) || group.label.toLowerCase().includes(q) || (item.section ?? '').toLowerCase().includes(q)
         ),
       }))
       .filter((group) => group.items.length > 0);

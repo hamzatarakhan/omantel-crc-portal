@@ -10,7 +10,7 @@ import { UiService } from '../../../shared/services/ui.service';
 import { ListRow } from '../../../core/services/contract-monitoring';
 
 const STATUSES = ['All', 'Active', 'Expiring Soon', 'Expired', 'Historical'] as const;
-const RECORD_TYPES: Array<[string, string]> = [['All', 'All records'], ['Parent Contract', 'Parent contracts'], ['Subcontract', 'Subcontracts'], ['Purchase Order', 'Purchase orders'], ['Amendment', 'Amendments'], ['Time Extension', 'Time extensions']];
+const RECORD_TYPES: Array<[string, string]> = [['All', 'All records'], ['Parent Contract', 'Parent contracts'], ['Subcontract', 'Subcontracts'], ['Amendment', 'Amendments'], ['Time Extension', 'Time extensions']];
 const FIELD = 'w-full px-2.5 py-2 text-xs font-semibold rounded-lg border border-surface-border bg-white text-ink-700 focus:outline-none focus:border-brand-400';
 
 @Component({
@@ -20,7 +20,7 @@ const FIELD = 'w-full px-2.5 py-2 text-xs font-semibold rounded-lg border border
   template: `
     <app-page-header
       title="Contract List"
-      subtitle="Read-only view synced from the ERP &middot; contracts, subcontracts, purchase orders, amendments and extensions &middot; click a row to open the contract"
+      subtitle="Read-only view synced from the ERP &middot; contracts, their subcontracts, amendments and extensions &middot; click a row to open the contract"
       [breadcrumbs]="[{ label: 'Contracts & Budget', link: '/contracts-budget/dashboard' }, { label: 'Contract List' }]"
     ></app-page-header>
 
@@ -49,7 +49,7 @@ const FIELD = 'w-full px-2.5 py-2 text-xs font-semibold rounded-lg border border
       </div>
     </div>
 
-    <app-data-table title="Records" [columns]="columns" [rows]="rows()" [searchKeys]="searchKeys" [exportable]="store.can('Export Contract Data')" (rowClick)="open($event)" (rowAction)="open($event.row)" emptyTitle="No records match" emptyDescription="Clear a filter or search for a contract reference, vendor, PO number or ERP reference."></app-data-table>
+    <app-data-table title="Records" [columns]="columns" [rows]="rows()" [searchKeys]="searchKeys" [exportable]="store.can('Export Contract Data')" (rowClick)="open($event)" (rowAction)="open($event.row)" emptyTitle="No records match" emptyDescription="Clear a filter or search for a contract reference, vendor, scope of work, PO number or ERP reference."></app-data-table>
     <p class="text-xs text-ink-400 mt-3">Search matches contract reference, name, vendor, vendor reference, contract type, status, parent contract, PO number and ERP reference. Manual synchronization is on the contract details page.</p>
   `,
 })
@@ -104,8 +104,8 @@ export class ContractListComponent {
       if (this.sync() !== 'All' && r.syncStatus !== this.sync()) return false;
       if (this.from() && r.endDate < this.from()) return false;
       if (this.to() && r.endDate > this.to()) return false;
-      if (min !== null && r.amount < min) return false;
-      if (max !== null && r.amount > max) return false;
+      if (min !== null && (r.amount === null || r.amount < min)) return false;
+      if (max !== null && (r.amount === null || r.amount > max)) return false;
       return true;
     });
   });

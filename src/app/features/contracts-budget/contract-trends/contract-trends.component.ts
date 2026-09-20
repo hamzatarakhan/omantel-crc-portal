@@ -79,7 +79,7 @@ export class ContractTrendsComponent {
     { key: 'type', label: 'Contract type', all: 'All types', value: this.type, set: (v: string) => this.type.set(v), options: ['All', ...new Set(this.base().map((c) => c.contractType))].sort() },
     { key: 'parent', label: 'Parent contract', all: 'All contracts', value: this.parent, set: (v: string) => this.parent.set(v), options: ['All', ...this.base().map((c) => c.reference)] },
     { key: 'status', label: 'Status', all: 'All statuses', value: this.status, set: (v: string) => this.status.set(v), options: ['All', 'Active', 'Expiring Soon', 'Expired'] },
-    { key: 'category', label: 'PO category', all: 'All categories', value: this.category, set: (v: string) => this.category.set(v), options: ['All', 'Original PO', 'Amendment', 'Time extension', 'Subcontract'] },
+    { key: 'category', label: 'Record type', all: 'All records', value: this.category, set: (v: string) => this.category.set(v), options: ['All', 'Subcontract', 'Amendment', 'Time Extension'] },
   ]);
 
   contracts = computed(() => {
@@ -91,7 +91,7 @@ export class ContractTrendsComponent {
       (min === null || c.amount >= min) && (max === null || c.amount <= max));
   });
 
-  private kids = (c: Contract) => this.ops.childrenOf(c).filter((k) => this.category() === 'All' || k.poCategory === this.category());
+  private kids = (c: Contract) => this.ops.childrenOf(c).filter((k) => this.category() === 'All' || k.recordType === this.category());
 
   charts = computed<ChartDef[]>(() => {
     const cs = this.contracts();
@@ -137,7 +137,7 @@ export class ContractTrendsComponent {
       ] } },
       { title: 'Contract Value by Vendor', subtitle: 'OMR', type: 'bar' as const, options: this.horizontal, data: { labels: byVendor, datasets: [{ label: 'Contract value (OMR)', data: byVendor.map((v) => sum(bucket(v).map((c) => c.amount))), backgroundColor: PALETTE }] } },
       { title: 'Contract Value by Contract Type', subtitle: 'OMR', type: 'doughnut' as const, options: { responsive: true, maintainAspectRatio: false, cutout: '60%', plugins: { legend: { position: 'right' as const, labels: { boxWidth: 10, font: { size: 11 } } } } }, data: { labels: byType, datasets: [{ data: byType.map((t) => sum(cs.filter((c) => c.contractType === t).map((c) => c.amount))), backgroundColor: PALETTE, borderWidth: 0 }] } },
-      { title: 'PO Value by Parent Contract', subtitle: this.category() === 'All' ? 'All linked records that carry a PO number, OMR' : this.category() + ' records, OMR', type: 'bar' as const, options: this.money, data: { labels: cs.map((c) => c.reference.slice(-8)), datasets: [{ label: 'PO value (OMR)', data: cs.map((c) => sum(this.kids(c).filter((k) => k.recordType !== 'Subcontract' || this.category() === 'Subcontract').map((k) => k.amount))), backgroundColor: C.teal }] } },
+      { title: 'Subcontracts per Contract', subtitle: 'Scope-of-work lines under each contract\'s PO', type: 'bar' as const, options: this.horizontal, data: { labels: cs.map((c) => c.reference.slice(-8)), datasets: [{ label: 'Subcontract lines', data: cs.map((c) => this.kids(c).filter((k) => k.recordType === 'Subcontract').length), backgroundColor: C.teal }] } },
       { title: 'Amendments and Time Extensions over Time', subtitle: 'Issued per month, last 12 months', type: 'bar' as const, data: { labels: past12.map(monthLabel), datasets: [
         { label: 'Amendments', data: past12.map((m) => allKids.filter((k) => k.recordType === 'Amendment' && sameMonth(k.issuedDate, m)).length), backgroundColor: C.orange },
         { label: 'Time extensions', data: past12.map((m) => allKids.filter((k) => k.recordType === 'Time Extension' && sameMonth(k.issuedDate, m)).length), backgroundColor: C.brand },
@@ -151,10 +151,6 @@ export class ContractTrendsComponent {
         { label: '30 days or less', data: byVendor.map((v) => bucket(v).filter((c) => c.endDate >= now && c.endDate <= addDays(now, 30)).length), backgroundColor: C.amber },
         { label: '31–90 days', data: byVendor.map((v) => bucket(v).filter((c) => c.endDate > addDays(now, 30) && c.endDate <= addDays(now, 90)).length), backgroundColor: C.teal },
         { label: 'More than 90 days', data: byVendor.map((v) => bucket(v).filter((c) => c.endDate > addDays(now, 90)).length), backgroundColor: C.green },
-      ] } },
-      { title: 'Contract Amount vs PO Amount', subtitle: 'Contract value against the purchase orders raised, OMR', type: 'bar' as const, options: this.money, data: { labels: cs.map((c) => c.reference.slice(-8)), datasets: [
-        { label: 'Contract amount', data: cs.map((c) => c.amount), backgroundColor: C.brand },
-        { label: 'PO amount', data: cs.map((c) => sum(this.ops.childrenOf(c).filter((k) => k.recordType === 'Purchase Order').map((k) => k.amount))), backgroundColor: C.orange },
       ] } },
       { title: 'Contracts Requiring Action', subtitle: 'By the next step needed', type: 'bar' as const, options: this.horizontal, data: { labels: [...actions.keys()], datasets: [{ label: 'Contracts', data: [...actions.values()], backgroundColor: C.orange }] } },
       { title: 'Escalated Contracts over Time', subtitle: 'Escalations per month', type: 'line' as const, data: { labels: mixed.map(monthLabel), datasets: [{ label: 'Escalations', data: mixed.map((m) => escalationDates.filter((d) => sameMonth(d, m)).length), borderColor: C.red, backgroundColor: C.red, tension: 0.3 }] } },

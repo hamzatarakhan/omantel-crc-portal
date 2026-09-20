@@ -14,7 +14,7 @@ export interface RecordDetailData {
   openAttachment: (a: ContractAttachment, mode: 'view' | 'download') => void;
 }
 
-/** Read-only detail of one purchase order, subcontract, amendment or time extension, with its parent contract and documents. */
+/** Read-only detail of one subcontract line, amendment or time extension, with its parent contract and documents. */
 @Component({
   selector: 'app-record-detail-dialog',
   standalone: true,
@@ -25,7 +25,7 @@ export interface RecordDetailData {
         <div class="flex items-center gap-3 min-w-0">
           <div class="w-11 h-11 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center shrink-0"><mat-icon>receipt_long</mat-icon></div>
           <div class="min-w-0">
-            <h2 class="text-base font-bold text-ink-900">{{ r.poCategory }} · {{ r.reference }}</h2>
+            <h2 class="text-base font-bold text-ink-900">{{ r.recordType }} · {{ r.reference }}</h2>
             <p class="text-xs text-ink-400 mt-0.5">{{ r.description }}</p>
           </div>
         </div>
@@ -80,10 +80,10 @@ export class RecordDetailDialogComponent {
     const r = (this.r = data.record);
     this.level = (r.status === 'Closed' ? 'neutral' : r.status === 'Expiring Soon' ? daysRemainingToLevel(r.daysRemaining) : 'normal') as 'normal';
     this.fields = [
-      ['PO number', r.reference], ['PO type', r.poType], ['PO category', r.poCategory],
-      ['PO amount', `${r.amount.toLocaleString('en-GB')} ${r.currency}`], ['PO date', r.issuedDate], ['PO status', r.status],
-      ['PO start date', r.startDate], ['PO end date', r.endDate], ['Days remaining', String(r.daysRemaining)],
-      ['Parent contract', r.parentReference], ['ERP reference', r.erpReference], ['Counterparty', r.counterparty],
+      ['Type', r.recordType], ['Scope of work', r.description], ['PO number', r.poNumber],
+      ['Amount', r.amount === undefined ? '— (read from the ERP later)' : `${r.amount.toLocaleString('en-GB')} ${r.currency}`], ['From', r.startDate], ['To', r.endDate],
+      ['Status', r.status], ['Days remaining', String(r.daysRemaining)], ['Parent contract', r.parentReference],
+      ['Line reference', r.reference], ['ERP reference', r.erpReference], ['Supplier', r.counterparty],
     ];
   }
 }

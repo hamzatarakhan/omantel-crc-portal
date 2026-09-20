@@ -51,7 +51,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 
       @if (phase() !== 'idle') {
         <div class="surface-card px-4 py-3 mb-4 flex items-center gap-3 flex-wrap">
-          <ol class="flex items-center gap-2 text-xs font-semibold">
+          <ol class="flex items-center gap-2 text-xs font-semibold list-none p-0 m-0">
             @for (s of steps; track s.key) {
               <li class="flex items-center gap-1.5" [class]="stepState(s.key) === 'todo' ? 'text-ink-300' : stepState(s.key) === 'active' ? 'text-brand-700' : 'text-ink-700'">
                 <mat-icon class="!text-base !w-4 !h-4 !leading-4">{{ stepState(s.key) === 'done' ? 'check_circle' : stepState(s.key) === 'active' ? 'autorenew' : 'radio_button_unchecked' }}</mat-icon>{{ s.label }}
@@ -111,12 +111,11 @@ const today = () => new Date().toISOString().slice(0, 10);
                 <h3 class="text-[13.5px] font-bold text-ink-900">Financial summary</h3>
                 <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-3">
                   <div><div class="text-xs text-ink-400">Contract value</div><div class="text-base font-extrabold text-ink-900">{{ c.amount | number:'1.0-0' }} <span class="text-xs font-medium text-ink-400">{{ c.currency }}</span></div></div>
-                  <div><div class="text-xs text-ink-400">Committed in POs</div><div class="text-base font-extrabold text-ink-900">{{ poValue() | number:'1.0-0' }} <span class="text-xs font-medium text-ink-400">{{ c.currency }}</span></div></div>
-                  <div><div class="text-xs text-ink-400">Remaining headroom</div><div class="text-base font-extrabold" [class]="c.amount - poValue() < 0 ? 'text-status-red' : 'text-status-normal'">{{ c.amount - poValue() | number:'1.0-0' }} <span class="text-xs font-medium text-ink-400">{{ c.currency }}</span></div></div>
+                  <div><div class="text-xs text-ink-400">PO number</div><div class="text-base font-extrabold text-ink-900">{{ c.poNumber }}</div></div>
+                  <div><div class="text-xs text-ink-400">Subcontract lines</div><div class="text-base font-extrabold text-ink-900">{{ count('Subcontract') }}</div></div>
                   <div><div class="text-xs text-ink-400">Amendments</div><div class="text-base font-extrabold text-ink-900">{{ amendmentValue() | number:'1.0-0' }} <span class="text-xs font-medium text-ink-400">{{ c.currency }}</span></div></div>
                 </div>
-                <div class="h-2 rounded-full bg-surface-subtle mt-4 overflow-hidden"><div class="h-full rounded-full" [class]="poValue() > c.amount ? 'bg-status-red' : 'bg-brand-500'" [style.width.%]="min(100, poValue() / c.amount * 100)"></div></div>
-                <div class="text-xs text-ink-400 mt-1.5">{{ (poValue() / c.amount * 100) | number:'1.0-0' }}% of the contract value is committed in purchase orders.</div>
+                <div class="text-xs text-ink-400 mt-3">Each contract has one PO. Amounts per subcontract line will be read from the ERP later and show as "—" until then.</div>
               </div>
 
               <div class="surface-card px-4 pt-3.5 pb-4 sm:px-5">
@@ -140,7 +139,7 @@ const today = () => new Date().toISOString().slice(0, 10);
                   <div><dt class="text-xs text-ink-400">Source system</dt><dd class="font-medium text-ink-900">ERP · read-only in CRC</dd></div>
                   <div><dt class="text-xs text-ink-400">ERP reference</dt><dd class="font-medium text-ink-900">{{ c.erpReference }}</dd></div>
                   <div><dt class="text-xs text-ink-400">ERP vendor ID</dt><dd class="font-medium text-ink-900">{{ c.erpVendorId }}</dd></div>
-                  <div><dt class="text-xs text-ink-400">PO number</dt><dd class="font-medium text-ink-900">{{ c.poNumber }}</dd></div>
+                  <div><dt class="text-xs text-ink-400">PO number (one per contract)</dt><dd class="font-medium text-ink-900">{{ c.poNumber }}</dd></div>
                   <div><dt class="text-xs text-ink-400">ERP status</dt><dd class="font-medium text-ink-900">{{ c.erpStatus }}</dd></div>
                   <div><dt class="text-xs text-ink-400">Created in ERP</dt><dd class="font-medium text-ink-900">{{ c.erpCreatedAt }}</dd></div>
                   <div><dt class="text-xs text-ink-400">Last modified in ERP</dt><dd class="font-medium text-ink-900">{{ c.erpModifiedAt }}</dd></div>
@@ -167,29 +166,29 @@ const today = () => new Date().toISOString().slice(0, 10);
                   <div><dt class="text-xs text-ink-400">{{ ops.escalationRule().hours }}-hour escalation</dt><dd class="font-medium text-ink-900">{{ escalationDate() }}</dd></div>
                 </dl>
               </div>
-              <p class="text-xs text-ink-400 leading-relaxed">All fields are synced read-only from the ERP. To correct a value, update it in the ERP; it appears here after the next synchronization.</p>
+              <p class="text-xs text-ink-400 leading-relaxed">All fields are synced read-only from the ERP. To correct a value, update it in the ERP; it appears here after the next synchronization. CRC does not perform actions on other systems.</p>
             </div>
           </div>
         </mat-tab>
 
-        <!-- ============ Child contracts & POs ============ -->
-        <mat-tab [label]="'Child Contracts & POs (' + children().length + ')'">
+        <!-- ============ Subcontracts ============ -->
+        <mat-tab [label]="'Subcontracts (' + children().length + ')'">
           <div class="pt-4">
             <div class="surface-card px-4 py-3 mb-4 flex items-center gap-2 flex-wrap text-sm">
               <button class="inline-flex items-center gap-1.5 font-semibold text-brand-700 hover:underline" (click)="openVendor(c)"><mat-icon class="!text-lg">store</mat-icon>{{ c.vendorName }}</button>
               <mat-icon class="!text-lg text-ink-300">chevron_right</mat-icon>
               <span class="font-semibold text-ink-900">{{ c.reference }} (parent contract)</span>
               <mat-icon class="!text-lg text-ink-300">chevron_right</mat-icon>
-              <span class="text-ink-500">{{ count('Subcontract') }} subcontract{{ count('Subcontract') === 1 ? '' : 's' }} · {{ count('Purchase Order') }} purchase orders · {{ count('Amendment') }} amendment{{ count('Amendment') === 1 ? '' : 's' }} · {{ count('Time Extension') }} time extension{{ count('Time Extension') === 1 ? '' : 's' }}</span>
+              <span class="text-ink-500">PO {{ c.poNumber }} · {{ count('Subcontract') }} subcontract{{ count('Subcontract') === 1 ? '' : 's' }} · {{ count('Amendment') }} amendment{{ count('Amendment') === 1 ? '' : 's' }} · {{ count('Time Extension') }} time extension{{ count('Time Extension') === 1 ? '' : 's' }}</span>
             </div>
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-              <div class="surface-card px-4 py-3"><div class="text-[11px] font-bold text-ink-400 uppercase tracking-wide">Purchase orders</div><div class="text-lg font-extrabold text-ink-900">{{ count('Purchase Order') }}</div></div>
+              <div class="surface-card px-4 py-3"><div class="text-[11px] font-bold text-ink-400 uppercase tracking-wide">PO number</div><div class="text-lg font-extrabold text-ink-900">{{ c.poNumber }}</div></div>
               <div class="surface-card px-4 py-3"><div class="text-[11px] font-bold text-ink-400 uppercase tracking-wide">Subcontracts</div><div class="text-lg font-extrabold text-ink-900">{{ count('Subcontract') }}</div></div>
               <div class="surface-card px-4 py-3"><div class="text-[11px] font-bold text-ink-400 uppercase tracking-wide">Amendments</div><div class="text-lg font-extrabold text-ink-900">{{ count('Amendment') }}</div></div>
               <div class="surface-card px-4 py-3"><div class="text-[11px] font-bold text-ink-400 uppercase tracking-wide">Time extensions</div><div class="text-lg font-extrabold text-ink-900">{{ count('Time Extension') }}</div></div>
             </div>
-            <app-data-table title="Records linked in the ERP" [columns]="childColumns" [rows]="children()" [pageSize]="10" [exportable]="store.can('Export Contract Data')" (rowClick)="openRecord($event)" emptyTitle="No linked records" emptyDescription="POs, subcontracts, amendments and time extensions linked to this contract appear here."></app-data-table>
-            <p class="text-xs text-ink-400 mt-3">Click a row to see the full record, its parent contract and its documents. Relationships come from the ERP and cannot be changed in CRC.</p>
+            <app-data-table title="Subcontracts, amendments and time extensions" [columns]="childColumns" [rows]="children()" [pageSize]="10" [exportable]="store.can('Export Contract Data')" (rowClick)="openRecord($event)" emptyTitle="No subcontracts yet" emptyDescription="The lines of this contract's PO, plus its amendments and time extensions, appear here."></app-data-table>
+            <p class="text-xs text-ink-400 mt-3">Click a row to see the scope of work, its parent contract and its documents. Everything here is read from the ERP; CRC does not change it or perform actions on other systems.</p>
           </div>
         </mat-tab>
 
@@ -303,8 +302,7 @@ export class ContractDetailComponent {
     return c ? timelineFor(c, this.children(), this.attachments(), this.store.notificationRules(), { hours: r.hours, applies: r.appliesTo.length === 0 || r.appliesTo.includes(c.contractType) }) : [];
   });
 
-  poValue = computed(() => this.children().filter((r) => r.recordType === 'Purchase Order').reduce((s, r) => s + r.amount, 0));
-  amendmentValue = computed(() => this.children().filter((r) => r.recordType === 'Amendment').reduce((s, r) => s + r.amount, 0));
+  amendmentValue = computed(() => this.children().filter((r) => r.recordType === 'Amendment').reduce((s, r) => s + (r.amount ?? 0), 0));
 
   alerts = computed(() => {
     const c = this.contract();
@@ -349,16 +347,14 @@ export class ContractDetailComponent {
   auditRows = computed(() => { const c = this.contract(); return c ? this.store.audit().filter((a) => a.reference === c.reference) : []; });
 
   childColumns: TableColumn<any>[] = [
-    { key: 'reference', label: 'PO number' },
-    { key: 'poType', label: 'PO type' },
-    { key: 'poCategory', label: 'PO category' },
-    { key: 'description', label: 'Description' },
-    { key: 'parentReference', label: 'Parent contract' },
+    { key: 'recordType', label: 'Type' },
+    { key: 'description', label: 'Scope of work' },
+    { key: 'poNumber', label: 'PO number' },
+    { key: 'startDate', label: 'From', type: 'date' },
+    { key: 'endDate', label: 'To', type: 'date' },
+    { key: 'amount', label: 'Amount', type: 'currency', align: 'right' },
+    { key: 'reference', label: 'Line reference' },
     { key: 'erpReference', label: 'ERP reference' },
-    { key: 'issuedDate', label: 'PO date', type: 'date' },
-    { key: 'startDate', label: 'PO start date', type: 'date' },
-    { key: 'endDate', label: 'PO end date', type: 'date' },
-    { key: 'amount', label: 'PO amount', type: 'currency', align: 'right' },
     { key: 'attachments', label: 'Attachments', type: 'number', align: 'right' },
     { key: 'status', label: 'Status', type: 'status', statusFn: (r) => ({ label: r.status, level: r.status === 'Closed' ? 'neutral' : r.status === 'Expiring Soon' ? daysRemainingToLevel(r.daysRemaining) : 'normal' }) },
   ];

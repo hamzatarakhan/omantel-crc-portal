@@ -18,6 +18,7 @@ export const routes: Routes = [
       { path: 'contracts-budget/needs-attention', loadComponent: () => import('./features/contracts-budget/needs-attention/needs-attention.component').then((m) => m.NeedsAttentionComponent) },
       { path: 'contracts-budget/sync', loadComponent: () => import('./features/contracts-budget/sync-overview/sync-overview.component').then((m) => m.SyncOverviewComponent) },
       { path: 'contracts-budget/sync-errors', loadComponent: () => import('./features/contracts-budget/sync-errors/sync-errors.component').then((m) => m.SyncErrorsComponent) },
+      { path: 'contracts-budget/projects', loadComponent: () => import('./features/contracts-budget/project-requests/project-requests.component').then((m) => m.ProjectRequestsComponent) },
       { path: 'contracts-budget/actions', loadComponent: () => import('./features/contracts-budget/monitoring-actions/monitoring-actions.component').then((m) => m.MonitoringActionsComponent) },
       { path: 'contracts-budget/sync-config', loadComponent: () => import('./features/contracts-budget/sync-config/sync-config.component').then((m) => m.SyncConfigComponent) },
       { path: 'contracts-budget/audit-history', loadComponent: () => import('./features/admin/audit-log/audit-log.component').then((m) => m.AuditLogComponent) },

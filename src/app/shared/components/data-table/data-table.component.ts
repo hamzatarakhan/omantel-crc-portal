@@ -107,6 +107,8 @@ export interface TableColumn<T = any> {
                         </div>
                       } @else if (col.type === 'status' && col.statusFn) {
                         <app-status-chip [label]="col.statusFn(row).label" [level]="col.statusFn(row).level"></app-status-chip>
+                      } @else if (col.type === 'currency' && (row[col.key] === null || row[col.key] === undefined)) {
+                        <span class="text-ink-300" title="Not available yet — read from the ERP later">—</span>
                       } @else if (col.type === 'currency') {
                         <span class="font-semibold text-ink-900">{{ row[col.key] | number: '1.0-2' }}</span> <span class="text-ink-400 text-xs">{{ col.currency || 'OMR' }}</span>
                       } @else if (col.type === 'date') {
