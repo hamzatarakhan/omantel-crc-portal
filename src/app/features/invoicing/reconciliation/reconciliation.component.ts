@@ -9,6 +9,7 @@ import { StatusChipComponent } from '../../../shared/components/status-chip/stat
 import { CrcStore } from '../../../core/services/crc-store.service';
 import { UiService } from '../../../shared/services/ui.service';
 import { StatusLevel } from '../../../core/models/status';
+import { InvoicePreviewComponent } from './invoice-preview.component';
 
 const VENDORS = ['Infoline LLC', 'Green Umbrella Services'];
 
@@ -17,7 +18,7 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
 @Component({
   selector: 'app-reconciliation',
   standalone: true,
-  imports: [RequiresDirective, CommonModule, FormsModule, RouterModule, MatButtonModule, MatIconModule, PageHeaderComponent, StatusChipComponent],
+  imports: [RequiresDirective, InvoicePreviewComponent, CommonModule, FormsModule, RouterModule, MatButtonModule, MatIconModule, PageHeaderComponent, StatusChipComponent],
   template: `
     <app-page-header
       title="Reconciliation Workspace"
@@ -28,12 +29,21 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
       <app-status-chip [label]="status()" [level]="statusLevel()"></app-status-chip>
     </app-page-header>
 
-    <div class="flex items-center gap-1 bg-white border border-surface-border rounded-lg p-0.5 w-fit mb-4">
-      @for (v of vendors; track v) {
-        <button (click)="vendor.set(v)" class="px-3 py-1.5 text-xs font-semibold rounded-md transition-colors" [class]="vendor() === v ? 'bg-brand-50 text-brand-700' : 'text-ink-500 hover:text-ink-900'">{{ v }}</button>
-      }
+    <div class="flex items-center gap-3 flex-wrap mb-4">
+      <div class="flex items-center gap-1 bg-white border border-surface-border rounded-lg p-0.5">
+        @for (v of vendors; track v) {
+          <button (click)="vendor.set(v)" class="px-3 py-1.5 text-xs font-semibold rounded-md transition-colors" [class]="vendor() === v ? 'bg-brand-50 text-brand-700' : 'text-ink-500 hover:text-ink-900'">{{ v }}</button>
+        }
+      </div>
+      <div class="flex items-center gap-1 bg-white border border-surface-border rounded-lg p-0.5">
+        <button (click)="view.set('calc')" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors" [class]="view() === 'calc' ? 'bg-brand-50 text-brand-700' : 'text-ink-500 hover:text-ink-900'"><mat-icon class="!text-base">calculate</mat-icon>Calculation</button>
+        <button (click)="view.set('invoice')" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors" [class]="view() === 'invoice' ? 'bg-brand-50 text-brand-700' : 'text-ink-500 hover:text-ink-900'"><mat-icon class="!text-base">receipt_long</mat-icon>Invoice preview</button>
+      </div>
     </div>
 
+    @if (view() === 'invoice') {
+      <app-invoice-preview [vendor]="vendor()"></app-invoice-preview>
+    } @else {
     <div class="surface-card overflow-x-auto mb-4">
       <div class="px-4 pt-3.5"><h3 class="text-[13.5px] font-bold text-ink-900">Payable calculation</h3><p class="text-xs text-ink-400 mt-0.5">Billing rate × billable days ÷ working days, per agent, from the <a class="text-brand-600 font-medium" routerLink="/csr/leave">attendance sheet</a>. Absence (A) is deducted; approved leave stays billable.</p></div>
       <table class="crc-table w-full mt-3">
@@ -56,6 +66,16 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
               <td class="px-4 py-2 text-right font-medium">{{ t.amount | number:'1.2-2' }}</td>
             </tr>
           }
+          <tr class="border-t border-surface-border">
+            <td class="px-4 py-2 font-medium text-ink-700">New joining <span class="text-xs text-ink-400 font-normal">&middot; joined this month, billed pro-rata</span></td>
+            <td class="px-4 py-2 text-right">{{ calc().newJoining.units }}</td><td class="px-4 py-2"></td><td class="px-4 py-2"></td>
+            <td class="px-4 py-2 text-right font-medium text-status-normal">+{{ calc().newJoining.amount | number:'1.2-2' }}</td>
+          </tr>
+          <tr class="border-t border-surface-border">
+            <td class="px-4 py-2 font-medium text-ink-700">Resignations <span class="text-xs text-ink-400 font-normal">&middot; billed for days worked (assumed half a month)</span></td>
+            <td class="px-4 py-2 text-right">{{ calc().resignation.units }}</td><td class="px-4 py-2"></td><td class="px-4 py-2"></td>
+            <td class="px-4 py-2 text-right font-medium text-status-normal">+{{ calc().resignation.amount | number:'1.2-2' }}</td>
+          </tr>
           <tr class="border-t border-surface-border">
             <td class="px-4 py-2 font-medium text-ink-700" colspan="4">3 Clicks incentive <span class="text-xs text-ink-400 font-normal">&middot; {{ calc().eligibleCalls | number }} of {{ calc().sampleCalls | number }} calls eligible ({{ calc().excludedCalls | number }} shorter than {{ calc().threshold }}s excluded — <a class="text-brand-600" routerLink="/invoicing/rules">change rule</a>)</span></td>
             <td class="px-4 py-2 text-right font-medium text-status-normal">+{{ calc().incentive | number:'1.2-2' }}</td>
@@ -124,6 +144,7 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
         </tbody>
       </table>
     </div>
+    }
   `,
 })
 export class ReconciliationComponent {
@@ -132,6 +153,7 @@ export class ReconciliationComponent {
 
   vendors = VENDORS;
   vendor = signal(VENDORS[0]);
+  view = signal<'calc' | 'invoice'>('calc');
   private typed = signal<Record<string, number>>({});
 
   calc = computed(() => this.store.calculateInvoice(this.vendor()));

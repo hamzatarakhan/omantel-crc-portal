@@ -519,28 +519,51 @@ export class CrcStore {
   calculateInvoice(vendorName: string) {
     const key: Agent['vendor'] = vendorName.startsWith('Green') ? 'Green Umbrella' : 'Infoline';
     const att = this.attendance();
-    const agents = this.agents().filter((a) => a.vendor === key);
+    const all = this.agents().filter((a) => a.vendor === key);
+    const now = new Date();
+    const monthPrefix = isoDay(0).slice(0, 7);
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    // Agents who joined this month are billed pro-rata on their own "New Joining" line, not in the tier lines.
+    const joiners = all.filter((a) => a.joinDate.startsWith(monthPrefix));
+    const existing = all.filter((a) => !a.joinDate.startsWith(monthPrefix));
+
+    let absentDays = 0;
     const tiers = (['Bachelor', 'Diploma', 'Non-Diploma'] as const).map((degree) => {
-      const group = agents.filter((a) => a.degree === degree);
+      const group = existing.filter((a) => a.degree === degree);
       const rate = this.rateFor(degree);
       let factorSum = 0;
       for (const a of group) {
         const codes = att[a.id] ?? [];
         const expected = codes.filter((c) => c !== 'OFF').length;
         const billable = codes.filter((c) => c !== 'OFF' && c !== 'A').length;
+        absentDays += codes.filter((c) => c === 'A').length;
         factorSum += expected ? billable / expected : 0;
       }
-      return { degree, headcount: group.length, rate, billableFte: factorSum, amount: rate * factorSum };
+      return { degree, headcount: group.length, rate, gross: rate * group.length, billableFte: factorSum, amount: rate * factorSum };
     });
+    const gross = tiers.reduce((s, t) => s + t.gross, 0);
     const base = tiers.reduce((s, t) => s + t.amount, 0);
+    const absenceDeduction = gross - base;
+
+    const newJoining = {
+      units: joiners.length,
+      amount: joiners.reduce((s, a) => s + this.rateFor(a.degree) * ((daysInMonth - Math.min(daysInMonth, Math.max(1, parseInt(a.joinDate.slice(8, 10), 10) || 1)) + 1) / daysInMonth), 0),
+    };
+    // Assumption: a resignation is billed for the days worked, taken as half the month at the average rate.
+    const rates = this.payableRates.map((r) => r.billingRate);
+    const avgRate = rates.reduce((s, r) => s + r, 0) / (rates.length || 1);
+    const last = this.snapshots[this.snapshots.length - 1];
+    const resignationUnits = key === 'Infoline' ? last.resignations : 0;
+    const resignation = { units: resignationUnits, amount: resignationUnits * avgRate * 0.5 };
+
     const threshold = this.payableRules().thresholdSeconds;
-    const sampleCalls = agents.length * 260;
+    const sampleCalls = all.length * 260;
     const excludedCalls = Math.round(sampleCalls * Math.min(0.6, threshold / 60));
     const eligibleCalls = sampleCalls - excludedCalls;
     const incentive = Math.round(eligibleCalls * 0.05 * 100) / 100;
-    const subtotal = base + incentive;
+    const subtotal = base + newJoining.amount + resignation.amount + incentive;
     const vat = subtotal * 0.05;
-    return { vendorName, tiers, base, sampleCalls, excludedCalls, eligibleCalls, incentive, subtotal, vat, total: subtotal + vat, threshold };
+    return { vendorName, tiers, gross, base, absenceDeduction, absentDays, newJoining, resignation, sampleCalls, excludedCalls, eligibleCalls, incentive, subtotal, vat, total: subtotal + vat, threshold };
   }
 
   validateInvoice(vendorName: string, vendorAmount: number) {

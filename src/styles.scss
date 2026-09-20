@@ -264,3 +264,12 @@ router-outlet + * {
 // Role-switch loader progress bar (fills over the same ~1.3s the switch takes)
 @keyframes role-progress { from { width: 0; } to { width: 100%; } }
 .role-progress { animation: role-progress 1.3s ease-in-out forwards; }
+
+// Print only the invoice sheet (Invoice preview > Print / Save as PDF).
+@media print {
+  @page { size: A4; margin: 12mm; }
+  body * { visibility: hidden !important; }
+  .invoice-sheet, .invoice-sheet * { visibility: visible !important; }
+  .invoice-sheet { position: absolute; left: 0; top: 0; width: 100%; max-width: none !important; overflow: visible !important; }
+  .no-print { display: none !important; }
+}
