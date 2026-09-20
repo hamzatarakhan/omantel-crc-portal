@@ -204,3 +204,30 @@ router-outlet + * {
 ::-webkit-scrollbar-thumb:hover { background: rgba(25, 23, 51, 0.28); }
 ::-webkit-scrollbar-track { background: transparent; }
 * { scrollbar-width: thin; scrollbar-color: rgba(25, 23, 51, 0.15) transparent; }
+
+// One table look for every hand-built table (the DataTable component uses the same values):
+// subtle header band, small-caps labels, 12px/16px cells, hairline row dividers, hover row tint.
+// Alignment is left to the templates (text-right etc.) so numeric columns keep working.
+.crc-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 14px;
+}
+.crc-table th {
+  padding: 12px 16px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: #6c698a;
+  background: var(--surface-subtle);
+}
+.crc-table td {
+  padding: 12px 16px;
+  white-space: nowrap;
+  color: #413e5c;
+  border-top: 1px solid var(--surface-border);
+}
+.crc-table tbody tr:hover td { background: var(--surface-subtle); }
+.crc-table tfoot td { border-top-width: 2px; }

@@ -24,13 +24,13 @@ import { AppUser } from '../../../core/models/domain';
 
     <div class="surface-card overflow-x-auto mb-6">
       <div class="px-4 pt-3.5"><h3 class="text-[13.5px] font-bold text-ink-900">Permission matrix</h3></div>
-      <table class="w-full text-sm mt-3">
+      <table class="crc-table w-full mt-3">
         <thead>
           <tr class="bg-surface-subtle text-left text-xs text-ink-500 uppercase tracking-wide">
             <th class="px-4 py-2.5 font-medium">Permission</th>
             <th class="px-4 py-2.5 font-medium">Module</th>
             @for (role of roles; track role) {
-              <th class="px-4 py-2.5 font-medium text-center" [class.text-brand-700]="role === store.currentRole()">{{ role }}</th>
+              <th class="!px-2 !whitespace-normal leading-tight font-medium text-center min-w-[92px]" [class.text-brand-700]="role === store.currentRole()">{{ role }}</th>
             }
           </tr>
         </thead>
@@ -40,7 +40,7 @@ import { AppUser } from '../../../core/models/domain';
               <td class="px-4 py-2 font-medium text-ink-700">{{ p.permission }}</td>
               <td class="px-4 py-2 text-ink-500">{{ p.module }}</td>
               @for (role of roles; track role) {
-                <td class="px-4 py-2 text-center">
+                <td class="!px-2 !py-1.5 text-center">
                   <mat-checkbox [checked]="store.permissionGrid()[p.permission + '|' + role]" (change)="toggle(p.permission, role)"></mat-checkbox>
                 </td>
               }
@@ -52,7 +52,7 @@ import { AppUser } from '../../../core/models/domain';
 
     <div class="surface-card overflow-x-auto">
       <div class="px-4 pt-3.5"><h3 class="text-[13.5px] font-bold text-ink-900">Users</h3></div>
-      <table class="w-full text-sm mt-3">
+      <table class="crc-table w-full mt-3">
         <thead>
           <tr class="bg-surface-subtle text-left text-xs text-ink-500 uppercase tracking-wide">
             <th class="px-4 py-2.5 font-medium">Name</th><th class="px-4 py-2.5 font-medium">Email</th><th class="px-4 py-2.5 font-medium">Role</th><th class="px-4 py-2.5 font-medium text-center">Active</th>

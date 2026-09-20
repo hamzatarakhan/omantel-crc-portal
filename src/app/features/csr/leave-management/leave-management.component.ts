@@ -68,38 +68,51 @@ const CYCLE = ['P', 'A', 'S/L', 'C/L', 'OFF'];
             </div>
           </div>
 
-          <div class="flex items-center gap-2 flex-wrap mb-3">
-            <input [ngModel]="q()" (ngModelChange)="q.set($event)" placeholder="Filter by name or queue…" class="pl-3 pr-3 py-2 text-sm rounded-lg border border-surface-border w-64 focus:outline-none focus:border-brand-400 placeholder:text-ink-400" />
-            <select [ngModel]="vendor()" (ngModelChange)="vendor.set($event)" class="pl-3 pr-8 py-2 text-xs font-semibold rounded-lg border border-surface-border bg-white text-ink-700 focus:outline-none focus:border-brand-400">
-              <option value="All">All vendors</option>
-              <option>Infoline</option><option>Green Umbrella</option><option>OJT</option>
-            </select>
-            <span class="text-xs text-ink-400">Click a cell to cycle P → A → S/L → C/L → OFF. Use “Record leave override” for other codes.</span>
-          </div>
+          <div class="surface-card overflow-hidden">
+            <h3 class="px-4 pt-3.5 text-[13.5px] font-bold text-ink-900">Attendance sheet</h3>
+            <div class="flex items-center justify-between gap-3 p-3.5 border-b border-surface-border flex-wrap">
+              <div class="flex items-center gap-3 flex-1 min-w-0">
+                <div class="relative w-full max-w-[260px]">
+                  <mat-icon class="!text-ink-400 !text-lg absolute left-2.5 top-1/2 -translate-y-1/2">search</mat-icon>
+                  <input [ngModel]="q()" (ngModelChange)="q.set($event)" placeholder="Search..." class="pl-9 pr-3 py-2 text-sm rounded-lg border border-surface-border w-full focus:outline-none focus:border-brand-400 transition-colors placeholder:text-ink-400" />
+                </div>
+                <span class="text-xs font-semibold text-ink-400 bg-surface-subtle rounded-full px-2.5 py-1 whitespace-nowrap hidden xs:inline-block">{{ sheet().length }} of {{ store.agents().length }}</span>
+              </div>
+              <div class="relative">
+                <select [ngModel]="vendor()" (ngModelChange)="vendor.set($event)" class="pl-3 pr-8 py-2 text-xs font-semibold rounded-lg border border-surface-border bg-white text-ink-700 appearance-none focus:outline-none focus:border-brand-400">
+                  <option value="All">All vendors</option>
+                  <option>Infoline</option><option>Green Umbrella</option><option>OJT</option>
+                </select>
+                <mat-icon class="!text-base !text-ink-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">expand_more</mat-icon>
+              </div>
+            </div>
 
-          <div class="surface-card overflow-auto max-h-[520px]">
-            <table class="text-xs border-separate border-spacing-0">
-              <thead>
-                <tr class="text-[10.5px] text-ink-500 uppercase tracking-wider">
-                  <th class="sticky left-0 top-0 z-20 bg-surface-subtle text-left px-3 py-2.5 min-w-[190px] border-b border-surface-border">Agent</th>
-                  @for (d of days; track d) { <th class="sticky top-0 z-10 bg-surface-subtle px-1 py-2.5 min-w-[46px] border-b border-surface-border">{{ d.slice(5) }}</th> }
-                </tr>
-              </thead>
-              <tbody>
-                @for (a of sheet(); track a.id) {
-                  <tr>
-                    <td class="sticky left-0 z-10 bg-white px-3 py-1.5 border-b border-surface-border"><div class="font-medium text-ink-900 text-[12.5px] truncate max-w-[170px]">{{ a.name }}</div><div class="text-[10.5px] text-ink-400">{{ a.queue }}</div></td>
-                    @for (code of att()[a.id]; track $index) {
-                      <td class="px-0.5 py-1 border-b border-surface-border text-center">
-                        <button (click)="cycle(a.id, $index, code)" class="w-10 rounded-md py-1 text-[11px] font-bold hover:ring-2 hover:ring-brand-300 transition" [class]="style(code)">{{ code }}</button>
-                      </td>
-                    }
+            <div class="overflow-auto max-h-[560px]">
+              <table class="crc-table w-full min-w-[980px]">
+                <thead>
+                  <tr class="text-left">
+                    <th class="sticky left-0 top-0 z-20 min-w-[220px] border-b border-surface-border">Agent</th>
+                    @for (d of days; track d) { <th class="sticky top-0 z-10 !px-1 text-center border-b border-surface-border">{{ d.slice(5) }}</th> }
                   </tr>
-                }
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  @for (a of sheet(); track a.id) {
+                    <tr>
+                      <td class="sticky left-0 z-10 bg-white"><div class="font-semibold text-ink-900 text-[13px] truncate max-w-[200px]">{{ a.name }}</div><div class="text-[11px] text-ink-400 mt-0.5">{{ a.queue }}</div></td>
+                      @for (code of att()[a.id]; track $index) {
+                        <td class="!px-1 !py-2 text-center">
+                          <button (click)="cycle(a.id, $index, code)" class="block w-full max-w-[46px] mx-auto rounded-lg py-1.5 text-[11px] font-bold border border-transparent hover:border-brand-300 transition-colors" [class]="style(code)">{{ code }}</button>
+                        </td>
+                      }
+                    </tr>
+                  } @empty {
+                    <tr><td [attr.colspan]="days.length + 1" class="text-center text-ink-400 !py-10">No agents match your filter.</td></tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+            <div class="p-3.5 border-t border-surface-border text-xs text-ink-400">Click a cell to cycle P → A → S/L → C/L → OFF, or use “Record leave override” for other codes. Billable days used by the Reconciliation Workspace come from this sheet.</div>
           </div>
-          <p class="text-xs text-ink-400 mt-2">Showing {{ sheet().length }} of {{ store.agents().length }} agents. Billable days used by the Reconciliation Workspace come from this sheet.</p>
         </div>
       </mat-tab>
     </mat-tab-group>

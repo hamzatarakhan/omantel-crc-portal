@@ -34,7 +34,7 @@ const VENDORS = ['Infoline LLC', 'Green Umbrella Services'];
 
     <div class="surface-card overflow-x-auto mb-4">
       <div class="px-4 pt-3.5"><h3 class="text-[13.5px] font-bold text-ink-900">Payable calculation</h3><p class="text-xs text-ink-400 mt-0.5">Billing rate × billable days ÷ working days, per agent, from the <a class="text-brand-600 font-medium" routerLink="/csr/leave">attendance sheet</a>. Absence (A) is deducted; approved leave stays billable.</p></div>
-      <table class="w-full text-sm mt-3">
+      <table class="crc-table w-full mt-3">
         <thead>
           <tr class="bg-surface-subtle text-left text-xs text-ink-500 uppercase tracking-wide">
             <th class="px-4 py-2.5 font-medium">Tier</th>
@@ -100,7 +100,7 @@ const VENDORS = ['Infoline LLC', 'Green Umbrella Services'];
 
     <div class="surface-card overflow-x-auto">
       <div class="px-4 pt-3.5"><h3 class="text-[13.5px] font-bold text-ink-900">Billing-rate build-up</h3><p class="text-xs text-ink-400 mt-0.5">Basic + HRA + conveyance + allowances + management fee, as on the vendor's monthly annexure</p></div>
-      <table class="w-full text-sm mt-3">
+      <table class="crc-table w-full mt-3">
         <thead>
           <tr class="bg-surface-subtle text-left text-xs text-ink-500 uppercase tracking-wide">
             <th class="px-4 py-2.5 font-medium">Tier</th><th class="px-4 py-2.5 font-medium text-right">Basic</th><th class="px-4 py-2.5 font-medium text-right">HRA</th>

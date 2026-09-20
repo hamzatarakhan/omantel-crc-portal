@@ -40,7 +40,7 @@ import { UiService } from '../../../shared/services/ui.service';
     }
 
     <div class="surface-card overflow-x-auto">
-      <table class="w-full text-sm">
+      <table class="crc-table w-full">
         <thead>
           <tr class="bg-surface-subtle text-left text-xs text-ink-500 uppercase tracking-wide">
             <th class="px-4 py-2.5 font-medium">Item</th>
