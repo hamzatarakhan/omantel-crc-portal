@@ -16,7 +16,7 @@ const FIELD = 'w-full px-3 py-2 text-sm rounded-lg border border-surface-border 
   imports: [CommonModule, FormsModule, MatDialogModule, MatIconModule, StatusChipComponent],
   template: `
     @if (cand(); as c) {
-      <div class="w-[min(720px,94vw)]">
+      <div class="w-full">
         <div class="flex items-start justify-between gap-3 px-6 pt-5 pb-4 border-b border-surface-border">
           <div class="flex items-center gap-3 min-w-0">
             <div class="w-11 h-11 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center shrink-0"><mat-icon>person_search</mat-icon></div>
@@ -31,7 +31,8 @@ const FIELD = 'w-full px-3 py-2 text-sm rounded-lg border border-surface-border 
           </div>
         </div>
 
-        <div class="px-6 py-5 flex flex-col gap-5 max-h-[68vh] overflow-y-auto">
+        <div class="px-6 py-5 grid grid-cols-1 lg:grid-cols-5 gap-6 max-h-[70vh] overflow-y-auto content-start">
+          <div class="lg:col-span-2 flex flex-col gap-5">
           <section>
             <h3 class="text-[13px] font-bold text-ink-900 mb-2">CV</h3>
             <div class="flex items-center gap-3">
@@ -45,7 +46,7 @@ const FIELD = 'w-full px-3 py-2 text-sm rounded-lg border border-surface-border 
 
           <section>
             <h3 class="text-[13px] font-bold text-ink-900 mb-2">Interview</h3>
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div class="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-1 gap-3">
               <div><label class="text-xs text-ink-500 block mb-1">Date</label><input type="date" class="${FIELD}" [(ngModel)]="date" /></div>
               <div><label class="text-xs text-ink-500 block mb-1">Time</label><input type="time" class="${FIELD}" [(ngModel)]="time" /></div>
               <div><label class="text-xs text-ink-500 block mb-1">Interviewer</label><input class="${FIELD}" [(ngModel)]="interviewer" placeholder="Vendor recruiter" /></div>
@@ -57,8 +58,9 @@ const FIELD = 'w-full px-3 py-2 text-sm rounded-lg border border-surface-border 
               <p class="text-xs text-ink-500 mt-2">Scheduled for <strong>{{ c.interview.date }} {{ c.interview.time }}</strong> with {{ c.interview.interviewer }}{{ c.interview.completed ? ' · scored' : '' }}.</p>
             }
           </section>
+          </div>
 
-          <section>
+          <section class="lg:col-span-3">
             <div class="flex items-center justify-between mb-2">
               <h3 class="text-[13px] font-bold text-ink-900">Scored questions</h3>
               <span class="text-xs font-semibold" [class]="answered() ? 'text-brand-700' : 'text-ink-400'">{{ total() }} / {{ max }} &middot; {{ percent() }}%</span>

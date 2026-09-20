@@ -16,7 +16,7 @@ export interface VendorDetailData {
   standalone: true,
   imports: [CommonModule, MatDialogModule, MatIconModule, DataTableComponent],
   template: `
-    <div class="w-[min(700px,90vw)]">
+    <div class="w-full">
       <div class="flex items-start justify-between px-6 pt-5 pb-4 border-b border-surface-border">
         <div class="flex items-center gap-3">
           <div class="w-11 h-11 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center shrink-0">

@@ -208,7 +208,20 @@ router-outlet + * {
 
 // Vendor drill-down and any future modal — rounded, borderless surface with a real
 // but soft shadow (a true overlay above a backdrop is the other place shadow still fits).
+// Material caps a dialog at 560px / 80vw by default, which clipped wider content. Each dialog now sets its
+// own width (see shared/dialog-sizes.ts), so lift the cap and let the surface fill that width.
+.app-dialog-panel {
+  --mat-dialog-container-max-width: none;
+  --mat-dialog-container-min-width: 0;
+}
+.app-dialog-panel .mat-mdc-dialog-container,
+.app-dialog-panel .mat-mdc-dialog-inner-container,
 .app-dialog-panel .mat-mdc-dialog-surface {
+  width: 100%;
+  max-width: none;
+}
+.app-dialog-panel .mat-mdc-dialog-surface {
+  background-color: #fff !important;
   border-radius: 16px !important;
   padding: 0 !important;
   box-shadow: 0 20px 60px rgba(25, 23, 51, 0.22) !important;

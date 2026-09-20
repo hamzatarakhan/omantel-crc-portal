@@ -13,6 +13,7 @@ import { VendorDetailDialogComponent } from '../../../shared/components/vendor-d
 import { CrcStore } from '../../../core/services/crc-store.service';
 import { UiService } from '../../../shared/services/ui.service';
 import { Contract } from '../../../core/models/domain';
+import { DIALOG_SIZE } from '../../../shared/dialog-sizes';
 import { daysRemainingToLevel } from '../../../core/models/status';
 
 interface VendorSummary {
@@ -172,6 +173,7 @@ export class ContractDashboardComponent {
       data: { vendorName: vendor.name, contracts: vendor.contracts },
       panelClass: 'app-dialog-panel',
       autoFocus: false,
+      ...DIALOG_SIZE.wide,
     });
   }
 }

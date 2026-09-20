@@ -4,6 +4,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { firstValueFrom } from 'rxjs';
 import { ConfirmDialogComponent, ConfirmDialogData, FormDialogComponent, FormDialogData } from '../components/form-dialog/form-dialog.component';
 import { CrcStore } from '../../core/services/crc-store.service';
+import { DIALOG_SIZE } from '../dialog-sizes';
 
 @Injectable({ providedIn: 'root' })
 export class UiService {
@@ -12,11 +13,11 @@ export class UiService {
   private store = inject(CrcStore);
 
   form(data: FormDialogData): Promise<Record<string, any> | undefined> {
-    return firstValueFrom(this.dialog.open(FormDialogComponent, { data, panelClass: 'app-dialog-panel', autoFocus: 'first-tabbable' }).afterClosed());
+    return firstValueFrom(this.dialog.open(FormDialogComponent, { data, panelClass: 'app-dialog-panel', autoFocus: 'first-tabbable', ...DIALOG_SIZE.form }).afterClosed());
   }
 
   async confirm(data: ConfirmDialogData): Promise<boolean> {
-    return !!(await firstValueFrom(this.dialog.open(ConfirmDialogComponent, { data, panelClass: 'app-dialog-panel', autoFocus: false }).afterClosed()));
+    return !!(await firstValueFrom(this.dialog.open(ConfirmDialogComponent, { data, panelClass: 'app-dialog-panel', autoFocus: false, ...DIALOG_SIZE.confirm }).afterClosed()));
   }
 
   toast(message: string, duration = 3500) {

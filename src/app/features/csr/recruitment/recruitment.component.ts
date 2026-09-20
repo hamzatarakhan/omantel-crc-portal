@@ -10,6 +10,7 @@ import { UiService } from '../../../shared/services/ui.service';
 import { Candidate, CandidateStatus } from '../../../core/models/domain';
 import { StatusLevel } from '../../../core/models/status';
 import { CandidateDialogComponent } from './candidate-dialog.component';
+import { DIALOG_SIZE } from '../../../shared/dialog-sizes';
 
 const STAGES: Array<CandidateStatus | 'All'> = ['All', 'New', 'Interview Scheduled', 'Shortlisted', 'Hired', 'Rejected'];
 
@@ -70,7 +71,7 @@ export class RecruitmentComponent {
   }
 
   open(row: Candidate) {
-    this.dialog.open(CandidateDialogComponent, { data: { id: row.id }, panelClass: 'app-dialog-panel', autoFocus: false });
+    this.dialog.open(CandidateDialogComponent, { data: { id: row.id }, panelClass: 'app-dialog-panel', autoFocus: false, ...DIALOG_SIZE.wide });
   }
 
   async addCandidate() {

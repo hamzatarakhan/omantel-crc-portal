@@ -32,7 +32,7 @@ const INPUT = 'w-full px-3 py-2.5 text-sm rounded-lg border border-surface-borde
   standalone: true,
   imports: [CommonModule, FormsModule, MatDialogModule, MatIconModule],
   template: `
-    <div class="w-[min(520px,92vw)]">
+    <div class="w-full">
       <div class="flex items-start justify-between gap-3 px-6 pt-5 pb-4 border-b border-surface-border">
         <div class="flex items-center gap-3 min-w-0">
           @if (data.icon) {
@@ -46,9 +46,9 @@ const INPUT = 'w-full px-3 py-2.5 text-sm rounded-lg border border-surface-borde
         <button type="button" class="w-8 h-8 rounded-lg flex items-center justify-center text-ink-400 hover:bg-surface-subtle hover:text-ink-700 shrink-0" (click)="ref.close()"><mat-icon>close</mat-icon></button>
       </div>
 
-      <form #f="ngForm" (ngSubmit)="submit()" class="px-6 py-5 flex flex-col gap-4 max-h-[65vh] overflow-y-auto">
+      <form #f="ngForm" (ngSubmit)="submit()" class="px-6 py-5 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-4 max-h-[70vh] overflow-y-auto content-start">
         @for (fld of data.fields; track fld.key) {
-          <div>
+          <div [class.sm:col-span-2]="isFull(fld)">
             <label class="text-[13px] font-medium text-ink-700 block mb-1.5">{{ fld.label }} @if (fld.required) { <span class="text-status-red">*</span> }</label>
             @switch (fld.type) {
               @case ('select') {
@@ -87,6 +87,9 @@ export class FormDialogComponent {
     for (const f of data.fields) this.model[f.key] = data.values?.[f.key] ?? (f.type === 'number' ? null : '');
   }
 
+  /** Text-like fields span the full row; selects, numbers and dates pair up two per row when there is room. */
+  isFull(f: FormField) { return !f.type || f.type === 'text' || f.type === 'email' || f.type === 'textarea'; }
+
   optValue(o: string | { value: string; label: string }) { return typeof o === 'string' ? o : o.value; }
   optLabel(o: string | { value: string; label: string }) { return typeof o === 'string' ? o : o.label; }
 
@@ -109,7 +112,7 @@ export interface ConfirmDialogData {
   standalone: true,
   imports: [CommonModule, MatDialogModule, MatIconModule],
   template: `
-    <div class="w-[min(420px,92vw)]">
+    <div class="w-full">
       <div class="flex items-start gap-3 px-6 pt-5 pb-4">
         <div class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" [class]="data.danger ? 'bg-red-50 text-status-red' : 'bg-brand-50 text-brand-600'"><mat-icon>{{ data.icon || (data.danger ? 'warning' : 'help_outline') }}</mat-icon></div>
         <div>
