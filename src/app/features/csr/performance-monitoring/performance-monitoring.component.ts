@@ -1,56 +1,94 @@
-import { Component, inject } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Router } from '@angular/router';
+import { MatIconModule } from '@angular/material/icon';
 import { PageHeaderComponent } from '../../../shared/components/page-header/page-header.component';
-import { MockDataService } from '../../../core/services/mock-data.service';
-import { PerformanceRecord } from '../../../core/models/domain';
+import { DataTableComponent, TableColumn } from '../../../shared/components/data-table/data-table.component';
+import { KpiCardComponent } from '../../../shared/components/kpi-card/kpi-card.component';
+import { CrcStore } from '../../../core/services/crc-store.service';
+import { StatusLevel } from '../../../core/models/status';
+
+const LEVELS: Array<{ key: StatusLevel | 'all'; label: string }> = [
+  { key: 'all', label: 'All' }, { key: 'normal', label: 'Optimal' }, { key: 'amber', label: 'Attention' }, { key: 'orange', label: 'Warning' }, { key: 'red', label: 'Poor' },
+];
+const RATING: Record<string, string> = { normal: 'Optimal', amber: 'Attention', orange: 'Warning', red: 'Poor' };
 
 @Component({
   selector: 'app-performance-monitoring',
   standalone: true,
-  imports: [CommonModule, PageHeaderComponent],
+  imports: [CommonModule, MatIconModule, PageHeaderComponent, DataTableComponent, KpiCardComponent],
   template: `
     <app-page-header
       title="Performance Monitoring"
-      subtitle="Attendance and productivity by agent, retrievable by vendor or resource name"
+      subtitle="Attendance and productivity by agent, retrievable by vendor or resource name &middot; click a row to open the profile"
       [breadcrumbs]="[{ label: 'CSR Management', link: '/csr/directory' }, { label: 'Performance Monitoring' }]"
     ></app-page-header>
 
-    <div class="surface-card overflow-hidden">
-      <div class="overflow-x-auto">
-        <div class="min-w-[560px]">
-          <div class="grid grid-cols-5 bg-surface-subtle text-[11px] font-bold text-ink-500 uppercase tracking-wider">
-            <div class="px-4 py-3">Agent</div>
-            <div class="px-4 py-3">Queue</div>
-            <div class="px-4 py-3 text-right">Attendance</div>
-            <div class="px-4 py-3 text-right">Avg. Resolution</div>
-            <div class="px-4 py-3 text-right">CSAT</div>
-          </div>
-          @for (r of records; track r.agentName) {
-            <div class="grid grid-cols-5 border-t border-surface-border text-sm items-center" [style.background]="cellBg(r.level)">
-              <div class="px-4 py-2.5 font-semibold text-ink-900 truncate">{{ r.agentName }}</div>
-              <div class="px-4 py-2.5 text-ink-500 truncate">{{ r.queue }}</div>
-              <div class="px-4 py-2.5 text-right text-ink-700">{{ r.attendancePct }}%</div>
-              <div class="px-4 py-2.5 text-right text-ink-700">{{ r.avgCallResolutionMin }} min</div>
-              <div class="px-4 py-2.5 text-right text-ink-700">{{ r.csatPct }}%</div>
-            </div>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <app-kpi-card label="Avg. attendance" [value]="avg().attendance + '%'" icon="event_available" [level]="avg().attendance >= 90 ? 'normal' : 'amber'"></app-kpi-card>
+      <app-kpi-card label="Avg. CSAT" [value]="avg().csat + '%'" icon="sentiment_satisfied" [level]="avg().csat >= 85 ? 'normal' : 'amber'"></app-kpi-card>
+      <app-kpi-card label="Avg. resolution" [value]="avg().resolution + ' min'" icon="timer"></app-kpi-card>
+      <app-kpi-card label="Needs attention" [value]="attention()" icon="warning" [level]="attention() ? 'orange' : 'normal'"></app-kpi-card>
+    </div>
+
+    <app-data-table title="Agent performance" [columns]="columns" [rows]="rows()" (rowClick)="open($event)">
+      <div toolbar class="flex items-center gap-2 flex-wrap">
+        <div class="flex items-center gap-1 bg-surface-subtle border border-surface-border rounded-lg p-0.5">
+          @for (l of levels; track l.key) {
+            <button
+              (click)="level.set(l.key)"
+              class="px-2.5 py-1 text-xs font-semibold rounded-md transition-colors"
+              [class]="level() === l.key ? 'bg-white text-brand-700 border border-surface-border' : 'text-ink-500 hover:text-ink-900 border border-transparent'"
+            >{{ l.label }}</button>
           }
         </div>
+        <div class="relative">
+          <select [value]="vendor()" (change)="vendor.set($any($event.target).value)" class="pl-3 pr-8 py-2 text-xs font-semibold rounded-lg border border-surface-border bg-white text-ink-700 appearance-none focus:outline-none focus:border-brand-400">
+            <option value="All">All vendors</option>
+            <option>Infoline</option><option>Green Umbrella</option><option>OJT</option>
+          </select>
+          <mat-icon class="!text-base !text-ink-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">expand_more</mat-icon>
+        </div>
       </div>
-    </div>
-    <div class="flex items-center flex-wrap gap-4 mt-4 text-xs font-medium text-ink-500">
-      <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full inline-block bg-status-normal"></span>Optimal</span>
-      <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full inline-block bg-status-amber"></span>Attention</span>
-      <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full inline-block bg-status-orange"></span>Warning</span>
-      <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full inline-block bg-status-red"></span>Poor</span>
-    </div>
+    </app-data-table>
   `,
 })
 export class PerformanceMonitoringComponent {
-  private data = inject(MockDataService);
-  records: PerformanceRecord[] = this.data.getPerformanceRecords();
+  private store = inject(CrcStore);
+  private router = inject(Router);
 
-  cellBg(level: string): string {
-    const map: Record<string, string> = { normal: '#0e9f6e14', amber: '#e3a00814', orange: '#ea6e0014', red: '#e0242414' };
-    return map[level] || 'transparent';
+  levels = LEVELS;
+  level = signal<StatusLevel | 'all'>('all');
+  vendor = signal('All');
+
+  private all = computed(() => this.store.performance());
+  rows = computed(() =>
+    this.all()
+      .filter((p) => (this.level() === 'all' || p.level === this.level()) && (this.vendor() === 'All' || p.vendor === this.vendor()))
+      .map((p) => ({ ...p, avgCallResolutionMin: Math.round(p.avgCallResolutionMin * 10) / 10, rating: RATING[p.level] })),
+  );
+  attention = computed(() => this.all().filter((p) => p.level === 'orange' || p.level === 'red').length);
+  avg = computed(() => {
+    const a = this.all();
+    const n = a.length || 1;
+    return {
+      attendance: Math.round(a.reduce((s, p) => s + p.attendancePct, 0) / n),
+      csat: Math.round(a.reduce((s, p) => s + p.csatPct, 0) / n),
+      resolution: (a.reduce((s, p) => s + p.avgCallResolutionMin, 0) / n).toFixed(1),
+    };
+  });
+
+  columns: TableColumn<any>[] = [
+    { key: 'agentName', label: 'Agent' },
+    { key: 'queue', label: 'Queue' },
+    { key: 'vendor', label: 'Vendor' },
+    { key: 'attendancePct', label: 'Attendance %', type: 'number', align: 'right' },
+    { key: 'avgCallResolutionMin', label: 'Avg. Resolution (min)', type: 'number', align: 'right' },
+    { key: 'csatPct', label: 'CSAT %', type: 'number', align: 'right' },
+    { key: 'rating', label: 'Rating', type: 'status', statusFn: (r) => ({ label: r.rating, level: r.level }) },
+  ];
+
+  open(row: { agentId: string }) {
+    this.router.navigate(['/csr/directory', row.agentId]);
   }
 }

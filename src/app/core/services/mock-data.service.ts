@@ -83,11 +83,11 @@ export class MockDataService {
 
   getBudgetLines(): BudgetLine[] {
     return [
-      { id: 'b1', category: 'Outsourcing', poLayer: 'PO1', item: 'Bachelor-tier manpower', allocated: 26000, spent: 24100 },
-      { id: 'b2', category: 'Outsourcing', poLayer: 'PO2', item: 'Diploma-tier manpower', allocated: 39500, spent: 38592 },
-      { id: 'b3', category: 'Outsourcing', poLayer: 'PO3 - Outsource', item: 'Non-Diploma-tier manpower', allocated: 38800, spent: 37890 },
-      { id: 'b4', category: 'Outsourcing', poLayer: 'PO3 - Outsource', item: 'Incentive', allocated: 6000, spent: 5227 },
-      { id: 'b5', category: 'Outsourcing', poLayer: 'PO3 - Outsource', item: 'Overtime', allocated: 4200, spent: 3985 },
+      { id: 'b1', category: 'Outsourcing', poLayer: 'PO1', item: 'Bachelor-tier manpower', allocated: 26000, spent: 19800 },
+      { id: 'b2', category: 'Outsourcing', poLayer: 'PO2', item: 'Diploma-tier manpower', allocated: 39500, spent: 30800 },
+      { id: 'b3', category: 'Outsourcing', poLayer: 'PO3 - Outsource', item: 'Non-Diploma-tier manpower', allocated: 38800, spent: 30200 },
+      { id: 'b4', category: 'Outsourcing', poLayer: 'PO3 - Outsource', item: 'Incentive', allocated: 6000, spent: 3900 },
+      { id: 'b5', category: 'Outsourcing', poLayer: 'PO3 - Outsource', item: 'Overtime', allocated: 4200, spent: 2900 },
       { id: 'b6', category: 'OJT', item: 'On-the-Job Training', allocated: 9000, spent: 6200 },
       { id: 'b7', category: 'Petty Cash', item: 'Customer Care petty cash', allocated: 3000, spent: 2870 },
       { id: 'b8', category: 'Projects', item: 'CRC Platform rollout', allocated: 15000, spent: 4100 },
@@ -148,6 +148,8 @@ export class MockDataService {
       const csatPct = 70 + Math.floor(this.rand() * 30);
       const score = (attendancePct + csatPct) / 2;
       return {
+        agentId: a.id,
+        vendor: a.vendor,
         agentName: a.name,
         queue: a.queue,
         attendancePct,

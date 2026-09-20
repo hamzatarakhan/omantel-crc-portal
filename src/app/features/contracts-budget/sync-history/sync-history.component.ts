@@ -1,35 +1,52 @@
-import { Component } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { MatButtonModule } from '@angular/material/button';
+import { MatIconModule } from '@angular/material/icon';
 import { PageHeaderComponent } from '../../../shared/components/page-header/page-header.component';
 import { DataTableComponent, TableColumn } from '../../../shared/components/data-table/data-table.component';
+import { CrcStore } from '../../../core/services/crc-store.service';
+import { UiService } from '../../../shared/services/ui.service';
+import { SyncRun } from '../../../core/models/domain';
 
-interface SyncRun {
-  id: string;
-  type: 'Automated' | 'Manual';
-  startedAt: string;
-  finishedAt: string;
-  initiatedBy: string;
-  processed: number;
-  created: number;
-  updated: number;
-  rejected: number;
-  status: 'Completed' | 'Failed' | 'No Changes';
-}
+const FILTERS = ['All', 'Completed', 'No Changes', 'Failed'] as const;
 
 @Component({
   selector: 'app-sync-history',
   standalone: true,
-  imports: [CommonModule, PageHeaderComponent, DataTableComponent],
+  imports: [CommonModule, MatButtonModule, MatIconModule, PageHeaderComponent, DataTableComponent],
   template: `
     <app-page-header
       title="Synchronization History"
       subtitle="Every automated and manual ERP sync, with record counts and errors"
       [breadcrumbs]="[{ label: 'Contracts & Budget', link: '/contracts-budget/dashboard' }, { label: 'Sync History' }]"
-    ></app-page-header>
-    <app-data-table [columns]="columns" [rows]="rows"></app-data-table>
+    >
+      <button mat-flat-button color="primary" (click)="runSync()" [disabled]="syncing()">
+        <mat-icon class="!text-base !mr-1" [class.animate-spin]="syncing()">sync</mat-icon>{{ syncing() ? 'Syncing…' : 'Run full sync now' }}
+      </button>
+    </app-page-header>
+
+    <app-data-table title="Sync runs" [columns]="columns" [rows]="rows()">
+      <div toolbar class="flex items-center gap-1 bg-surface-subtle border border-surface-border rounded-lg p-0.5">
+        @for (f of filters; track f) {
+          <button
+            (click)="filter.set(f)"
+            class="px-2.5 py-1 text-xs font-semibold rounded-md transition-colors"
+            [class]="filter() === f ? 'bg-white text-brand-700 border border-surface-border' : 'text-ink-500 hover:text-ink-900 border border-transparent'"
+          >{{ f }}</button>
+        }
+      </div>
+    </app-data-table>
   `,
 })
 export class SyncHistoryComponent {
+  private store = inject(CrcStore);
+  private ui = inject(UiService);
+
+  filters = FILTERS;
+  filter = signal<(typeof FILTERS)[number]>('All');
+  syncing = signal(false);
+  rows = computed(() => this.store.syncRuns().filter((r) => this.filter() === 'All' || r.status === this.filter()));
+
   columns: TableColumn<SyncRun>[] = [
     { key: 'type', label: 'Type' },
     { key: 'startedAt', label: 'Started', type: 'date' },
@@ -45,10 +62,14 @@ export class SyncHistoryComponent {
     },
   ];
 
-  rows: SyncRun[] = [
-    { id: '1', type: 'Automated', startedAt: '2026-09-17T02:00:00', finishedAt: '2026-09-17T02:04:00', initiatedBy: 'System Scheduler', processed: 214, created: 2, updated: 11, rejected: 0, status: 'Completed' },
-    { id: '2', type: 'Manual', startedAt: '2026-09-16T14:22:00', finishedAt: '2026-09-16T14:22:40', initiatedBy: 'Hamza Tarkan', processed: 1, created: 0, updated: 0, rejected: 0, status: 'No Changes' },
-    { id: '3', type: 'Automated', startedAt: '2026-09-16T02:00:00', finishedAt: '2026-09-16T02:03:00', initiatedBy: 'System Scheduler', processed: 214, created: 0, updated: 4, rejected: 0, status: 'Completed' },
-    { id: '4', type: 'Automated', startedAt: '2026-09-15T02:00:00', finishedAt: '2026-09-15T02:01:10', initiatedBy: 'System Scheduler', processed: 0, created: 0, updated: 0, rejected: 0, status: 'Failed' },
-  ];
+  runSync() {
+    if (!this.ui.requires('Manual Contract Sync')) return;
+    this.syncing.set(true);
+    setTimeout(() => {
+      const run = this.store.runFullSync();
+      this.syncing.set(false);
+      this.filter.set('All');
+      this.ui.toast(run.updated ? `Sync complete — ${run.updated} contract${run.updated > 1 ? 's' : ''} updated.` : 'Sync complete — no changes found.');
+    }, 900);
+  }
 }

@@ -32,11 +32,12 @@ export interface TableColumn<T = any> {
             <input
               class="pl-9 pr-3 py-2 text-sm rounded-lg border border-surface-border w-full focus:outline-none focus:border-brand-400 transition-colors placeholder:text-ink-400"
               placeholder="Search..."
-              [(ngModel)]="query"
+              [ngModel]="query()" (ngModelChange)="setQuery($event)"
             />
           </div>
           <span class="text-xs font-semibold text-ink-400 bg-surface-subtle rounded-full px-2.5 py-1 whitespace-nowrap hidden xs:inline-block">{{ filteredRows().length }} of {{ rows.length }}</span>
         </div>
+        <div class="flex items-center gap-2 flex-wrap"><ng-content select="[toolbar]"></ng-content></div>
         @if (exportable) {
           <button
             (click)="exportCsv()"
@@ -84,6 +85,8 @@ export interface TableColumn<T = any> {
                         <app-status-chip [label]="col.statusFn(row).label" [level]="col.statusFn(row).level"></app-status-chip>
                       } @else if (col.type === 'currency') {
                         <span class="font-semibold text-ink-900">{{ row[col.key] | number: '1.0-2' }}</span> <span class="text-ink-400 text-xs">{{ col.currency || 'OMR' }}</span>
+                      } @else if (col.type === 'date') {
+                        {{ fmtDate(row[col.key]) }}
                       } @else if (col.type === 'number') {
                         {{ row[col.key] | number }}
                       } @else {
@@ -113,24 +116,37 @@ export interface TableColumn<T = any> {
 })
 export class DataTableComponent<T extends Record<string, any> = any> {
   @Input() title = '';
-  @Input() columns: TableColumn<T>[] = [];
-  @Input() rows: T[] = [];
-  @Input() pageSize = 8;
+  private _columns = signal<TableColumn<T>[]>([]);
+  private _rows = signal<T[]>([], { equal: (a, b) => a.length === b.length && a.every((x, i) => x === b[i]) });
+  private _pageSize = signal(8);
+  @Input() set columns(v: TableColumn<T>[]) { this._columns.set(v ?? []); }
+  get columns() { return this._columns(); }
+  @Input() set rows(v: T[]) { this._rows.set(v ?? []); }
+  get rows() { return this._rows(); }
+  @Input() set pageSize(v: number) { this._pageSize.set(v); }
+  get pageSize() { return this._pageSize(); }
   @Input() exportable = true;
   @Input() emptyTitle = 'No records found';
   @Input() emptyDescription = 'Try adjusting your search or check back after the next sync.';
   @Output() rowClick = new EventEmitter<T>();
 
-  query = '';
+  query = signal('');
+
+  setQuery(v: string) {
+    this.query.set(v);
+    this.page.set(0);
+  }
   sortKey = signal<string | null>(null);
   sortDir = signal<'asc' | 'desc'>('asc');
   page = signal(0);
 
   filteredRows = computed(() => {
-    const q = this.query.trim().toLowerCase();
+    const q = this.query().trim().toLowerCase();
+    const rows = this._rows();
+    const cols = this._columns();
     let data = !q
-      ? this.rows
-      : this.rows.filter((row) => this.columns.some((c) => String(row[c.key] ?? '').toLowerCase().includes(q)));
+      ? rows
+      : rows.filter((row) => cols.some((c) => String(row[c.key] ?? '').toLowerCase().includes(q)));
 
     const key = this.sortKey();
     if (key) {
@@ -140,12 +156,19 @@ export class DataTableComponent<T extends Record<string, any> = any> {
     return data;
   });
 
-  totalPages = computed(() => Math.max(1, Math.ceil(this.filteredRows().length / this.pageSize)));
+  totalPages = computed(() => Math.max(1, Math.ceil(this.filteredRows().length / this._pageSize())));
 
   pagedRows = computed(() => {
-    const start = this.page() * this.pageSize;
-    return this.filteredRows().slice(start, start + this.pageSize);
+    const start = this.page() * this._pageSize();
+    return this.filteredRows().slice(start, start + this._pageSize());
   });
+
+  fmtDate(v: unknown): string {
+    const s = String(v ?? '');
+    if (!s.includes('T')) return s;
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? s : d.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
+  }
 
   sortBy(key: string) {
     if (this.sortKey() === key) {
@@ -164,7 +187,7 @@ export class DataTableComponent<T extends Record<string, any> = any> {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'export.csv';
+    a.download = (this.title || 'export').toLowerCase().replace(/[^a-z0-9]+/g, '-') + '.csv';
     a.click();
     URL.revokeObjectURL(url);
   }

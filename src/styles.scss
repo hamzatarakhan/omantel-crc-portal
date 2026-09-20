@@ -18,13 +18,15 @@ html {
   ));
 
   // The stock M3 orange tones are muddy brown-orange; pin primary to Omantel's actual #ea6e00.
-  --mat-sys-primary: #ea6e00;
-  --mat-sys-on-primary: #fff;
-  --mat-sys-primary-container: #fff2e6;
-  --mat-sys-on-primary-container: #7d3b00;
-  --mat-sys-secondary-container: #fff2e6;
-  --mat-sys-on-secondary-container: #7d3b00;
-  --mat-sys-surface-tint: transparent;
+  & {
+    --mat-sys-primary: #ea6e00;
+    --mat-sys-on-primary: #fff;
+    --mat-sys-primary-container: #fff2e6;
+    --mat-sys-on-primary-container: #7d3b00;
+    --mat-sys-secondary-container: #fff2e6;
+    --mat-sys-on-secondary-container: #7d3b00;
+    --mat-sys-surface-tint: transparent;
+  }
 }
 
 :root {

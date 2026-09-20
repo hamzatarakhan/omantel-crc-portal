@@ -51,6 +51,17 @@ export interface WorkforceSnapshot {
   resignations: number;
 }
 
+export interface Interview {
+  date: string;
+  time: string;
+  interviewer: string;
+  scores: Record<string, number>;
+  notes: string;
+  completed: boolean;
+}
+
+export type CandidateStatus = 'New' | 'Interview Scheduled' | 'Shortlisted' | 'Rejected' | 'Hired';
+
 export interface Candidate {
   id: string;
   name: string;
@@ -59,10 +70,28 @@ export interface Candidate {
   appliedDate: string;
   score: number;
   maxScore: number;
-  status: 'Shortlisted' | 'Rejected' | 'Hired';
+  status: CandidateStatus;
+  interview?: Interview;
+  cv?: string;
+}
+
+export interface IdDocument {
+  fileName: string;
+  status: 'Processing' | 'Extracted' | 'Verified';
+  name?: string;
+  idNumber?: string;
+  expiry?: string;
+}
+
+export interface InterviewQuestion {
+  id: string;
+  category: string;
+  text: string;
 }
 
 export interface PerformanceRecord {
+  agentId: string;
+  vendor: string;
   agentName: string;
   queue: string;
   attendancePct: number;
@@ -91,6 +120,12 @@ export interface MovementRequest {
   startDate: string;
   endDate: string;
   status: 'Active' | 'Ending Soon' | 'Expired' | 'Pending' | 'Rejected';
+  agentId?: string;
+  announcementId?: string;
+  justification?: string;
+  contact?: string;
+  previousQueue?: string;
+  decisionNote?: string;
 }
 
 // ---------- Invoicing & Payments ----------
@@ -116,6 +151,8 @@ export interface PaymentRecord {
   status: 'Pending' | 'Approved' | 'Completed';
   paymentDate?: string;
   slaAtRisk: boolean;
+  invoiceRef?: string;
+  period?: string;
 }
 
 export interface AuditEntry {
@@ -127,3 +164,75 @@ export interface AuditEntry {
   result: 'Success' | 'Failed';
   details: string;
 }
+
+// ---------- Cross-cutting ----------
+export interface SyncRun {
+  id: string;
+  type: 'Automated' | 'Manual';
+  startedAt: string;
+  finishedAt: string;
+  initiatedBy: string;
+  processed: number;
+  created: number;
+  updated: number;
+  rejected: number;
+  status: 'Completed' | 'Failed' | 'No Changes';
+}
+
+export interface AppNotification {
+  id: string;
+  message: string;
+  detail: string;
+  level: 'amber' | 'red' | 'info' | 'green';
+  createdAt: number;
+  read: boolean;
+  link?: string;
+}
+
+export interface NotificationRule {
+  id: string;
+  contractType: string;
+  thresholdDays: number;
+  channel: string;
+  recipients: string;
+  active: boolean;
+}
+
+export type BudgetPlanStatus = 'Draft' | 'Submitted' | 'Approved' | 'Rejected';
+
+export interface BudgetPlan {
+  status: BudgetPlanStatus;
+  drafts: Record<string, number>;
+  submittedAt?: string;
+  decidedAt?: string;
+  decisionNote?: string;
+}
+
+export interface PayableRules {
+  thresholdSeconds: number;
+  deviationPct: number;
+  perVendor: boolean;
+}
+
+export type InvoiceRunStatus = 'Not started' | 'Validated' | 'Flagged for review' | 'Approved for payment';
+
+export interface InvoiceRun {
+  vendor: string;
+  period: string;
+  calculatedTotal: number;
+  vendorInvoiceAmount?: number;
+  variancePct?: number;
+  status: InvoiceRunStatus;
+  paymentId?: string;
+}
+
+export interface AppUser {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  active: boolean;
+}
+
+export const ATTENDANCE_CODES = ['P', 'OFF', 'A', 'S/L', 'C/L', 'M/L', 'P/L', 'SP', 'ST/L', 'AS'] as const;
+export type AttendanceCode = (typeof ATTENDANCE_CODES)[number];
