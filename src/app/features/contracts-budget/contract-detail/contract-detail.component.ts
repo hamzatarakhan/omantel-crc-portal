@@ -34,21 +34,21 @@ import { daysRemainingToLevel } from '../../../core/models/status';
       }
 
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div class="surface-card p-4">
+        <div class="surface-card px-4 py-3">
           <div class="text-xs text-ink-400">Vendor</div>
-          <div class="text-sm font-medium text-ink-900 mt-1">{{ contract.vendorName }}</div>
+          <div class="text-sm font-medium text-ink-900 mt-0.5">{{ contract.vendorName }}</div>
         </div>
-        <div class="surface-card p-4">
+        <div class="surface-card px-4 py-3">
           <div class="text-xs text-ink-400">Contract Amount</div>
-          <div class="text-sm font-medium text-ink-900 mt-1">{{ contract.amount | number:'1.0-2' }} {{ contract.currency }}</div>
+          <div class="text-sm font-medium text-ink-900 mt-0.5">{{ contract.amount | number:'1.0-2' }} {{ contract.currency }}</div>
         </div>
-        <div class="surface-card p-4">
+        <div class="surface-card px-4 py-3">
           <div class="text-xs text-ink-400">Start &rarr; End Date</div>
-          <div class="text-sm font-medium text-ink-900 mt-1">{{ contract.startDate }} &rarr; {{ contract.endDate }}</div>
+          <div class="text-sm font-medium text-ink-900 mt-0.5">{{ contract.startDate }} &rarr; {{ contract.endDate }}</div>
         </div>
-        <div class="surface-card p-4">
+        <div class="surface-card px-4 py-3">
           <div class="text-xs text-ink-400">Days Remaining</div>
-          <div class="text-sm font-medium text-ink-900 mt-1">{{ contract.daysRemaining }}</div>
+          <div class="text-sm font-medium text-ink-900 mt-0.5">{{ contract.daysRemaining }}</div>
         </div>
       </div>
 

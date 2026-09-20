@@ -33,21 +33,21 @@ export interface VendorDetailData {
       </div>
 
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 px-6 py-4">
-        <div class="surface-card p-3">
+        <div class="surface-card px-3 py-2.5">
           <div class="text-[10.5px] font-bold text-ink-400 uppercase tracking-wide">Contracts</div>
-          <div class="text-xl font-extrabold text-ink-900 mt-1">{{ data.contracts.length }}</div>
+          <div class="text-lg font-extrabold text-ink-900 mt-1">{{ data.contracts.length }}</div>
         </div>
-        <div class="surface-card p-3">
+        <div class="surface-card px-3 py-2.5">
           <div class="text-[10.5px] font-bold text-ink-400 uppercase tracking-wide">Total Value</div>
-          <div class="text-xl font-extrabold text-ink-900 mt-1">{{ totalValue | number:'1.0-0' }} <span class="text-xs font-medium text-ink-400">OMR</span></div>
+          <div class="text-lg font-extrabold text-ink-900 mt-1">{{ totalValue | number:'1.0-0' }} <span class="text-xs font-medium text-ink-400">OMR</span></div>
         </div>
-        <div class="surface-card p-3">
+        <div class="surface-card px-3 py-2.5">
           <div class="text-[10.5px] font-bold text-ink-400 uppercase tracking-wide">Active</div>
-          <div class="text-xl font-extrabold text-status-normal mt-1">{{ activeCount }}</div>
+          <div class="text-lg font-extrabold text-status-normal mt-1">{{ activeCount }}</div>
         </div>
-        <div class="surface-card p-3">
+        <div class="surface-card px-3 py-2.5">
           <div class="text-[10.5px] font-bold text-ink-400 uppercase tracking-wide">Expiring / Expired</div>
-          <div class="text-xl font-extrabold text-status-red mt-1">{{ expiringOrExpiredCount }}</div>
+          <div class="text-lg font-extrabold text-status-red mt-1">{{ expiringOrExpiredCount }}</div>
         </div>
       </div>
 

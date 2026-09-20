@@ -24,10 +24,10 @@ import { StatusLevel } from '../../../core/models/status';
       </app-page-header>
 
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div class="surface-card p-4"><div class="text-xs text-ink-400">Degree</div><div class="text-sm font-medium mt-1">{{ agent.degree }}</div></div>
-        <div class="surface-card p-4"><div class="text-xs text-ink-400">Nationality</div><div class="text-sm font-medium mt-1">{{ agent.nationality }}</div></div>
-        <div class="surface-card p-4"><div class="text-xs text-ink-400">Join Date</div><div class="text-sm font-medium mt-1">{{ agent.joinDate }}</div></div>
-        <div class="surface-card p-4"><div class="text-xs text-ink-400">Vendor</div><div class="text-sm font-medium mt-1">{{ agent.vendor }}</div></div>
+        <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Degree</div><div class="text-sm font-medium mt-0.5">{{ agent.degree }}</div></div>
+        <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Nationality</div><div class="text-sm font-medium mt-0.5">{{ agent.nationality }}</div></div>
+        <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Join Date</div><div class="text-sm font-medium mt-0.5">{{ agent.joinDate }}</div></div>
+        <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Vendor</div><div class="text-sm font-medium mt-0.5">{{ agent.vendor }}</div></div>
       </div>
 
       <mat-tab-group>

@@ -7,17 +7,17 @@ import { StatusLevel } from '../../../core/models/status';
   standalone: true,
   imports: [CommonModule],
   template: `
-    <div class="surface-card p-4 h-full flex flex-col gap-3 min-w-0 overflow-hidden hover:border-brand-200">
+    <div class="surface-card px-4 pt-3 pb-3.5 h-full flex flex-col gap-2 min-w-0 overflow-hidden hover:border-brand-200">
       <div class="flex items-start justify-between gap-2">
-        <span class="text-[11px] font-bold text-ink-400 uppercase tracking-wider leading-tight min-h-[28px] flex items-center">{{ label }}</span>
+        <span class="text-[11px] font-bold text-ink-400 uppercase tracking-wider leading-tight flex items-center">{{ label }}</span>
         @if (icon) {
-          <span class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" [style.background]="badgeBg" [style.color]="accentColor">
+          <span class="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" [style.background]="badgeBg" [style.color]="accentColor">
             <span class="material-icons !text-[17px]">{{ icon }}</span>
           </span>
         }
       </div>
       <div class="flex items-baseline flex-wrap gap-x-1.5 gap-y-0 mt-auto min-w-0">
-        <span class="text-xl sm:text-2xl leading-tight font-extrabold text-ink-900 truncate max-w-full" [style.color]="level !== 'neutral' ? accentColor : null">{{ value }}</span>
+        <span class="text-lg sm:text-xl leading-tight font-extrabold text-ink-900 truncate max-w-full" [style.color]="level !== 'neutral' ? accentColor : null">{{ value }}</span>
         @if (unit) {
           <span class="text-xs font-medium text-ink-400 whitespace-nowrap">{{ unit }}</span>
         }

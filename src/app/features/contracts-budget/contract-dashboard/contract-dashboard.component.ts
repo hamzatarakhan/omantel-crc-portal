@@ -42,7 +42,7 @@ const VENDOR_PALETTE = ['#2d13ea', '#ea6e00', '#0f9c8f', '#0e9f6e', '#e3a008', '
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6 lg:h-[360px]">
       <app-chart-card class="lg:col-span-2" title="Contracts Expiring by Month" type="bar" [data]="expiryChart"></app-chart-card>
 
-      <div class="surface-card p-4 sm:p-5 flex flex-col gap-2 h-full min-h-0">
+      <div class="surface-card px-4 pt-3.5 pb-4 sm:px-5 flex flex-col gap-2 h-full min-h-0">
         <div>
           <h3 class="text-[13.5px] font-bold text-ink-900">Contract Value by Vendor</h3>
           <p class="text-xs text-ink-400 mt-0.5">Click a vendor for a full breakdown</p>

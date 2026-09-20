@@ -8,7 +8,7 @@ import { ChartConfiguration, ChartType } from 'chart.js';
   standalone: true,
   imports: [CommonModule, BaseChartDirective],
   template: `
-    <div class="surface-card p-4 sm:p-5 flex flex-col gap-3 h-full hover:border-brand-200">
+    <div class="surface-card px-4 pt-3.5 pb-4 sm:px-5 flex flex-col gap-3 h-full hover:border-brand-200">
       <div>
         <h3 class="text-[13.5px] font-bold text-ink-900">{{ title }}</h3>
         @if (subtitle) {
