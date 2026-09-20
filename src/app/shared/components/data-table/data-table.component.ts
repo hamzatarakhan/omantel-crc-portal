@@ -10,7 +10,8 @@ import { EmptyStateComponent } from '../empty-state/empty-state.component';
 export interface TableColumn<T = any> {
   key: string;
   label: string;
-  type?: 'text' | 'number' | 'currency' | 'date' | 'status';
+  type?: 'text' | 'number' | 'currency' | 'money' | 'date' | 'status';
+  decimals?: number;
   currency?: string;
   statusFn?: (row: T) => { label: string; level: StatusLevel };
   align?: 'left' | 'right';
@@ -87,6 +88,8 @@ export interface TableColumn<T = any> {
                         <span class="font-semibold text-ink-900">{{ row[col.key] | number: '1.0-2' }}</span> <span class="text-ink-400 text-xs">{{ col.currency || 'OMR' }}</span>
                       } @else if (col.type === 'date') {
                         {{ fmtDate(row[col.key]) }}
+                      } @else if (col.type === 'money') {
+                        {{ row[col.key] | number: moneyFormat(col) }}
                       } @else if (col.type === 'number') {
                         {{ row[col.key] | number }}
                       } @else {
@@ -162,6 +165,11 @@ export class DataTableComponent<T extends Record<string, any> = any> {
     const start = this.page() * this._pageSize();
     return this.filteredRows().slice(start, start + this._pageSize());
   });
+
+  moneyFormat(col: TableColumn): string {
+    const d = col.decimals ?? 3;
+    return '1.' + d + '-' + d;
+  }
 
   fmtDate(v: unknown): string {
     const s = String(v ?? '');

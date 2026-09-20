@@ -212,6 +212,8 @@ export interface PayableRules {
   thresholdSeconds: number;
   deviationPct: number;
   perVendor: boolean;
+  /** Whether the 3 Clicks incentive is billed on this invoice (the vendor's real invoice does not include it). */
+  includeIncentive: boolean;
 }
 
 export type InvoiceRunStatus = 'Not started' | 'Validated' | 'Flagged for review' | 'Approved for payment';
@@ -236,3 +238,46 @@ export interface AppUser {
 
 export const ATTENDANCE_CODES = ['P', 'OFF', 'A', 'S/L', 'C/L', 'M/L', 'P/L', 'SP', 'ST/L', 'AS'] as const;
 export type AttendanceCode = (typeof ATTENDANCE_CODES)[number];
+
+// ---------- Annexure (per-employee billing) ----------
+export interface PayrollLine {
+  residentId: string;
+  basic: number;
+  hra: number;
+  conveyance: number;
+  special: number;
+  other: number;
+  gross: number;
+  managementFee: number;
+  additional: number;
+  deduction: number;
+  billingRate: number;
+}
+
+export interface ResignationRecord {
+  id: string;
+  employeeId: string;
+  name: string;
+  queue: string;
+  residentId: string;
+  degree: Agent['degree'];
+  vendor: Agent['vendor'];
+  joinDate: string;
+  resignDate: string;
+  gross: number;
+  managementFee: number;
+  monthlyBilling: number;
+  prorated: number;
+  absentDays: number;
+  leaveEncashment: number;
+  total: number;
+}
+
+/** Everything the workbook import needs to replace the sample data. */
+export interface AnnexureImport {
+  fileName: string;
+  periodStart: string;
+  employees: Array<{ employeeId: string; name: string; queue: string; degree: Agent['degree']; nationality: string; joinDate: string; pay: PayrollLine }>;
+  attendance: { days: string[]; rows: Record<string, string[]> };
+  resignations: Array<Omit<ResignationRecord, 'id' | 'vendor'>>;
+}

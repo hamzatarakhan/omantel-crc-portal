@@ -10,6 +10,7 @@ import { CrcStore } from '../../../core/services/crc-store.service';
 import { UiService } from '../../../shared/services/ui.service';
 import { StatusLevel } from '../../../core/models/status';
 import { InvoicePreviewComponent } from './invoice-preview.component';
+import { AnnexureComponent } from './annexure.component';
 
 const VENDORS = ['Infoline LLC', 'Green Umbrella Services'];
 
@@ -18,7 +19,7 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
 @Component({
   selector: 'app-reconciliation',
   standalone: true,
-  imports: [RequiresDirective, InvoicePreviewComponent, CommonModule, FormsModule, RouterModule, MatButtonModule, MatIconModule, PageHeaderComponent, StatusChipComponent],
+  imports: [RequiresDirective, InvoicePreviewComponent, AnnexureComponent, CommonModule, FormsModule, RouterModule, MatButtonModule, MatIconModule, PageHeaderComponent, StatusChipComponent],
   template: `
     <app-page-header
       title="Reconciliation Workspace"
@@ -38,11 +39,14 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
       <div class="flex items-center gap-1 bg-white border border-surface-border rounded-lg p-0.5">
         <button (click)="view.set('calc')" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors" [class]="view() === 'calc' ? 'bg-brand-50 text-brand-700' : 'text-ink-500 hover:text-ink-900'"><mat-icon class="!text-base">calculate</mat-icon>Calculation</button>
         <button (click)="view.set('invoice')" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors" [class]="view() === 'invoice' ? 'bg-brand-50 text-brand-700' : 'text-ink-500 hover:text-ink-900'"><mat-icon class="!text-base">receipt_long</mat-icon>Invoice preview</button>
+        <button (click)="view.set('annexure')" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors" [class]="view() === 'annexure' ? 'bg-brand-50 text-brand-700' : 'text-ink-500 hover:text-ink-900'"><mat-icon class="!text-base">table_view</mat-icon>Annexure</button>
       </div>
     </div>
 
     @if (view() === 'invoice') {
       <app-invoice-preview [vendor]="vendor()"></app-invoice-preview>
+    } @else if (view() === 'annexure') {
+      <app-annexure [vendor]="vendor()"></app-annexure>
     } @else {
     <div class="surface-card overflow-x-auto mb-4">
       <div class="px-4 pt-3.5"><h3 class="text-[13.5px] font-bold text-ink-900">Payable calculation</h3><p class="text-xs text-ink-400 mt-0.5">Billing rate × billable days ÷ working days, per agent, from the <a class="text-brand-600 font-medium" routerLink="/csr/leave">attendance sheet</a>. Absence (A) is deducted; approved leave stays billable.</p></div>
@@ -72,13 +76,13 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
             <td class="px-4 py-2 text-right font-medium text-status-normal">+{{ calc().newJoining.amount | number:'1.2-2' }}</td>
           </tr>
           <tr class="border-t border-surface-border">
-            <td class="px-4 py-2 font-medium text-ink-700">Resignations <span class="text-xs text-ink-400 font-normal">&middot; billed for days worked (assumed half a month)</span></td>
+            <td class="px-4 py-2 font-medium text-ink-700">Resignations <span class="text-xs text-ink-400 font-normal">&middot; pro-rata to the last day + leave encashment</span></td>
             <td class="px-4 py-2 text-right">{{ calc().resignation.units }}</td><td class="px-4 py-2"></td><td class="px-4 py-2"></td>
             <td class="px-4 py-2 text-right font-medium text-status-normal">+{{ calc().resignation.amount | number:'1.2-2' }}</td>
           </tr>
           <tr class="border-t border-surface-border">
             <td class="px-4 py-2 font-medium text-ink-700" colspan="4">3 Clicks incentive <span class="text-xs text-ink-400 font-normal">&middot; {{ calc().eligibleCalls | number }} of {{ calc().sampleCalls | number }} calls eligible ({{ calc().excludedCalls | number }} shorter than {{ calc().threshold }}s excluded — <a class="text-brand-600" routerLink="/invoicing/rules">change rule</a>)</span></td>
-            <td class="px-4 py-2 text-right font-medium text-status-normal">+{{ calc().incentive | number:'1.2-2' }}</td>
+            <td class="px-4 py-2 text-right font-medium" [class]="calc().incentiveIncluded ? 'text-status-normal' : 'text-ink-400'">{{ calc().incentiveIncluded ? '+' : '' }}{{ calc().incentive | number:'1.2-2' }}{{ calc().incentiveIncluded ? '' : ' · not billed' }}</td>
           </tr>
         </tbody>
         <tfoot>
@@ -153,7 +157,7 @@ export class ReconciliationComponent {
 
   vendors = VENDORS;
   vendor = signal(VENDORS[0]);
-  view = signal<'calc' | 'invoice'>('calc');
+  view = signal<'calc' | 'invoice' | 'annexure'>('calc');
   private typed = signal<Record<string, number>>({});
 
   calc = computed(() => this.store.calculateInvoice(this.vendor()));

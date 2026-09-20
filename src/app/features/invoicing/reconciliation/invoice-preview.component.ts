@@ -146,7 +146,7 @@ const FALLBACK_PROFILE = { bank: 'As registered in the ERP vendor master', accou
 
     <div class="max-w-[900px] mx-auto mt-4 text-xs text-ink-400 leading-relaxed no-print">
       <strong class="text-ink-500">How the lines are built:</strong> tier units are the vendor's agents on the payroll before this month, at the tier billing rate; absences (A) on the attendance sheet become the deduction line;
-      agents who joined this month are billed pro-rata under New Joining; resignations are assumed to be billed for half a month; the 3 Clicks incentive follows the call-duration rule. Confirm these conventions with Omantel.
+      agents who joined this month are billed pro-rata under New Joining; resignations are billed pro-rata to the last day plus leave encashment (gross ÷ 30 per day); the 3 Clicks incentive follows the call-duration rule. Confirm these conventions with Omantel.
     </div>
   `,
 })
@@ -162,9 +162,14 @@ export class InvoicePreviewComponent {
   invNo = computed(() => this.payment()?.invoiceRef ?? '');
   profile = computed(() => VENDOR_PROFILE[this.vendor()] ?? FALLBACK_PROFILE);
 
-  private today = new Date();
-  private monthEnd = new Date(this.today.getFullYear(), this.today.getMonth() + 1, 0);
-  private monthStart = new Date(this.today.getFullYear(), this.today.getMonth(), 1);
+  private get monthStart() {
+    const [y, m] = this.store.periodStart().split('-').map(Number);
+    return new Date(y, m - 1, 1);
+  }
+  private get monthEnd() {
+    const [y, m] = this.store.periodStart().split('-').map(Number);
+    return new Date(y, m, 0);
+  }
   private mon = (d: Date) => MONTHS[d.getMonth()];
   private fmt = (d: Date) => d.getDate() + '-' + this.mon(d) + '-' + d.getFullYear();
 
@@ -186,12 +191,13 @@ export class InvoicePreviewComponent {
   extraLines = computed(() => {
     const c = this.calc();
     const perAbsentDay = c.absentDays ? c.absenceDeduction / c.absentDays : 0;
-    return [
+    const lines = [
       { no: 2, label: 'Additional : Resignation', units: c.resignation.units, rate: c.resignation.units ? c.resignation.amount / c.resignation.units : 0, amount: c.resignation.amount },
       { no: 3, label: 'Additional : New Joining', units: c.newJoining.units, rate: c.newJoining.units ? c.newJoining.amount / c.newJoining.units : 0, amount: c.newJoining.amount },
       { no: 4, label: 'Deduction for Absents', units: c.absentDays, rate: perAbsentDay, amount: c.absenceDeduction > 0.0005 ? -c.absenceDeduction : 0 },
       { no: 5, label: `Additional : 3 Clicks incentive (calls of ${c.threshold}s or more)`, units: c.eligibleCalls, rate: 0.05, amount: c.incentive },
     ];
+    return c.incentiveIncluded ? lines : lines.slice(0, 3);
   });
 
   totalInWords = computed(() => {

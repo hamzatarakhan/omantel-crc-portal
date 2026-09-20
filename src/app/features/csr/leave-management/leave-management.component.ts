@@ -57,7 +57,7 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
         </div>
       </mat-tab>
 
-      <mat-tab label="Attendance sheet (14 days)">
+      <mat-tab [label]="'Attendance sheet (' + days().length + ' days)'">
         <div class="pt-4">
           <div class="surface-card p-4 mb-4">
             <h3 class="text-xs font-semibold uppercase tracking-wide text-ink-500 mb-3">Leave Code Legend</h3>
@@ -94,7 +94,7 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
                 <thead>
                   <tr class="text-left">
                     <th class="sticky left-0 top-0 z-20 min-w-[220px] border-b border-surface-border">Agent</th>
-                    @for (d of days; track d) { <th class="sticky top-0 z-10 !px-1 text-center border-b border-surface-border">{{ d.slice(5) }}</th> }
+                    @for (d of days(); track d) { <th class="sticky top-0 z-10 !px-1 text-center border-b border-surface-border">{{ d.slice(5) }}</th> }
                   </tr>
                 </thead>
                 <tbody>
@@ -108,7 +108,7 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
                       }
                     </tr>
                   } @empty {
-                    <tr><td [attr.colspan]="days.length + 1" class="text-center text-ink-400 !py-10">No agents match your filter.</td></tr>
+                    <tr><td [attr.colspan]="days().length + 1" class="text-center text-ink-400 !py-10">No agents match your filter.</td></tr>
                   }
                 </tbody>
               </table>
@@ -191,6 +191,6 @@ export class LeaveManagementComponent {
   }
 
   exportSheet() {
-    this.ui.csv('attendance-sheet', this.sheet().map((a) => ({ Agent: a.name, 'Employee ID': a.employeeId, Queue: a.queue, Vendor: a.vendor, ...Object.fromEntries(this.days.map((d, i) => [d, this.att()[a.id]?.[i] ?? ''])) })));
+    this.ui.csv('attendance-sheet', this.sheet().map((a) => ({ Agent: a.name, 'Employee ID': a.employeeId, Queue: a.queue, Vendor: a.vendor, ...Object.fromEntries(this.days().map((d, i) => [d, this.att()[a.id]?.[i] ?? ''])) })));
   }
 }

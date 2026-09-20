@@ -1,6 +1,6 @@
 import { Component, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ActivatedRoute, RouterModule } from '@angular/router';
+import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { map } from 'rxjs';
 import { MatTabsModule } from '@angular/material/tabs';
@@ -33,6 +33,7 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
       >
         <app-status-chip [label]="a.leaveType || a.status" [level]="level()"></app-status-chip>
         <button mat-stroked-button (click)="recordLeave()" appRequires="Manage Leave & Attendance"><mat-icon class="!text-base !mr-1">event_available</mat-icon>Record leave / status</button>
+        <button mat-stroked-button color="warn" (click)="resign()" appRequires="Manage Leave & Attendance"><mat-icon class="!text-base !mr-1">logout</mat-icon>Record resignation</button>
       </app-page-header>
 
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
@@ -92,7 +93,7 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
             <div class="flex gap-1.5 flex-wrap">
               @for (code of codes(); track $index) {
                 <div class="w-14 text-center">
-                  <div class="text-[10px] text-ink-400 mb-1">{{ days[$index].slice(5) }}</div>
+                  <div class="text-[10px] text-ink-400 mb-1">{{ days()[$index].slice(5) }}</div>
                   <div class="rounded-lg py-1.5 text-xs font-bold" [class]="style(code)">{{ code }}</div>
                 </div>
               }
@@ -105,7 +106,7 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
         <mat-tab label="Performance Summary">
           @if (perf(); as p) {
             <div class="pt-4 grid grid-cols-3 gap-4 max-w-xl">
-              <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Attendance (14 days)</div><div class="text-lg font-extrabold mt-0.5">{{ p.attendancePct }}%</div></div>
+              <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Attendance ({{ days().length }} days)</div><div class="text-lg font-extrabold mt-0.5">{{ p.attendancePct }}%</div></div>
               <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Avg. call resolution</div><div class="text-lg font-extrabold mt-0.5">{{ p.avgCallResolutionMin.toFixed(1) }} min</div></div>
               <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">CSAT</div><div class="text-lg font-extrabold mt-0.5">{{ p.csatPct }}%</div></div>
             </div>
@@ -120,6 +121,7 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
 export class AgentProfileComponent {
   private store = inject(CrcStore);
   private ui = inject(UiService);
+  private router = inject(Router);
   private id = toSignal(inject(ActivatedRoute).paramMap.pipe(map((p) => p.get('id'))));
 
   days = this.store.attendanceDays;
@@ -151,6 +153,28 @@ export class AgentProfileComponent {
   verify(agentId: string) {
     this.store.verifyId(agentId);
     this.ui.toast('ID details confirmed.');
+  }
+
+  async resign() {
+    if (!this.ui.requires('Manage Leave & Attendance')) return;
+    const a = this.agent();
+    if (!a) return;
+    const v = await this.ui.form({
+      title: 'Record resignation for ' + a.name,
+      subtitle: 'The agent leaves the active list. The vendor is billed pro-rata to the last day plus leave encashment.',
+      icon: 'logout', submitLabel: 'Record resignation',
+      values: { date: new Date().toISOString().slice(0, 10), leaveDays: 0 },
+      fields: [
+        { key: 'date', label: 'Last working day', type: 'date', required: true },
+        { key: 'leaveDays', label: 'Unused leave days to encash', type: 'number', min: 0, required: true, hint: 'Encashed at gross salary ÷ 30 per day.' },
+      ],
+    });
+    if (!v) return;
+    const rec = this.store.resignAgent(a.id, v['date'], Number(v['leaveDays']) || 0);
+    if (rec) {
+      this.ui.toast(a.name + ' resigned — billed ' + rec.total.toFixed(3) + ' OMR on the invoice (Reconciliation → Annexure → Resignations).', 6000);
+      this.router.navigate(['/csr/directory']);
+    }
   }
 
   async recordLeave() {

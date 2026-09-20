@@ -50,6 +50,14 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
         <mat-slide-toggle [ngModel]="perVendor()" (ngModelChange)="perVendor.set($event)"></mat-slide-toggle>
       </div>
 
+      <div class="flex items-center justify-between">
+        <div>
+          <div class="text-sm font-medium text-ink-700">Bill the 3 Clicks incentive on this invoice</div>
+          <div class="text-xs text-ink-400">Off matches the vendor's current tax invoice, which has no incentive line. When off, the incentive is still calculated and shown, but not added to the total.</div>
+        </div>
+        <mat-slide-toggle [ngModel]="includeIncentive()" (ngModelChange)="includeIncentive.set($event)"></mat-slide-toggle>
+      </div>
+
       @if (dirty()) {
         <p class="text-xs text-status-amber font-medium">Unsaved changes. Saving resets any invoice validation so the payable is recalculated with the new rules.</p>
       }
@@ -68,15 +76,16 @@ export class RulesComponent {
   threshold = signal(this.store.payableRules().thresholdSeconds);
   deviation = signal(this.store.payableRules().deviationPct);
   perVendor = signal(this.store.payableRules().perVendor);
+  includeIncentive = signal(this.store.payableRules().includeIncentive);
 
   dirty = computed(() => {
     const r = this.store.payableRules();
-    return r.thresholdSeconds !== this.threshold() || r.deviationPct !== this.deviation() || r.perVendor !== this.perVendor();
+    return r.thresholdSeconds !== this.threshold() || r.deviationPct !== this.deviation() || r.perVendor !== this.perVendor() || r.includeIncentive !== this.includeIncentive();
   });
 
   save() {
     if (!this.ui.requires('Configure Payable Rules')) return;
-    this.store.savePayableRules({ thresholdSeconds: this.threshold(), deviationPct: this.deviation(), perVendor: this.perVendor() });
+    this.store.savePayableRules({ thresholdSeconds: this.threshold(), deviationPct: this.deviation(), perVendor: this.perVendor(), includeIncentive: this.includeIncentive() });
     this.ui.toast('Payable rule configuration saved — invoices will be recalculated.');
   }
 
@@ -85,5 +94,6 @@ export class RulesComponent {
     this.threshold.set(r.thresholdSeconds);
     this.deviation.set(r.deviationPct);
     this.perVendor.set(r.perVendor);
+    this.includeIncentive.set(r.includeIncentive);
   }
 }

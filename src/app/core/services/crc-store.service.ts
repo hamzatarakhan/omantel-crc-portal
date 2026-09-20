@@ -1,14 +1,16 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import {
-  Agent, AppNotification, AppUser, AuditEntry, BudgetLine, BudgetPlan, Candidate, CandidateStatus, Contract, IdDocument,
+  Agent, AnnexureImport, AppNotification, AppUser, AuditEntry, BudgetLine, BudgetPlan, Candidate, CandidateStatus, Contract, IdDocument,
   InterviewQuestion, InvoiceRun, MovementAnnouncement, MovementRequest, NotificationRule, PayableLine,
-  PayableRules, PaymentRecord, PerformanceRecord, SyncRun, WorkforceSnapshot,
+  PayableRules, PaymentRecord, PayrollLine, PerformanceRecord, ResignationRecord, SyncRun, WorkforceSnapshot,
 } from '../models/domain';
 import { StatusLevel, daysRemainingToLevel } from '../models/status';
 import { MockDataService } from './mock-data.service';
 import { NAV_GROUPS, NavGroup } from '../nav.config';
 
 export const CURRENT_USER = 'Hamza Tarkan';
+/** The contract's flat management fee per employee per month (OMR). */
+export const FLAT_MANAGEMENT_FEE = 116;
 export const ROLE_SUMMARY: Record<string, string> = {
   'Contract Mgmt Team': 'Contracts, budgets and forecasts',
   'Budget Owner': 'Contracts and budget approval',
@@ -111,7 +113,7 @@ export class CrcStore {
   readonly budgetPlan = signal<BudgetPlan>({ status: 'Draft', drafts: {} });
 
   readonly agents = signal<Agent[]>(this.mock.getAgents(48));
-  readonly attendanceDays = Array.from({ length: 14 }, (_, i) => isoDay(i - 13));
+  readonly attendanceDays = signal<string[]>(Array.from({ length: 14 }, (_, i) => isoDay(i - 13)));
   readonly attendance = signal<Record<string, string[]>>(this.seedAttendance());
   readonly idDocs = signal<Record<string, IdDocument>>(this.seedIdDocs());
   readonly snapshots: WorkforceSnapshot[] = this.mock.getWorkforceSnapshots();
@@ -123,7 +125,12 @@ export class CrcStore {
   readonly movementRequests = signal<MovementRequest[]>(this.seedMovementRequests());
 
   readonly payableRates: PayableLine[] = this.mock.getPayableLines();
-  readonly payableRules = signal<PayableRules>({ thresholdSeconds: 10, deviationPct: 2, perVendor: false });
+  /** First day of the billing month; the workbook import sets it from the invoice date. */
+  readonly periodStart = signal(new Date().toISOString().slice(0, 7) + '-01');
+  readonly payroll = signal<Record<string, PayrollLine>>(this.seedPayroll());
+  readonly resignations = signal<ResignationRecord[]>(this.seedResignations());
+  readonly importInfo = signal<{ fileName: string; employees: number; days: number; resignations: number; period: string } | null>(null);
+  readonly payableRules = signal<PayableRules>({ thresholdSeconds: 10, deviationPct: 2, perVendor: false, includeIncentive: false });
   readonly invoiceRuns = signal<Record<string, InvoiceRun>>({});
   readonly payments = signal<PaymentRecord[]>(this.mock.getPaymentRecords());
 
@@ -359,7 +366,7 @@ export class CrcStore {
     const n = this.next();
     const agent: Agent = { id: 'AG-' + (3000 + n), employeeId: String(4000 + n), name: a.name, queue: a.queue, vendor: a.vendor, degree: a.degree, nationality: a.nationality || 'Oman', joinDate: isoDay(0), status: 'Present' };
     this.agents.update((list) => [agent, ...list]);
-    this.attendance.update((att) => ({ ...att, [agent.id]: this.attendanceDays.map((d) => (new Date(d).getDay() >= 5 ? 'OFF' : 'P')) }));
+    this.attendance.update((att) => ({ ...att, [agent.id]: this.attendanceDays().map((d) => (new Date(d).getDay() >= 5 ? 'OFF' : 'P')) }));
     this.log('Agent Added', agent.employeeId, `${agent.name} added to ${agent.queue} (${agent.vendor}).`);
     return agent;
   }
@@ -370,12 +377,12 @@ export class CrcStore {
       row[dayIndex] = code;
       return { ...att, [agentId]: row };
     });
-    if (dayIndex === this.attendanceDays.length - 1) this.syncAgentStatusFromCode(agentId, code);
+    if (dayIndex === this.attendanceDays().length - 1) this.syncAgentStatusFromCode(agentId, code);
   }
 
   /** Leave override by the CSR team (does not alter the source WFO record). Applies to today. */
   recordLeave(agentId: string, code: string, note = '') {
-    this.setAttendance(agentId, this.attendanceDays.length - 1, code);
+    this.setAttendance(agentId, this.attendanceDays().length - 1, code);
     const a = this.agents().find((x) => x.id === agentId);
     if (a) this.log('Leave Override', a.employeeId, `${a.name}: today reclassified to ${code}${note ? ' — ' + note : ''}.`);
   }
@@ -515,55 +522,118 @@ export class CrcStore {
     return this.payableRates.find((r) => r.degree === degree)?.billingRate ?? 0;
   }
 
-  /** Payable calculation for a vendor: billing rate × billable-day ratio per agent, plus 3 Clicks incentive on eligible calls. */
+  /** Payroll (salary components + management fee) for an agent; generated from the tier template if none is stored. */
+  payrollFor(a: Agent): PayrollLine {
+    return this.payroll()[a.id] ?? this.makePayroll(a.id, a.degree);
+  }
+
+  /**
+   * Payable calculation for a vendor, from each employee's own billing rate:
+   *  - existing staff: billing rate x billable-day ratio (absence "A" is deducted, approved leave stays billable)
+   *  - joined this month: billed pro-rata from the joining date on their own line
+   *  - resignations: pro-rata to the last day plus leave encashment
+   *  - plus the 3 Clicks incentive on calls above the minimum duration
+   */
   calculateInvoice(vendorName: string) {
     const key: Agent['vendor'] = vendorName.startsWith('Green') ? 'Green Umbrella' : 'Infoline';
     const att = this.attendance();
     const all = this.agents().filter((a) => a.vendor === key);
-    const now = new Date();
-    const monthPrefix = isoDay(0).slice(0, 7);
-    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    // Agents who joined this month are billed pro-rata on their own "New Joining" line, not in the tier lines.
+    const monthPrefix = this.periodStart().slice(0, 7);
+    const [py, pm] = this.periodStart().split('-').map(Number);
+    const daysInMonth = new Date(py, pm, 0).getDate();
     const joiners = all.filter((a) => a.joinDate.startsWith(monthPrefix));
     const existing = all.filter((a) => !a.joinDate.startsWith(monthPrefix));
 
+    const absentees: Array<{ agent: Agent; absentDays: number; rate: number; deduction: number }> = [];
     let absentDays = 0;
     const tiers = (['Bachelor', 'Diploma', 'Non-Diploma'] as const).map((degree) => {
       const group = existing.filter((a) => a.degree === degree);
-      const rate = this.rateFor(degree);
-      let factorSum = 0;
+      let gross = 0, amount = 0, factorSum = 0, payroll = 0, fee = 0;
       for (const a of group) {
+        const pay = this.payrollFor(a);
         const codes = att[a.id] ?? [];
         const expected = codes.filter((c) => c !== 'OFF').length;
         const billable = codes.filter((c) => c !== 'OFF' && c !== 'A').length;
-        absentDays += codes.filter((c) => c === 'A').length;
-        factorSum += expected ? billable / expected : 0;
+        const absent = codes.filter((c) => c === 'A').length;
+        const factor = expected ? billable / expected : 0;
+        const flatFee = Math.min(pay.managementFee, FLAT_MANAGEMENT_FEE);
+        gross += pay.billingRate; amount += pay.billingRate * factor; factorSum += factor; fee += flatFee; payroll += pay.billingRate - flatFee;
+        if (absent) {
+          absentDays += absent;
+          absentees.push({ agent: a, absentDays: absent, rate: pay.billingRate, deduction: expected ? (pay.billingRate * absent) / expected : 0 });
+        }
       }
-      return { degree, headcount: group.length, rate, gross: rate * group.length, billableFte: factorSum, amount: rate * factorSum };
+      return { degree, headcount: group.length, rate: group.length ? gross / group.length : 0, gross, payroll, fee, billableFte: factorSum, amount };
     });
     const gross = tiers.reduce((s, t) => s + t.gross, 0);
     const base = tiers.reduce((s, t) => s + t.amount, 0);
     const absenceDeduction = gross - base;
 
-    const newJoining = {
-      units: joiners.length,
-      amount: joiners.reduce((s, a) => s + this.rateFor(a.degree) * ((daysInMonth - Math.min(daysInMonth, Math.max(1, parseInt(a.joinDate.slice(8, 10), 10) || 1)) + 1) / daysInMonth), 0),
-    };
-    // Assumption: a resignation is billed for the days worked, taken as half the month at the average rate.
-    const rates = this.payableRates.map((r) => r.billingRate);
-    const avgRate = rates.reduce((s, r) => s + r, 0) / (rates.length || 1);
-    const last = this.snapshots[this.snapshots.length - 1];
-    const resignationUnits = key === 'Infoline' ? last.resignations : 0;
-    const resignation = { units: resignationUnits, amount: resignationUnits * avgRate * 0.5 };
+    const newJoiners = joiners.map((a) => {
+      const pay = this.payrollFor(a);
+      const day = Math.min(daysInMonth, Math.max(1, parseInt(a.joinDate.slice(8, 10), 10) || 1));
+      const daysBilled = daysInMonth - day + 1;
+      return { agent: a, pay, daysBilled, prorated: (pay.billingRate * daysBilled) / daysInMonth };
+    });
+    const newJoining = { units: newJoiners.length, amount: newJoiners.reduce((s, j) => s + j.prorated, 0) };
+
+    const resignationRecords = this.resignations().filter((r) => r.vendor === key && r.resignDate.startsWith(monthPrefix));
+    const resignation = { units: resignationRecords.length, amount: resignationRecords.reduce((s, r) => s + r.total, 0) };
 
     const threshold = this.payableRules().thresholdSeconds;
     const sampleCalls = all.length * 260;
     const excludedCalls = Math.round(sampleCalls * Math.min(0.6, threshold / 60));
     const eligibleCalls = sampleCalls - excludedCalls;
     const incentive = Math.round(eligibleCalls * 0.05 * 100) / 100;
-    const subtotal = base + newJoining.amount + resignation.amount + incentive;
+    const incentiveIncluded = this.payableRules().includeIncentive;
+    const subtotal = base + newJoining.amount + resignation.amount + (incentiveIncluded ? incentive : 0);
     const vat = subtotal * 0.05;
-    return { vendorName, tiers, gross, base, absenceDeduction, absentDays, newJoining, resignation, sampleCalls, excludedCalls, eligibleCalls, incentive, subtotal, vat, total: subtotal + vat, threshold };
+    return { vendorName, existing, tiers, gross, base, absenceDeduction, absentDays, absentees, newJoiners, newJoining, resignationRecords, resignation, sampleCalls, excludedCalls, eligibleCalls, incentive, incentiveIncluded, subtotal, vat, total: subtotal + vat, threshold };
+  }
+
+  /** Records a resignation: the agent leaves the active list and is billed pro-rata plus leave encashment. */
+  resignAgent(agentId: string, resignDate: string, leaveDays: number) {
+    const a = this.agents().find((x) => x.id === agentId);
+    if (!a) return undefined;
+    const pay = this.payrollFor(a);
+    const rec = this.buildResignation({ employeeId: a.employeeId, name: a.name, queue: a.queue, residentId: pay.residentId, degree: a.degree, vendor: a.vendor, joinDate: a.joinDate, resignDate, gross: pay.gross, managementFee: pay.managementFee, leaveDays, absentDays: 0 });
+    this.resignations.update((list) => [rec, ...list]);
+    this.agents.update((list) => list.filter((x) => x.id !== agentId));
+    this.attendance.update((m) => { const { [agentId]: _gone, ...rest } = m; return rest; });
+    this.invoiceRuns.set({});
+    this.log('Resignation Recorded', a.employeeId, `${a.name} resigned on ${resignDate}; billed ${rec.total.toFixed(3)} OMR (pro-rata ${rec.prorated.toFixed(3)} + leave encashment ${rec.leaveEncashment.toFixed(3)}).`);
+    this.notify(`${a.name}'s resignation was recorded.`, 'CSR Management', 'info', '/invoicing/reconciliation');
+    return rec;
+  }
+
+  /** Replaces the sample data with the vendor's real monthly annexure (parsed in the browser). */
+  importAnnexure(d: AnnexureImport) {
+    const vendor: Agent['vendor'] = 'Infoline';
+    const agents: Agent[] = [];
+    const payroll: Record<string, PayrollLine> = {};
+    const att: Record<string, string[]> = {};
+    const last = d.attendance.days.length - 1;
+    for (const e of d.employees) {
+      const id = 'AG-' + e.employeeId;
+      const codes = d.attendance.rows[e.employeeId] ?? d.attendance.days.map(() => 'P');
+      const code = codes[last] ?? 'P';
+      const status: Agent['status'] = code === 'P' ? 'Present' : code === 'OFF' ? 'Off' : code === 'A' ? 'Absent' : 'On Leave';
+      agents.push({ id, employeeId: e.employeeId, name: e.name, queue: e.queue || 'Unassigned', vendor, degree: e.degree, nationality: e.nationality, joinDate: e.joinDate, status, leaveType: status === 'On Leave' ? LEAVE_TYPE_BY_CODE[code] : undefined });
+      payroll[id] = e.pay;
+      att[id] = codes;
+    }
+    this.agents.set(agents);
+    this.payroll.set(payroll);
+    this.attendanceDays.set(d.attendance.days);
+    this.attendance.set(att);
+    this.resignations.set(d.resignations.map((r) => ({ ...r, id: 'RES-' + this.next(), vendor })));
+    this.periodStart.set(d.periodStart);
+    this.idDocs.set({});
+    this.movementRequests.set([]);
+    this.invoiceRuns.set({});
+    this.importInfo.set({ fileName: d.fileName, employees: agents.length, days: d.attendance.days.length, resignations: d.resignations.length, period: this.period() });
+    this.log('Annexure Imported', d.fileName, `${agents.length} employees, ${d.attendance.days.length} attendance days and ${d.resignations.length} resignation(s) loaded for ${this.period()}.`);
+    this.notify(`Annexure loaded: ${agents.length} employees for ${this.period()}.`, 'Invoicing & Payments', 'green', '/invoicing/reconciliation');
   }
 
   validateInvoice(vendorName: string, vendorAmount: number) {
@@ -605,11 +675,12 @@ export class CrcStore {
   savePayableRules(rules: PayableRules) {
     this.payableRules.set(rules);
     this.invoiceRuns.set({});
-    this.log('Payable Rules Saved', 'PAYABLE-RULES', `Min call duration ${rules.thresholdSeconds}s, deviation review ${rules.deviationPct}%${rules.perVendor ? ', per-vendor' : ''}. Invoices must be re-validated.`);
+    this.log('Payable Rules Saved', 'PAYABLE-RULES', `Min call duration ${rules.thresholdSeconds}s, deviation review ${rules.deviationPct}%${rules.perVendor ? ', per-vendor' : ''}, incentive ${rules.includeIncentive ? 'billed on the invoice' : 'not on the invoice'}. Invoices must be re-validated.`);
   }
 
   period(): string {
-    return new Date().toLocaleString('en-GB', { month: 'long', year: 'numeric' });
+    const [y, m] = this.periodStart().split('-').map(Number);
+    return new Date(y, m - 1, 1).toLocaleString('en-GB', { month: 'long', year: 'numeric' });
   }
 
   // ---------- internals ----------
@@ -632,14 +703,55 @@ export class CrcStore {
     return grid;
   }
 
+  private makePayroll(id: string, degree: Agent['degree']): PayrollLine {
+    const t = this.payableRates.find((r) => r.degree === degree) ?? this.payableRates[0];
+    const h = hash(id);
+    const r3 = (n: number) => Math.round(n * 1000) / 1000;
+    const basic = r3(t.basic * (0.8 + (h % 40) / 100));
+    const hra = [66.5, 70, 75, 100][h % 4];
+    const conveyance = h % 5 === 0 ? 0 : 40;
+    const special = Math.round(t.specialAllowance * (0.7 + ((h >> 3) % 60) / 100) * 100) / 100;
+    const gross = r3(basic + hra + conveyance + special);
+    return { residentId: String(5_000_000 + (h % 20_000_000)), basic, hra, conveyance, special, other: 0, gross, managementFee: 116, additional: 0, deduction: 0, billingRate: r3(gross + 116) };
+  }
+
+  private seedPayroll(): Record<string, PayrollLine> {
+    const rec: Record<string, PayrollLine> = {};
+    for (const a of this.agents()) rec[a.id] = this.makePayroll(a.id, a.degree);
+    return rec;
+  }
+
+  private buildResignation(r: { employeeId: string; name: string; queue: string; residentId: string; degree: Agent['degree']; vendor: Agent['vendor']; joinDate: string; resignDate: string; gross: number; managementFee: number; leaveDays: number; absentDays: number }): ResignationRecord {
+    const [y, m] = r.resignDate.slice(0, 7).split('-').map(Number);
+    const daysInMonth = new Date(y, m, 0).getDate();
+    const day = Math.min(daysInMonth, Math.max(1, parseInt(r.resignDate.slice(8, 10), 10) || 1));
+    const monthlyBilling = r.gross + r.managementFee;
+    const prorated = Math.round(((monthlyBilling * day) / daysInMonth) * 1000) / 1000;
+    // Assumption: leave is encashed at gross / 30 per day — confirm the formula with Omantel / the vendor.
+    const leaveEncashment = Math.round(((r.leaveDays * r.gross) / 30) * 1000) / 1000;
+    return { id: 'RES-' + this.next(), employeeId: r.employeeId, name: r.name, queue: r.queue, residentId: r.residentId, degree: r.degree, vendor: r.vendor, joinDate: r.joinDate, resignDate: r.resignDate, gross: r.gross, managementFee: r.managementFee, monthlyBilling, prorated, absentDays: r.absentDays, leaveEncashment, total: prorated + leaveEncashment };
+  }
+
+  private seedResignations(): ResignationRecord[] {
+    const month = this.periodStart().slice(0, 7);
+    const sample: Array<[string, string, Agent['degree'], number, number]> = [
+      ['Nasser Al-Hinai', 'Retention', 'Diploma', 8, 3], ['Rahma Al-Mamari', 'Sales', 'Non-Diploma', 15, 5],
+      ['Yaqoub Al-Shukaili', 'Complaints', 'Bachelor', 21, 2], ['Sumaiya Al-Wahaibi', 'Hotline', 'Diploma', 26, 8],
+    ];
+    return sample.map(([name, queue, degree, day, leaveDays], i) => {
+      const pay = this.makePayroll('RES' + i, degree);
+      return this.buildResignation({ employeeId: String(6100 + i), name, queue, residentId: pay.residentId, degree, vendor: 'Infoline', joinDate: '2022-0' + (i + 3) + '-15', resignDate: month + '-' + String(day).padStart(2, '0'), gross: pay.gross, managementFee: 116, leaveDays, absentDays: 0 });
+    });
+  }
+
   private seedAttendance(): Record<string, string[]> {
     const rec: Record<string, string[]> = {};
     const agents = this.agents();
     agents.forEach((a, i) => {
-      rec[a.id] = this.attendanceDays.map((day, d) => {
+      rec[a.id] = this.attendanceDays().map((day, d) => {
         if (new Date(day).getDay() >= 5) return 'OFF';
-        const last = d === this.attendanceDays.length - 1;
-        if (a.status === 'On Leave' && d >= this.attendanceDays.length - 3) return LEAVE_CODE_BY_TYPE[a.leaveType ?? ''] ?? 'C/L';
+        const last = d === this.attendanceDays().length - 1;
+        if (a.status === 'On Leave' && d >= this.attendanceDays().length - 3) return LEAVE_CODE_BY_TYPE[a.leaveType ?? ''] ?? 'C/L';
         if (a.status === 'Absent' && last) return 'A';
         if (a.status === 'Off' && last) return 'OFF';
         if ((i * 7 + d * 3) % 23 === 0) return 'S/L';
