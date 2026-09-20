@@ -94,6 +94,17 @@ select {
   appearance: none;
 }
 
+// The reset above strips the browser's dropdown arrow, so every plain <select> gets one back.
+// (Selects that carry `appearance-none` draw their own chevron icon next to the field.)
+select:not(.appearance-none) {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%238589a3' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 7.5 10 12.5 15 7.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+  background-size: 1rem;
+  padding-right: 1.9rem;
+  cursor: pointer;
+}
+
 // Hide native number-input spinner chrome for a clean, modern field
 input[type='number']::-webkit-inner-spin-button,
 input[type='number']::-webkit-outer-spin-button {
