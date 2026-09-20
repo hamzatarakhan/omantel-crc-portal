@@ -102,6 +102,12 @@ input[type='number'] {
   appearance: textfield;
 }
 
+// Tailwind's reset is off, so headings/paragraphs kept the browser's ~1em default margins —
+// that's the extra dead space above card titles. Spacing is set explicitly with mt-/mb- classes.
+h1, h2, h3, h4, h5, h6, p {
+  margin: 0;
+}
+
 h1, h2, h3, h4 {
   font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
   letter-spacing: -0.01em;

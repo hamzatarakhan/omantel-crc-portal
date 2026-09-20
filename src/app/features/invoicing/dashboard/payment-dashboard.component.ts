@@ -25,8 +25,7 @@ interface BudgetVsActualRow { category: string; allocated: number; actual: numbe
       <app-kpi-card label="Completed this Cycle" [value]="completedCount" level="normal" icon="task_alt"></app-kpi-card>
     </div>
 
-    <h2 class="text-sm font-semibold text-ink-700 mb-3">Budget vs. Actual Spend</h2>
-    <app-data-table [columns]="columns" [rows]="budgetVsActual" [exportable]="true"></app-data-table>
+    <app-data-table title="Budget vs. Actual Spend" [columns]="columns" [rows]="budgetVsActual" [exportable]="true"></app-data-table>
   `,
 })
 export class PaymentDashboardComponent {

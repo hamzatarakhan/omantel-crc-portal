@@ -22,6 +22,9 @@ export interface TableColumn<T = any> {
   imports: [CommonModule, FormsModule, MatIconModule, MatButtonModule, StatusChipComponent, EmptyStateComponent],
   template: `
     <div class="surface-card overflow-hidden">
+      @if (title) {
+        <h3 class="px-4 pt-3.5 text-[13.5px] font-bold text-ink-900">{{ title }}</h3>
+      }
       <div class="flex items-center justify-between gap-3 p-3.5 border-b border-surface-border flex-wrap">
         <div class="flex items-center gap-3 flex-1 min-w-0">
           <div class="relative w-full max-w-[260px]">
@@ -109,6 +112,7 @@ export interface TableColumn<T = any> {
   `,
 })
 export class DataTableComponent<T extends Record<string, any> = any> {
+  @Input() title = '';
   @Input() columns: TableColumn<T>[] = [];
   @Input() rows: T[] = [];
   @Input() pageSize = 8;

@@ -47,7 +47,7 @@ const VENDOR_PALETTE = ['#2d13ea', '#ea6e00', '#0f9c8f', '#0e9f6e', '#e3a008', '
           <h3 class="text-[13.5px] font-bold text-ink-900">Contract Value by Vendor</h3>
           <p class="text-xs text-ink-400 mt-0.5">Click a vendor for a full breakdown</p>
         </div>
-        <div class="h-[110px] shrink-0">
+        <div class="h-[92px] shrink-0">
           <canvas baseChart [data]="vendorChart" type="doughnut" [options]="vendorChartOptions"></canvas>
         </div>
         <div class="flex flex-col gap-1 flex-1 min-h-0 overflow-y-auto">
@@ -66,8 +66,7 @@ const VENDOR_PALETTE = ['#2d13ea', '#ea6e00', '#0f9c8f', '#0e9f6e', '#e3a008', '
       </div>
     </div>
 
-    <h2 class="text-sm font-semibold text-ink-700 mb-3">Contracts Expiring Soon</h2>
-    <app-data-table [columns]="columns" [rows]="expiringRows"></app-data-table>
+    <app-data-table title="Contracts Expiring Soon" [columns]="columns" [rows]="expiringRows"></app-data-table>
   `,
 })
 export class ContractDashboardComponent {

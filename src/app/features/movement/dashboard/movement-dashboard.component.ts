@@ -31,8 +31,7 @@ import { StatusLevel } from '../../../core/models/status';
       <app-chart-card title="Movement Durations by Project" type="bar" [data]="durationChart"></app-chart-card>
     </div>
 
-    <h2 class="text-sm font-semibold text-ink-700 mb-3">Movement Summary</h2>
-    <app-data-table [columns]="columns" [rows]="requests"></app-data-table>
+    <app-data-table title="Movement Summary" [columns]="columns" [rows]="requests"></app-data-table>
   `,
 })
 export class MovementDashboardComponent {
