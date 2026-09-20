@@ -9,17 +9,19 @@ import { CrcStore } from '../../../core/services/crc-store.service';
 import { UiService } from '../../../shared/services/ui.service';
 import { MovementAnnouncement } from '../../../core/models/domain';
 
+import { RequiresDirective } from '../../../shared/directives/requires.directive';
+
 @Component({
   selector: 'app-announcements',
   standalone: true,
-  imports: [CommonModule, MatButtonModule, MatIconModule, PageHeaderComponent, StatusChipComponent],
+  imports: [RequiresDirective, CommonModule, MatButtonModule, MatIconModule, PageHeaderComponent, StatusChipComponent],
   template: `
     <app-page-header
       title="Movement Announcements"
       subtitle="Post an internal project movement opportunity for eligible agents"
       [breadcrumbs]="[{ label: 'Internal Project Movement', link: '/movement/dashboard' }, { label: 'Announcements' }]"
     >
-      <button mat-flat-button color="primary" (click)="create()"><mat-icon class="!text-base !mr-1">campaign</mat-icon>New Announcement</button>
+      <button mat-flat-button color="primary" (click)="create()" appRequires="Create Movement Announcement"><mat-icon class="!text-base !mr-1">campaign</mat-icon>New Announcement</button>
     </app-page-header>
 
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -42,7 +44,7 @@ import { MovementAnnouncement } from '../../../core/models/domain';
           <div class="flex items-center gap-1.5 flex-wrap pt-1">
             <button mat-stroked-button class="!text-xs" [disabled]="a.status !== 'Open'" (click)="apply(a)">Apply as agent</button>
             <button mat-stroked-button class="!text-xs" (click)="copyLink(a)"><mat-icon class="!text-sm !mr-1">link</mat-icon>Copy link</button>
-            <button mat-button class="!text-xs" (click)="toggle(a)">{{ a.status === 'Open' ? 'Close' : 'Reopen' }}</button>
+            <button mat-button class="!text-xs" (click)="toggle(a)" appRequires="Create Movement Announcement">{{ a.status === 'Open' ? 'Close' : 'Reopen' }}</button>
           </div>
         </div>
       }

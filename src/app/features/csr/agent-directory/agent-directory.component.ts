@@ -12,17 +12,19 @@ import { StatusLevel } from '../../../core/models/status';
 
 const STATUS_FILTERS = ['All', 'Present', 'On Leave', 'Off', 'Absent'] as const;
 
+import { RequiresDirective } from '../../../shared/directives/requires.directive';
+
 @Component({
   selector: 'app-agent-directory',
   standalone: true,
-  imports: [CommonModule, MatButtonModule, MatIconModule, PageHeaderComponent, DataTableComponent],
+  imports: [RequiresDirective, CommonModule, MatButtonModule, MatIconModule, PageHeaderComponent, DataTableComponent],
   template: `
     <app-page-header
       title="Team & Agent Directory"
       subtitle="Outsourced and OJT workforce &middot; click a row to open the agent profile"
       [breadcrumbs]="[{ label: 'CSR Management', link: '/csr/directory' }, { label: 'Team & Agent Directory' }]"
     >
-      <button mat-flat-button color="primary" (click)="addAgent()"><mat-icon class="!text-base !mr-1">person_add</mat-icon>Add agent</button>
+      <button mat-flat-button color="primary" (click)="addAgent()" appRequires="Manage Recruitment"><mat-icon class="!text-base !mr-1">person_add</mat-icon>Add agent</button>
     </app-page-header>
 
     <app-data-table title="Agents" [columns]="columns" [rows]="rows()" (rowClick)="open($event)">

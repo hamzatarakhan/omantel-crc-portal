@@ -24,14 +24,16 @@ interface VendorSummary {
 
 const VENDOR_PALETTE = ['#2d13ea', '#ea6e00', '#0f9c8f', '#0e9f6e', '#e3a008', '#8589a3'];
 
+import { RequiresDirective } from '../../../shared/directives/requires.directive';
+
 @Component({
   selector: 'app-contract-dashboard',
   standalone: true,
-  imports: [CommonModule, MatDialogModule, MatIconModule, MatButtonModule, BaseChartDirective, PageHeaderComponent, KpiCardComponent, ChartCardComponent, DataTableComponent],
+  imports: [RequiresDirective, CommonModule, MatDialogModule, MatIconModule, MatButtonModule, BaseChartDirective, PageHeaderComponent, KpiCardComponent, ChartCardComponent, DataTableComponent],
   template: `
     <app-page-header title="Contract Management Dashboard" [subtitle]="'Synced read-only from the ERP · last sync ' + lastSyncLabel()">
       <span class="status-chip" [class.status-chip--normal]="syncHealthy()" [class.status-chip--red]="!syncHealthy()">{{ syncHealthy() ? 'Sync healthy' : 'Last sync failed' }}</span>
-      <button mat-stroked-button (click)="runSync()" [disabled]="syncing()">
+      <button mat-stroked-button (click)="runSync()" appRequires="Manual Contract Sync" [disabled]="syncing()">
         <mat-icon class="!text-base !mr-1" [class.animate-spin]="syncing()">sync</mat-icon>{{ syncing() ? 'Syncing…' : 'Run ERP sync' }}
       </button>
     </app-page-header>

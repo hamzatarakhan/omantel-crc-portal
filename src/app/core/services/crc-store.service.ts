@@ -6,8 +6,17 @@ import {
 } from '../models/domain';
 import { StatusLevel, daysRemainingToLevel } from '../models/status';
 import { MockDataService } from './mock-data.service';
+import { NAV_GROUPS, NavGroup } from '../nav.config';
 
 export const CURRENT_USER = 'Hamza Tarkan';
+export const ROLE_SUMMARY: Record<string, string> = {
+  'Contract Mgmt Team': 'Contracts, budgets and forecasts',
+  'Budget Owner': 'Contracts and budget approval',
+  'CSR/Workforce Team': 'Agents, leave, recruitment and movement',
+  'Team Lead': 'Agents, leave and movement requests',
+  'Finance': 'Contracts, budgets, invoices and payments',
+  'System Admin': 'Everything, plus access control and audit',
+};
 export const ROLES = ['Contract Mgmt Team', 'Budget Owner', 'CSR/Workforce Team', 'Team Lead', 'Finance', 'System Admin'];
 
 export interface Permission { permission: string; module: string; }
@@ -191,6 +200,41 @@ export class CrcStore {
   setRole(role: string) {
     this.currentRole.set(role);
     this.log('Role Switched', role, `Viewing the portal as ${role} (demo role switch).`);
+  }
+
+  /** Shows a loading state while the role's screens and permissions are "loaded", then applies the role. */
+  readonly roleSwitching = signal<string | null>(null);
+
+  async switchRole(role: string): Promise<void> {
+    if (role === this.currentRole() || this.roleSwitching()) return;
+    this.roleSwitching.set(role);
+    await new Promise((resolve) => setTimeout(resolve, 1300));
+    this.setRole(role);
+    this.roleSwitching.set(null);
+  }
+
+  /** Menu groups/items the current role may see — driven by the (editable) permission matrix. */
+  readonly visibleGroups = computed<NavGroup[]>(() => {
+    const role = this.currentRole();
+    const grid = this.permissionGrid();
+    const allowed = (perms?: string[]) => !perms || perms.some((p) => grid[`${p}|${role}`]);
+    return NAV_GROUPS
+      .filter((g) => !g.adminOnly || role === 'System Admin')
+      .map((g) => ({ ...g, items: g.items.filter((i) => allowed(i.perms)) }))
+      .filter((g) => g.items.length > 0);
+  });
+
+  readonly landingRoute = computed(() => {
+    const g = this.visibleGroups()[0];
+    return g ? `${g.basePath}/${g.items[0].path}` : '/contracts-budget/dashboard';
+  });
+
+  canAccessUrl(url: string): boolean {
+    const path = url.split('?')[0].split('#')[0].replace(/\/$/, '');
+    const owner = NAV_GROUPS.flatMap((g) => g.items.map((i) => ({ full: `${g.basePath}/${i.path}`, group: g, item: i })))
+      .find((x) => path === x.full || path.startsWith(x.full + '/'));
+    if (!owner) return true;
+    return this.visibleGroups().some((g) => g.basePath === owner.group.basePath && g.items.some((i) => i.path === owner.item.path));
   }
 
   addUser(u: Omit<AppUser, 'id' | 'active'>) {

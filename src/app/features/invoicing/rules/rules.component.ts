@@ -10,10 +10,12 @@ import { UiService } from '../../../shared/services/ui.service';
 
 const FIELD = 'w-24 border border-surface-border rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-400 transition-colors';
 
+import { RequiresDirective } from '../../../shared/directives/requires.directive';
+
 @Component({
   selector: 'app-rules',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterModule, MatButtonModule, MatSlideToggleModule, PageHeaderComponent],
+  imports: [RequiresDirective, CommonModule, FormsModule, RouterModule, MatButtonModule, MatSlideToggleModule, PageHeaderComponent],
   template: `
     <app-page-header
       title="Payable Rule Configuration"
@@ -52,7 +54,7 @@ const FIELD = 'w-24 border border-surface-border rounded-lg px-2.5 py-1.5 text-s
         <p class="text-xs text-status-amber font-medium">Unsaved changes. Saving resets any invoice validation so the payable is recalculated with the new rules.</p>
       }
       <div class="flex items-center gap-2">
-        <button mat-flat-button color="primary" (click)="save()" [disabled]="!dirty()">Save Configuration</button>
+        <button mat-flat-button color="primary" (click)="save()" appRequires="Configure Payable Rules" [disabled]="!dirty()">Save Configuration</button>
         <button mat-button (click)="reset()" [disabled]="!dirty()">Discard</button>
         <a class="text-xs text-brand-600 font-semibold ml-auto" routerLink="/invoicing/reconciliation">Open Reconciliation Workspace →</a>
       </div>

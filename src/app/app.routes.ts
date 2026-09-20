@@ -1,10 +1,12 @@
 import { Routes } from '@angular/router';
 import { ShellComponent } from './core/layout/shell/shell.component';
+import { roleGuard } from './core/role.guard';
 
 export const routes: Routes = [
   {
     path: '',
     component: ShellComponent,
+    canActivateChild: [roleGuard],
     children: [
       { path: '', pathMatch: 'full', redirectTo: 'contracts-budget/dashboard' },
 

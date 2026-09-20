@@ -14,10 +14,12 @@ import { UiService } from '../../../shared/services/ui.service';
 import { Contract } from '../../../core/models/domain';
 import { daysRemainingToLevel } from '../../../core/models/status';
 
+import { RequiresDirective } from '../../../shared/directives/requires.directive';
+
 @Component({
   selector: 'app-contract-detail',
   standalone: true,
-  imports: [CommonModule, RouterModule, MatTabsModule, MatButtonModule, MatIconModule, PageHeaderComponent, StatusChipComponent, DataTableComponent],
+  imports: [RequiresDirective, CommonModule, RouterModule, MatTabsModule, MatButtonModule, MatIconModule, PageHeaderComponent, StatusChipComponent, DataTableComponent],
   template: `
     @if (contract(); as c) {
       <app-page-header
@@ -27,7 +29,7 @@ import { daysRemainingToLevel } from '../../../core/models/status';
       >
         <app-status-chip [label]="c.status" [level]="level(c)"></app-status-chip>
         <button mat-stroked-button (click)="download(c)"><mat-icon class="!text-base !mr-1">download</mat-icon>Download summary</button>
-        <button mat-flat-button color="primary" (click)="sync(c)" [disabled]="syncing()">
+        <button mat-flat-button color="primary" (click)="sync(c)" appRequires="Manual Contract Sync" [disabled]="syncing()">
           <mat-icon class="!text-base !mr-1" [class.animate-spin]="syncing()">sync</mat-icon>
           {{ syncing() ? 'Syncing…' : 'Sync from ERP' }}
         </button>

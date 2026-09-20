@@ -7,10 +7,12 @@ import { PageHeaderComponent } from '../../../shared/components/page-header/page
 import { CrcStore } from '../../../core/services/crc-store.service';
 import { UiService } from '../../../shared/services/ui.service';
 
+import { RequiresDirective } from '../../../shared/directives/requires.directive';
+
 @Component({
   selector: 'app-budget-preparation',
   standalone: true,
-  imports: [CommonModule, FormsModule, MatButtonModule, MatIconModule, PageHeaderComponent],
+  imports: [RequiresDirective, CommonModule, FormsModule, MatButtonModule, MatIconModule, PageHeaderComponent],
   template: `
     <app-page-header
       title="Budget Preparation"
@@ -19,15 +21,15 @@ import { UiService } from '../../../shared/services/ui.service';
     >
       <span class="status-chip" [class]="chip()">{{ plan().status }}</span>
       @if (editable()) {
-        <button mat-stroked-button (click)="regenerate()"><mat-icon class="!text-base !mr-1">autorenew</mat-icon>Regenerate Draft (+3%)</button>
-        <button mat-flat-button color="primary" (click)="submit()"><mat-icon class="!text-base !mr-1">send</mat-icon>Submit for Approval</button>
+        <button mat-stroked-button (click)="regenerate()" appRequires="Prepare/Edit Draft Budget"><mat-icon class="!text-base !mr-1">autorenew</mat-icon>Regenerate Draft (+3%)</button>
+        <button mat-flat-button color="primary" (click)="submit()" appRequires="Prepare/Edit Draft Budget"><mat-icon class="!text-base !mr-1">send</mat-icon>Submit for Approval</button>
       }
       @if (plan().status === 'Submitted') {
-        <button mat-stroked-button color="warn" (click)="decide(false)"><mat-icon class="!text-base !mr-1">close</mat-icon>Reject</button>
-        <button mat-flat-button color="primary" (click)="decide(true)"><mat-icon class="!text-base !mr-1">check</mat-icon>Approve</button>
+        <button mat-stroked-button color="warn" (click)="decide(false)" appRequires="Approve Budget"><mat-icon class="!text-base !mr-1">close</mat-icon>Reject</button>
+        <button mat-flat-button color="primary" (click)="decide(true)" appRequires="Approve Budget"><mat-icon class="!text-base !mr-1">check</mat-icon>Approve</button>
       }
       @if (plan().status === 'Approved' || plan().status === 'Rejected') {
-        <button mat-stroked-button (click)="reopen()"><mat-icon class="!text-base !mr-1">edit</mat-icon>Start a new draft</button>
+        <button mat-stroked-button (click)="reopen()" appRequires="Prepare/Edit Draft Budget"><mat-icon class="!text-base !mr-1">edit</mat-icon>Start a new draft</button>
       }
     </app-page-header>
 

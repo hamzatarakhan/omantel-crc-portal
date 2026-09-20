@@ -8,10 +8,12 @@ import { CrcStore } from '../../../core/services/crc-store.service';
 import { UiService } from '../../../shared/services/ui.service';
 import { MovementRequest } from '../../../core/models/domain';
 
+import { RequiresDirective } from '../../../shared/directives/requires.directive';
+
 @Component({
   selector: 'app-review',
   standalone: true,
-  imports: [CommonModule, MatButtonModule, MatIconModule, PageHeaderComponent, StatusChipComponent],
+  imports: [RequiresDirective, CommonModule, MatButtonModule, MatIconModule, PageHeaderComponent, StatusChipComponent],
   template: `
     <app-page-header
       title="Request Review & Approval"
@@ -30,8 +32,8 @@ import { MovementRequest } from '../../../core/models/domain';
           </div>
           <div class="flex items-center gap-2">
             <app-status-chip label="Pending" level="amber"></app-status-chip>
-            <button mat-stroked-button color="warn" class="!text-xs" (click)="decide(r, false)">Reject</button>
-            <button mat-flat-button color="primary" class="!text-xs" (click)="decide(r, true)">Approve</button>
+            <button mat-stroked-button color="warn" class="!text-xs" (click)="decide(r, false)" appRequires="Review/Approve Movement Requests">Reject</button>
+            <button mat-flat-button color="primary" class="!text-xs" (click)="decide(r, true)" appRequires="Review/Approve Movement Requests">Approve</button>
           </div>
         </div>
       } @empty {

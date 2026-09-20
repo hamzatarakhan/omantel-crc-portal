@@ -26,10 +26,12 @@ const LEAVE_LEGEND: Array<{ code: string; meaning: string; notes?: string }> = [
 ];
 const CYCLE = ['P', 'A', 'S/L', 'C/L', 'OFF'];
 
+import { RequiresDirective } from '../../../shared/directives/requires.directive';
+
 @Component({
   selector: 'app-leave-management',
   standalone: true,
-  imports: [CommonModule, FormsModule, MatTabsModule, MatButtonModule, MatIconModule, PageHeaderComponent, DataTableComponent],
+  imports: [RequiresDirective, CommonModule, FormsModule, MatTabsModule, MatButtonModule, MatIconModule, PageHeaderComponent, DataTableComponent],
   template: `
     <app-page-header
       title="Leave Management"
@@ -37,7 +39,7 @@ const CYCLE = ['P', 'A', 'S/L', 'C/L', 'OFF'];
       [breadcrumbs]="[{ label: 'CSR Management', link: '/csr/directory' }, { label: 'Leave Management' }]"
     >
       <button mat-stroked-button (click)="exportSheet()"><mat-icon class="!text-base !mr-1">download</mat-icon>Export sheet</button>
-      <button mat-flat-button color="primary" (click)="override()"><mat-icon class="!text-base !mr-1">edit_calendar</mat-icon>Record leave override</button>
+      <button mat-flat-button color="primary" (click)="override()" appRequires="Manage Leave & Attendance"><mat-icon class="!text-base !mr-1">edit_calendar</mat-icon>Record leave override</button>
     </app-page-header>
 
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">

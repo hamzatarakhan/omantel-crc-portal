@@ -13,17 +13,19 @@ import { CandidateDialogComponent } from './candidate-dialog.component';
 
 const STAGES: Array<CandidateStatus | 'All'> = ['All', 'New', 'Interview Scheduled', 'Shortlisted', 'Hired', 'Rejected'];
 
+import { RequiresDirective } from '../../../shared/directives/requires.directive';
+
 @Component({
   selector: 'app-recruitment',
   standalone: true,
-  imports: [CommonModule, MatDialogModule, MatButtonModule, MatIconModule, PageHeaderComponent, DataTableComponent],
+  imports: [RequiresDirective, CommonModule, MatDialogModule, MatButtonModule, MatIconModule, PageHeaderComponent, DataTableComponent],
   template: `
     <app-page-header
       title="Recruitment & Interview Management"
       subtitle="Candidate tracking, scored interviews, and CV storage &middot; click a candidate to schedule, score and decide"
       [breadcrumbs]="[{ label: 'CSR Management', link: '/csr/directory' }, { label: 'Recruitment & Interview' }]"
     >
-      <button mat-flat-button color="primary" (click)="addCandidate()"><mat-icon class="!text-base !mr-1">person_add</mat-icon>Add candidate</button>
+      <button mat-flat-button color="primary" (click)="addCandidate()" appRequires="Manage Recruitment"><mat-icon class="!text-base !mr-1">person_add</mat-icon>Add candidate</button>
     </app-page-header>
 
     <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">

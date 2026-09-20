@@ -1,9 +1,10 @@
-import { Component, EventEmitter, Input, Output, signal } from '@angular/core';
+import { Component, EventEmitter, Input, Output, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
-import { NAV_GROUPS, NavGroup } from '../../nav.config';
+import { NavGroup } from '../../nav.config';
+import { CrcStore } from '../../services/crc-store.service';
 
 @Component({
   selector: 'app-sidebar',
@@ -105,7 +106,10 @@ export class SidebarComponent {
   @Input() mobileOpen = false;
   @Output() closeMobile = new EventEmitter<void>();
 
-  groups = NAV_GROUPS;
+  private store = inject(CrcStore);
+  get groups(): NavGroup[] {
+    return this.store.visibleGroups();
+  }
   collapsed = signal(false);
   query = '';
 

@@ -18,10 +18,12 @@ export const CODE_STYLE: Record<string, string> = {
   'P/L': 'bg-brand-50 text-brand-600', SP: 'bg-brand-50 text-brand-600', 'ST/L': 'bg-brand-50 text-brand-600', AS: 'bg-amber-50 text-status-amber',
 };
 
+import { RequiresDirective } from '../../../shared/directives/requires.directive';
+
 @Component({
   selector: 'app-agent-profile',
   standalone: true,
-  imports: [CommonModule, RouterModule, MatTabsModule, MatButtonModule, MatIconModule, PageHeaderComponent, StatusChipComponent],
+  imports: [RequiresDirective, CommonModule, RouterModule, MatTabsModule, MatButtonModule, MatIconModule, PageHeaderComponent, StatusChipComponent],
   template: `
     @if (agent(); as a) {
       <app-page-header
@@ -30,7 +32,7 @@ export const CODE_STYLE: Record<string, string> = {
         [breadcrumbs]="[{ label: 'CSR Management', link: '/csr/directory' }, { label: 'Team & Agent Directory', link: '/csr/directory' }, { label: a.name }]"
       >
         <app-status-chip [label]="a.leaveType || a.status" [level]="level()"></app-status-chip>
-        <button mat-stroked-button (click)="recordLeave()"><mat-icon class="!text-base !mr-1">event_available</mat-icon>Record leave / status</button>
+        <button mat-stroked-button (click)="recordLeave()" appRequires="Manage Leave & Attendance"><mat-icon class="!text-base !mr-1">event_available</mat-icon>Record leave / status</button>
       </app-page-header>
 
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">

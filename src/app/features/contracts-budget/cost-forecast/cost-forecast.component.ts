@@ -13,10 +13,12 @@ import { percentUsedToLevel } from '../../../core/models/status';
 const MONTHS = ['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep'];
 const FIELD = 'border border-surface-border rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-400 transition-colors';
 
+import { RequiresDirective } from '../../../shared/directives/requires.directive';
+
 @Component({
   selector: 'app-cost-forecast',
   standalone: true,
-  imports: [CommonModule, FormsModule, MatButtonModule, MatIconModule, PageHeaderComponent, ChartCardComponent, KpiCardComponent],
+  imports: [RequiresDirective, CommonModule, FormsModule, MatButtonModule, MatIconModule, PageHeaderComponent, ChartCardComponent, KpiCardComponent],
   template: `
     <app-page-header
       title="Cost & Petty Cash Forecast"
@@ -39,7 +41,7 @@ const FIELD = 'border border-surface-border rounded-lg px-2.5 py-1.5 text-sm foc
           <label class="text-xs text-ink-500 block mb-1">Starting in (months from now)</label>
           <input type="number" class="w-32 ${FIELD}" [ngModel]="startMonth()" (ngModelChange)="startMonth.set(+$event || 0)" min="0" max="11" />
         </div>
-        <button mat-stroked-button (click)="applyToDraft()"><mat-icon class="!text-base !mr-1">playlist_add</mat-icon>Add to next-year budget draft</button>
+        <button mat-stroked-button (click)="applyToDraft()" appRequires="Prepare/Edit Draft Budget"><mat-icon class="!text-base !mr-1">playlist_add</mat-icon>Add to next-year budget draft</button>
       </div>
 
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-5">

@@ -12,10 +12,12 @@ import { StatusLevel } from '../../../core/models/status';
 
 const VENDORS = ['Infoline LLC', 'Green Umbrella Services'];
 
+import { RequiresDirective } from '../../../shared/directives/requires.directive';
+
 @Component({
   selector: 'app-reconciliation',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterModule, MatButtonModule, MatIconModule, PageHeaderComponent, StatusChipComponent],
+  imports: [RequiresDirective, CommonModule, FormsModule, RouterModule, MatButtonModule, MatIconModule, PageHeaderComponent, StatusChipComponent],
   template: `
     <app-page-header
       title="Reconciliation Workspace"
@@ -83,9 +85,9 @@ const VENDORS = ['Infoline LLC', 'Green Umbrella Services'];
       </div>
 
       <div class="flex items-center gap-2 mt-4 flex-wrap">
-        <button mat-flat-button color="primary" (click)="validate()" [disabled]="locked() || !amount()"><mat-icon class="!text-base !mr-1">fact_check</mat-icon>Validate invoice</button>
+        <button mat-flat-button color="primary" (click)="validate()" appRequires="Validate Invoice" [disabled]="locked() || !amount()"><mat-icon class="!text-base !mr-1">fact_check</mat-icon>Validate invoice</button>
         @if (run()?.status === 'Validated' || run()?.status === 'Flagged for review') {
-          <button mat-flat-button color="primary" (click)="approve()"><mat-icon class="!text-base !mr-1">payments</mat-icon>Approve for payment</button>
+          <button mat-flat-button color="primary" (click)="approve()" appRequires="Validate Invoice"><mat-icon class="!text-base !mr-1">payments</mat-icon>Approve for payment</button>
         }
         @if (run()?.status === 'Approved for payment') {
           <a mat-stroked-button routerLink="/invoicing/tracking"><mat-icon class="!text-base !mr-1">view_kanban</mat-icon>Open in PO & Payment Tracking</a>

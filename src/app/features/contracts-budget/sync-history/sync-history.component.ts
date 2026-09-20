@@ -10,17 +10,19 @@ import { SyncRun } from '../../../core/models/domain';
 
 const FILTERS = ['All', 'Completed', 'No Changes', 'Failed'] as const;
 
+import { RequiresDirective } from '../../../shared/directives/requires.directive';
+
 @Component({
   selector: 'app-sync-history',
   standalone: true,
-  imports: [CommonModule, MatButtonModule, MatIconModule, PageHeaderComponent, DataTableComponent],
+  imports: [RequiresDirective, CommonModule, MatButtonModule, MatIconModule, PageHeaderComponent, DataTableComponent],
   template: `
     <app-page-header
       title="Synchronization History"
       subtitle="Every automated and manual ERP sync, with record counts and errors"
       [breadcrumbs]="[{ label: 'Contracts & Budget', link: '/contracts-budget/dashboard' }, { label: 'Sync History' }]"
     >
-      <button mat-flat-button color="primary" (click)="runSync()" [disabled]="syncing()">
+      <button mat-flat-button color="primary" (click)="runSync()" appRequires="Manual Contract Sync" [disabled]="syncing()">
         <mat-icon class="!text-base !mr-1" [class.animate-spin]="syncing()">sync</mat-icon>{{ syncing() ? 'Syncing…' : 'Run full sync now' }}
       </button>
     </app-page-header>

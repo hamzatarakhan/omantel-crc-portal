@@ -5,7 +5,7 @@ import { Router, RouterModule } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatBadgeModule } from '@angular/material/badge';
-import { CrcStore, ROLES, timeAgo } from '../../services/crc-store.service';
+import { CrcStore, ROLES, ROLE_SUMMARY, timeAgo } from '../../services/crc-store.service';
 import { UiService } from '../../../shared/services/ui.service';
 import { AppNotification } from '../../models/domain';
 
@@ -142,9 +142,12 @@ interface SearchResult {
             <div class="px-4 pt-3 pb-1 text-[10.5px] font-bold uppercase tracking-wider text-ink-400">View portal as (demo)</div>
             <div class="pb-1.5">
               @for (r of roles; track r) {
-                <button (click)="switchRole(r)" class="w-full flex items-center gap-2.5 px-4 py-1.5 text-[13px] hover:bg-surface-subtle transition-colors" [class.text-brand-600]="r === store.currentRole()" [class.font-semibold]="r === store.currentRole()" [class.text-ink-700]="r !== store.currentRole()">
+                <button (click)="switchRole(r)" class="w-full flex items-center gap-2.5 px-4 py-1.5 text-left hover:bg-surface-subtle transition-colors" [class.bg-brand-50]="r === store.currentRole()">
                   <mat-icon class="!text-lg" [class.!text-brand-600]="r === store.currentRole()" [class.!text-ink-400]="r !== store.currentRole()">{{ r === store.currentRole() ? 'radio_button_checked' : 'radio_button_unchecked' }}</mat-icon>
-                  {{ r }}
+                  <span class="min-w-0">
+                    <span class="block text-[13px]" [class.text-brand-700]="r === store.currentRole()" [class.font-semibold]="r === store.currentRole()" [class.text-ink-700]="r !== store.currentRole()">{{ r }}</span>
+                    <span class="block text-[11px] text-ink-400 truncate">{{ summary[r] }}</span>
+                  </span>
                 </button>
               }
             </div>
@@ -209,6 +212,7 @@ export class TopbarComponent {
   store = inject(CrcStore);
   private ui = inject(UiService);
   roles = ROLES;
+  summary = ROLE_SUMMARY;
 
   query = '';
   focused = signal(false);
@@ -273,8 +277,7 @@ export class TopbarComponent {
   }
 
   switchRole(role: string) {
-    this.store.setRole(role);
-    this.ui.toast('Now viewing the portal as ' + role + '. Actions you do not have permission for will be blocked.');
+    this.store.switchRole(role);
   }
 
   help() {
