@@ -273,17 +273,3 @@ router-outlet + * {
   .invoice-sheet { position: absolute; left: 0; top: 0; width: 100%; max-width: none !important; overflow: visible !important; }
   .no-print { display: none !important; }
 }
-
-/* Sidebar: soft brand gradient (warm orange tint at the top, a hint of violet at the bottom) that keeps dark text and the logo readable. */
-.sidebar-gradient {
-  background: linear-gradient(180deg, #ffe9d2 0%, #fff6ec 26%, #ffffff 52%, #f3f1ff 100%);
-}
-.sidebar-gradient .nav-active {
-  background: linear-gradient(135deg, #ea6e00 0%, #ff8f2e 100%);
-  color: #fff;
-  font-weight: 600;
-  box-shadow: 0 4px 12px -4px rgba(234, 110, 0, 0.55);
-}
-.sidebar-gradient .nav-active mat-icon,
-.sidebar-gradient .nav-active .mat-icon { color: #fff !important; }
-.sidebar-gradient .nav-active::before { opacity: 0 !important; }

@@ -17,14 +17,14 @@ import { CrcStore } from '../../services/crc-store.service';
     }
 
     <aside
-      class="sidebar-gradient border-r border-surface-border flex flex-col shrink-0 transition-all duration-200 fixed lg:static inset-y-0 left-0 z-40 h-full lg:!translate-x-0"
+      class="bg-white border-r border-surface-border flex flex-col shrink-0 transition-all duration-200 fixed lg:static inset-y-0 left-0 z-40 h-full lg:!translate-x-0"
       [class.w-64]="!collapsed()"
       [class.w-16]="collapsed()"
       [class.-translate-x-full]="!mobileOpen"
       [class.translate-x-0]="mobileOpen"
     >
       <div
-        class="flex items-center shrink-0 border-b border-brand-100/70 gap-2"
+        class="flex items-center shrink-0 border-b border-surface-border gap-2"
         [class.justify-between]="!collapsed()"
         [class.px-4]="!collapsed()"
         [class.h-16]="!collapsed()"
@@ -56,7 +56,7 @@ import { CrcStore } from '../../services/crc-store.service';
             <input
               [(ngModel)]="query"
               placeholder="Search menu..."
-              class="w-full pl-8 pr-7 py-1.5 text-[12.5px] rounded-lg bg-white/80 border border-brand-100 text-ink-900 placeholder:text-ink-400 focus:outline-none focus:bg-white focus:border-brand-400 transition-colors"
+              class="w-full pl-8 pr-7 py-1.5 text-[12.5px] rounded-lg bg-surface-subtle border border-surface-border text-ink-900 placeholder:text-ink-400 focus:outline-none focus:bg-white focus:border-brand-400 transition-colors"
             />
             @if (query) {
               <button class="absolute right-1.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded-md flex items-center justify-center text-ink-400 hover:text-ink-700 hover:bg-white" (click)="query = ''">
@@ -79,18 +79,18 @@ import { CrcStore } from '../../services/crc-store.service';
              @if (entry.section; as sec) {
               @if (collapsed()) {
                 @for (item of entry.items; track item.path) {
-                  <a [routerLink]="group.basePath + '/' + item.path" routerLinkActive="nav-active" (click)="closeMobile.emit()" [title]="sec + ' · ' + item.label" class="flex items-center justify-center py-2 mb-0.5 rounded-xl text-ink-500 hover:bg-white/70"><mat-icon class="!text-[19px] !w-5 !h-5">{{ item.icon }}</mat-icon></a>
+                  <a [routerLink]="group.basePath + '/' + item.path" routerLinkActive="!bg-brand-50 !text-brand-600" (click)="closeMobile.emit()" [title]="sec + ' · ' + item.label" class="flex items-center justify-center py-2 mb-0.5 rounded-xl text-ink-500 hover:bg-surface-subtle"><mat-icon class="!text-[19px] !w-5 !h-5">{{ item.icon }}</mat-icon></a>
                 }
               } @else {
-                <button type="button" (click)="toggle(group, sec, entry.items)" class="w-full flex items-center gap-3 px-2.5 py-2 mb-0.5 rounded-xl text-[13.5px] font-medium hover:bg-white/70 hover:text-ink-900 transition-colors" [class]="hasActive(group, entry.items) ? 'text-[#b85300] font-semibold' : 'text-ink-500'">
-                  <mat-icon class="!text-[19px] !w-5 !h-5 shrink-0" [class.!text-[#b85300]]="hasActive(group, entry.items)">{{ group.sections?.[sec] || 'folder' }}</mat-icon>
+                <button type="button" (click)="toggle(group, sec, entry.items)" class="w-full flex items-center gap-3 px-2.5 py-2 mb-0.5 rounded-xl text-[13.5px] font-medium hover:bg-surface-subtle hover:text-ink-900 transition-colors" [class]="hasActive(group, entry.items) ? 'text-brand-600 font-semibold' : 'text-ink-500'">
+                  <mat-icon class="!text-[19px] !w-5 !h-5 shrink-0" [class.!text-brand-600]="hasActive(group, entry.items)">{{ group.sections?.[sec] || 'folder' }}</mat-icon>
                   <span class="flex-1 text-left truncate">{{ sec }}</span>
                   <mat-icon class="!text-lg !w-5 !h-5 text-ink-400 transition-transform" [class.rotate-180]="isOpen(group, sec, entry.items)">expand_more</mat-icon>
                 </button>
                 @if (isOpen(group, sec, entry.items)) {
-                  <div class="ml-[19px] pl-2 mb-1 border-l border-brand-200/70">
+                  <div class="ml-[19px] pl-2 mb-1 border-l border-surface-border">
                     @for (item of entry.items; track item.path) {
-                      <a [routerLink]="group.basePath + '/' + item.path" routerLinkActive="nav-active" (click)="closeMobile.emit()" class="flex items-center gap-2.5 px-2.5 py-1.5 mb-0.5 rounded-lg text-[13px] font-medium text-ink-500 hover:bg-white/70 hover:text-ink-900 transition-colors">
+                      <a [routerLink]="group.basePath + '/' + item.path" routerLinkActive="!bg-brand-50 !text-brand-600 !font-semibold" (click)="closeMobile.emit()" class="flex items-center gap-2.5 px-2.5 py-1.5 mb-0.5 rounded-lg text-[13px] font-medium text-ink-500 hover:bg-surface-subtle hover:text-ink-900 transition-colors">
                         <mat-icon class="!text-[17px] !w-[18px] !h-[18px] shrink-0">{{ item.icon }}</mat-icon><span class="truncate">{{ item.label }}</span>
                       </a>
                     }
@@ -101,15 +101,16 @@ import { CrcStore } from '../../services/crc-store.service';
               @for (item of entry.items; track item.path) {
               <a
                 [routerLink]="group.basePath + '/' + item.path"
-                routerLinkActive="nav-active"
+                routerLinkActive="!bg-brand-50 !text-brand-600 !font-semibold before:!opacity-100"
                 #rla="routerLinkActive"
                 (click)="closeMobile.emit()"
-                class="relative flex items-center gap-3 px-2.5 py-2 mb-0.5 rounded-xl text-[13.5px] font-medium text-ink-500 hover:bg-white/70 hover:text-ink-900 transition-colors before:content-[''] before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-4 before:w-[3px] before:rounded-full before:bg-brand-500 before:opacity-0 before:transition-opacity"
+                class="relative flex items-center gap-3 px-2.5 py-2 mb-0.5 rounded-xl text-[13.5px] font-medium text-ink-500 hover:bg-surface-subtle hover:text-ink-900 transition-colors before:content-[''] before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-4 before:w-[3px] before:rounded-full before:bg-brand-500 before:opacity-0 before:transition-opacity"
                 [title]="item.label"
               >
                 <mat-icon
                   class="!text-[19px] !w-5 !h-5 shrink-0"
-                            >{{ item.icon }}</mat-icon>
+                  [class.!text-brand-600]="rla.isActive"
+                >{{ item.icon }}</mat-icon>
                 @if (!collapsed()) {
                   <span class="truncate">{{ item.label }}</span>
                 }
