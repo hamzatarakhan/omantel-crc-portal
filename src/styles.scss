@@ -106,7 +106,7 @@ input[type='number'] {
 
 // Tailwind's reset is off, so headings/paragraphs kept the browser's ~1em default margins —
 // that's the extra dead space above card titles. Spacing is set explicitly with mt-/mb- classes.
-h1, h2, h3, h4, h5, h6, p {
+h1, h2, h3, h4, h5, h6, p, dl, dd, figure {
   margin: 0;
 }
 
