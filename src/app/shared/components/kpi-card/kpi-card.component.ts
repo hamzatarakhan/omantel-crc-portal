@@ -7,12 +7,12 @@ import { StatusLevel } from '../../../core/models/status';
   standalone: true,
   imports: [CommonModule],
   template: `
-    <div class="surface-card px-4 pt-3 pb-3.5 h-full flex flex-col gap-2 min-w-0 overflow-hidden hover:border-brand-200">
+    <div class="surface-card px-4 pt-2.5 pb-3 h-full flex flex-col gap-0.5 min-w-0 overflow-hidden hover:border-brand-200">
       <div class="flex items-start justify-between gap-2">
         <span class="text-[11px] font-bold text-ink-400 uppercase tracking-wider leading-tight flex items-center">{{ label }}</span>
         @if (icon) {
-          <span class="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" [style.background]="badgeBg" [style.color]="accentColor">
-            <span class="material-icons !text-[17px]">{{ icon }}</span>
+          <span class="w-6 h-6 rounded-md flex items-center justify-center shrink-0" [style.background]="badgeBg" [style.color]="accentColor">
+            <span class="material-icons !text-[15px]">{{ icon }}</span>
           </span>
         }
       </div>
