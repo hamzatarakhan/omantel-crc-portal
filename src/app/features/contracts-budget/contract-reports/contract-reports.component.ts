@@ -1,6 +1,7 @@
 import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
+import { MatMenuModule } from '@angular/material/menu';
 import { PageHeaderComponent } from '../../../shared/components/page-header/page-header.component';
 import { CrcStore } from '../../../core/services/crc-store.service';
 import { ContractOps } from '../../../core/services/contract-ops.service';
@@ -19,11 +20,11 @@ interface ReportDef {
 @Component({
   selector: 'app-contract-reports',
   standalone: true,
-  imports: [CommonModule, MatIconModule, PageHeaderComponent],
+  imports: [CommonModule, MatIconModule, MatMenuModule, PageHeaderComponent],
   template: `
     <app-page-header
       title="Contract Reports"
-      subtitle="Reports for monthly and quarterly review — each one downloads as CSV or Excel, built from the current data"
+      subtitle="Reports for monthly and quarterly review — use Export to download each one as CSV or Excel, built from the current data"
       [breadcrumbs]="[{ label: 'Contracts & Budget', link: '/contracts-budget/dashboard' }, { label: 'Contract Reports' }]"
     ></app-page-header>
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -35,10 +36,15 @@ interface ReportDef {
           <div class="flex-1 min-w-0">
             <div class="text-sm font-medium text-ink-900">{{ r.title }}</div>
             <div class="text-xs text-ink-400 mt-1">{{ r.description }}</div>
-            <div class="flex items-center gap-2 mt-3">
-              <button (click)="generate(r, 'csv')" class="inline-flex items-center gap-1 text-xs font-semibold text-brand-700 bg-brand-50 border border-brand-100 hover:bg-brand-100 rounded-lg px-2.5 py-1.5" [class.opacity-50]="!store.can('Export Contract Data')"><mat-icon class="!text-[15px] !w-[15px] !h-[15px] !leading-[15px]">file_download</mat-icon>CSV</button>
-              <button (click)="generate(r, 'xlsx')" class="inline-flex items-center gap-1 text-xs font-semibold text-brand-700 bg-brand-50 border border-brand-100 hover:bg-brand-100 rounded-lg px-2.5 py-1.5" [class.opacity-50]="!store.can('Export Contract Data')"><mat-icon class="!text-[15px] !w-[15px] !h-[15px] !leading-[15px]">table_view</mat-icon>Excel</button>
-            </div>
+            <button type="button" [matMenuTriggerFor]="exportMenu" class="mt-3 group flex items-center gap-2 text-xs font-semibold text-brand-700 bg-brand-50 border border-brand-100 hover:bg-brand-100 hover:border-brand-200 active:scale-[0.97] rounded-lg pl-2.5 pr-2 py-2 transition-all shrink-0" [class.opacity-50]="!store.can('Export Contract Data')">
+              <span class="w-5 h-5 rounded-md bg-white/70 group-hover:bg-white flex items-center justify-center shrink-0 transition-colors"><mat-icon class="!text-[15px] !w-[15px] !h-[15px] !leading-[15px]">file_download</mat-icon></span>
+              Export
+              <mat-icon class="!text-[18px] !w-[18px] !h-[18px] !leading-[18px] text-brand-500">expand_more</mat-icon>
+            </button>
+            <mat-menu #exportMenu="matMenu" xPosition="before">
+            <button mat-menu-item (click)="generate(r, 'csv')"><mat-icon>file_download</mat-icon><span>CSV file (.csv)</span></button>
+            <button mat-menu-item (click)="generate(r, 'xlsx')"><mat-icon>table_view</mat-icon><span>Excel workbook (.xlsx)</span></button>
+          </mat-menu>
           </div>
         </div>
       }

@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
+import { MatMenuModule } from '@angular/material/menu';
 import { StatusChipComponent } from '../status-chip/status-chip.component';
 import { StatusLevel } from '../../../core/models/status';
 import { EmptyStateComponent } from '../empty-state/empty-state.component';
@@ -23,7 +24,7 @@ export interface TableColumn<T = any> {
 @Component({
   selector: 'app-data-table',
   standalone: true,
-  imports: [CommonModule, FormsModule, MatIconModule, MatButtonModule, StatusChipComponent, EmptyStateComponent],
+  imports: [CommonModule, FormsModule, MatIconModule, MatButtonModule, MatMenuModule, StatusChipComponent, EmptyStateComponent],
   template: `
     <div class="surface-card overflow-hidden">
       @if (title) {
@@ -43,26 +44,17 @@ export interface TableColumn<T = any> {
         </div>
         <div class="flex items-center gap-2 flex-wrap"><ng-content select="[toolbar]"></ng-content></div>
         @if (exportable) {
-          <div class="flex items-center gap-1.5 shrink-0">
-          <button
-            (click)="exportCsv()"
-            class="group flex items-center gap-2 text-xs font-semibold text-brand-700 bg-brand-50 border border-brand-100 hover:bg-brand-100 hover:border-brand-200 active:scale-[0.97] rounded-lg pl-2.5 pr-3.5 py-2 transition-all shrink-0"
-          >
+          <button type="button" [matMenuTriggerFor]="exportMenu" class="group flex items-center gap-2 text-xs font-semibold text-brand-700 bg-brand-50 border border-brand-100 hover:bg-brand-100 hover:border-brand-200 active:scale-[0.97] rounded-lg pl-2.5 pr-2 py-2 transition-all shrink-0">
             <span class="w-5 h-5 rounded-md bg-white/70 group-hover:bg-white flex items-center justify-center shrink-0 transition-colors">
               <mat-icon class="!text-[15px] !w-[15px] !h-[15px] !leading-[15px]">file_download</mat-icon>
             </span>
-            <span class="hidden sm:inline">Export CSV</span>
+            <span class="hidden sm:inline">Export</span>
+            <mat-icon class="!text-[18px] !w-[18px] !h-[18px] !leading-[18px] text-brand-500">expand_more</mat-icon>
           </button>
-          <button
-            (click)="exportXlsx()"
-            class="group flex items-center gap-2 text-xs font-semibold text-brand-700 bg-brand-50 border border-brand-100 hover:bg-brand-100 hover:border-brand-200 active:scale-[0.97] rounded-lg pl-2.5 pr-3.5 py-2 transition-all shrink-0"
-          >
-            <span class="w-5 h-5 rounded-md bg-white/70 group-hover:bg-white flex items-center justify-center shrink-0 transition-colors">
-              <mat-icon class="!text-[15px] !w-[15px] !h-[15px] !leading-[15px]">table_view</mat-icon>
-            </span>
-            <span class="hidden sm:inline">Export Excel</span>
-          </button>
-          </div>
+          <mat-menu #exportMenu="matMenu" xPosition="before">
+            <button mat-menu-item (click)="exportCsv()"><mat-icon>file_download</mat-icon><span>CSV file (.csv)</span></button>
+            <button mat-menu-item (click)="exportXlsx()"><mat-icon>table_view</mat-icon><span>Excel workbook (.xlsx)</span></button>
+          </mat-menu>
         }
       </div>
 
