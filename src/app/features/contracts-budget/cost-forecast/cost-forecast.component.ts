@@ -9,11 +9,10 @@ import { KpiCardComponent } from '../../../shared/components/kpi-card/kpi-card.c
 import { CrcStore } from '../../../core/services/crc-store.service';
 import { UiService } from '../../../shared/services/ui.service';
 import { percentUsedToLevel } from '../../../core/models/status';
+import { RequiresDirective } from '../../../shared/directives/requires.directive';
 
 const MONTHS = ['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep'];
-const FIELD = 'border border-surface-border rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-brand-400 transition-colors';
-
-import { RequiresDirective } from '../../../shared/directives/requires.directive';
+const INPUT = 'w-full px-3 py-2.5 pr-16 text-sm rounded-lg border border-surface-border bg-white focus:outline-none focus:border-brand-400 transition-colors';
 
 @Component({
   selector: 'app-cost-forecast',
@@ -26,57 +25,93 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
       [breadcrumbs]="[{ label: 'Contracts & Budget', link: '/contracts-budget/dashboard' }, { label: 'Cost & Petty Cash Forecast' }]"
     ></app-page-header>
 
-    <div class="surface-card p-5 mb-6">
-      <h3 class="text-sm font-semibold text-ink-700 mb-3">Hiring Impact Calculator</h3>
-      <div class="flex flex-wrap items-end gap-4">
+    <!-- Hiring scenario: assumptions on the left, results on the right -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6 items-start">
+      <div class="surface-card px-4 pt-3.5 pb-4 sm:px-5 flex flex-col gap-4">
         <div>
-          <label class="text-xs text-ink-500 block mb-1">Additional resources</label>
-          <input type="number" class="w-32 ${FIELD}" [ngModel]="extraHeadcount()" (ngModelChange)="extraHeadcount.set(+$event || 0)" min="0" />
+          <h3 class="text-[13.5px] font-bold text-ink-900">Hiring scenario</h3>
+          <p class="text-xs text-ink-400 mt-0.5">Change an assumption and the results update instantly.</p>
+        </div>
+
+        <div>
+          <label class="text-[13px] font-medium text-ink-700 block mb-1.5">Additional resources</label>
+          <div class="relative">
+            <input type="number" min="0" [class]="input" [ngModel]="extraHeadcount()" (ngModelChange)="extraHeadcount.set(+$event || 0)" />
+            <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-ink-400 pointer-events-none">people</span>
+          </div>
         </div>
         <div>
-          <label class="text-xs text-ink-500 block mb-1">Avg. billing rate / month (OMR)</label>
-          <input type="number" class="w-40 ${FIELD}" [ngModel]="avgBillingRate()" (ngModelChange)="avgBillingRate.set(+$event || 0)" min="0" />
+          <label class="text-[13px] font-medium text-ink-700 block mb-1.5">Average billing rate</label>
+          <div class="relative">
+            <input type="number" min="0" [class]="input" [ngModel]="avgBillingRate()" (ngModelChange)="avgBillingRate.set(+$event || 0)" />
+            <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-ink-400 pointer-events-none">OMR / mo</span>
+          </div>
         </div>
         <div>
-          <label class="text-xs text-ink-500 block mb-1">Starting in (months from now)</label>
-          <input type="number" class="w-32 ${FIELD}" [ngModel]="startMonth()" (ngModelChange)="startMonth.set(+$event || 0)" min="0" max="11" />
+          <label class="text-[13px] font-medium text-ink-700 block mb-1.5">Starting in</label>
+          <div class="relative">
+            <input type="number" min="0" max="11" [class]="input" [ngModel]="startMonth()" (ngModelChange)="startMonth.set(+$event || 0)" />
+            <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-ink-400 pointer-events-none">months</span>
+          </div>
+          <p class="text-[11px] text-ink-400 mt-1">Months from now (0–11).</p>
         </div>
-        <button mat-stroked-button (click)="applyToDraft()" appRequires="Prepare/Edit Draft Budget"><mat-icon class="!text-base !mr-1">playlist_add</mat-icon>Add to next-year budget draft</button>
+
+        <button mat-flat-button color="primary" class="w-full" (click)="applyToDraft()" appRequires="Prepare/Edit Draft Budget">
+          <mat-icon class="!text-base !mr-1">playlist_add</mat-icon>Add to next-year budget draft
+        </button>
       </div>
 
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-5">
-        <app-kpi-card label="Additional monthly cost" [value]="monthlyCost() | number:'1.0-0'" unit="OMR" level="info" icon="payments"></app-kpi-card>
-        <app-kpi-card label="Cost within next 12 months" [value]="yearCost() | number:'1.0-0'" unit="OMR" icon="calendar_month"></app-kpi-card>
-        <app-kpi-card label="Budget remaining now" [value]="store.budgetTotals().remaining | number:'1.0-0'" unit="OMR" level="normal" icon="account_balance_wallet"></app-kpi-card>
-        <app-kpi-card label="Share of remaining budget" [value]="sharePct().toFixed(0)" unit="%" [level]="shareLevel()" icon="donut_small"></app-kpi-card>
+      <div class="lg:col-span-2 flex flex-col gap-4">
+        <div class="grid grid-cols-2 2xl:grid-cols-4 gap-4">
+          <app-kpi-card label="Extra monthly cost" [value]="monthlyCost() | number:'1.0-0'" unit="OMR" level="info" icon="payments"></app-kpi-card>
+          <app-kpi-card label="Next 12 months" [value]="yearCost() | number:'1.0-0'" unit="OMR" icon="calendar_month"></app-kpi-card>
+          <app-kpi-card label="Budget remaining" [value]="store.budgetTotals().remaining | number:'1.0-0'" unit="OMR" level="normal" icon="account_balance_wallet"></app-kpi-card>
+          <app-kpi-card label="Share of remaining" [value]="sharePct().toFixed(0)" unit="%" [level]="shareLevel()" icon="donut_small"></app-kpi-card>
+        </div>
+        <app-chart-card title="Estimated vs. Actual Cost" subtitle="Outsourcing and projects — the orange series adds the hiring scenario" type="bar" [data]="estVsActualChart()"></app-chart-card>
       </div>
     </div>
 
-    <div class="surface-card p-5 mb-6">
-      <h3 class="text-sm font-semibold text-ink-700 mb-3">Petty Cash Forecast</h3>
-      <div class="flex flex-wrap items-end gap-4">
+    <!-- Petty cash: same pattern -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
+      <div class="surface-card px-4 pt-3.5 pb-4 sm:px-5 flex flex-col gap-4">
         <div>
-          <label class="text-xs text-ink-500 block mb-1">Expected monthly growth (%)</label>
-          <input type="number" class="w-32 ${FIELD}" [ngModel]="growth()" (ngModelChange)="growth.set(+$event || 0)" />
+          <h3 class="text-[13.5px] font-bold text-ink-900">Petty cash scenario</h3>
+          <p class="text-xs text-ink-400 mt-0.5">Compounds this year's base spending month by month.</p>
         </div>
-        <app-kpi-card label="Forecast for the year" [value]="pettyYear() | number:'1.0-0'" unit="OMR" icon="savings"></app-kpi-card>
-        <app-kpi-card label="Annual allocation" [value]="pettyAllocation() | number:'1.0-0'" unit="OMR" icon="account_balance"></app-kpi-card>
-        <app-kpi-card label="Forecast vs allocation" [value]="pettyPct().toFixed(0)" unit="%" [level]="pettyLevel()" icon="trending_up"></app-kpi-card>
+        <div>
+          <label class="text-[13px] font-medium text-ink-700 block mb-1.5">Expected monthly growth</label>
+          <div class="relative">
+            <input type="number" [class]="input" [ngModel]="growth()" (ngModelChange)="growth.set(+$event || 0)" />
+            <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-ink-400 pointer-events-none">% / mo</span>
+          </div>
+        </div>
+        @if (pettyPct() > 100) {
+          <div class="rounded-lg bg-red-50 border border-red-100 px-3 py-2 text-xs text-status-red font-semibold">
+            At this growth rate petty cash exceeds its allocation by {{ pettyYear() - pettyAllocation() | number:'1.0-0' }} OMR.
+          </div>
+        } @else {
+          <div class="rounded-lg bg-emerald-50 border border-emerald-100 px-3 py-2 text-xs text-status-normal font-semibold">
+            Within the allocation — {{ pettyAllocation() - pettyYear() | number:'1.0-0' }} OMR to spare.
+          </div>
+        }
       </div>
-      @if (pettyPct() > 100) {
-        <p class="text-xs text-status-red font-semibold mt-3">At this growth rate petty cash is forecast to exceed its allocation by {{ pettyYear() - pettyAllocation() | number:'1.0-0' }} OMR.</p>
-      }
-    </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-      <app-chart-card title="Estimated vs. Actual Cost" subtitle="Outsourcing and projects — the orange series adds the hiring scenario" type="bar" [data]="estVsActualChart()"></app-chart-card>
-      <app-chart-card title="Annual Petty Cash Forecast" subtitle="Base spending compounded by the growth rate above" type="line" [data]="pettyCashChart()"></app-chart-card>
+      <div class="lg:col-span-2 flex flex-col gap-4">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <app-kpi-card label="Forecast for the year" [value]="pettyYear() | number:'1.0-0'" unit="OMR" icon="savings"></app-kpi-card>
+          <app-kpi-card label="Annual allocation" [value]="pettyAllocation() | number:'1.0-0'" unit="OMR" icon="account_balance"></app-kpi-card>
+          <app-kpi-card label="Forecast vs allocation" [value]="pettyPct().toFixed(0)" unit="%" [level]="pettyLevel()" icon="trending_up"></app-kpi-card>
+        </div>
+        <app-chart-card title="Annual Petty Cash Forecast" subtitle="Base spending compounded by the growth rate" type="line" [data]="pettyCashChart()"></app-chart-card>
+      </div>
     </div>
   `,
 })
 export class CostForecastComponent {
   store = inject(CrcStore);
   private ui = inject(UiService);
+  input = INPUT;
 
   extraHeadcount = signal(5);
   avgBillingRate = signal(615);
