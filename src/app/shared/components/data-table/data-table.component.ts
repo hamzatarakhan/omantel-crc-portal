@@ -51,9 +51,16 @@ export interface TableColumn<T = any> {
             <span class="hidden sm:inline">Export</span>
             <mat-icon class="!text-[18px] !w-[18px] !h-[18px] !leading-[18px] text-brand-500">expand_more</mat-icon>
           </button>
-          <mat-menu #exportMenu="matMenu" xPosition="before">
-            <button mat-menu-item (click)="exportCsv()"><mat-icon>file_download</mat-icon><span>CSV file (.csv)</span></button>
-            <button mat-menu-item (click)="exportXlsx()"><mat-icon>table_view</mat-icon><span>Excel workbook (.xlsx)</span></button>
+<mat-menu #exportMenu="matMenu" xPosition="before" class="app-menu-panel">
+            <div class="w-56 py-1.5">
+              <div class="px-4 pt-1.5 pb-1 text-[10.5px] font-bold uppercase tracking-wider text-ink-400">Export {{ filteredRows().length }} row{{ filteredRows().length === 1 ? '' : 's' }}</div>
+              <button (click)="exportCsv()" class="w-full flex items-center gap-2.5 px-4 py-2 text-[13px] text-ink-700 hover:bg-surface-subtle transition-colors">
+                <mat-icon class="!text-lg !text-ink-400">file_download</mat-icon>CSV file (.csv)
+              </button>
+              <button (click)="exportXlsx()" class="w-full flex items-center gap-2.5 px-4 py-2 text-[13px] text-ink-700 hover:bg-surface-subtle transition-colors">
+                <mat-icon class="!text-lg !text-ink-400">table_view</mat-icon>Excel workbook (.xlsx)
+              </button>
+            </div>
           </mat-menu>
         }
       </div>
