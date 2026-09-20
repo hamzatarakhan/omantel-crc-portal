@@ -1,4 +1,0 @@
-
-// Role-switch loader progress bar (fills over the same ~1.3s the switch takes)
-@keyframes role-progress { from { width: 0; } to { width: 100%; } }
-.role-progress { animation: role-progress 1.3s ease-in-out forwards; }
