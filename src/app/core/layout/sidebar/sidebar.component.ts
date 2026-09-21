@@ -32,10 +32,10 @@ import { CrcStore } from '../../services/crc-store.service';
         [class.py-4]="collapsed()"
       >
         @if (!collapsed()) {
-          <div class="flex-1 min-w-0 flex flex-col gap-1.5">
+          <a routerLink="/contracts-budget/dashboard" (click)="closeMobile.emit()" title="Go to dashboard" class="flex-1 min-w-0 flex flex-col gap-1.5 cursor-pointer">
             <img src="logo.svg" alt="Omantel" class="h-[21px] w-auto self-start" />
             <div class="text-[9px] font-semibold uppercase tracking-[0.08em] text-ink-400 truncate">CRC Portal &middot; Tawasul</div>
-          </div>
+          </a>
         }
         <button
           class="w-7 h-7 rounded-lg items-center justify-center text-ink-400 hover:text-brand-600 hover:bg-brand-50 shrink-0 hidden lg:flex"
