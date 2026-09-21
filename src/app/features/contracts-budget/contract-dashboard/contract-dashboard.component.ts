@@ -14,7 +14,7 @@ import { ContractOps } from '../../../core/services/contract-ops.service';
 import { UiService } from '../../../shared/services/ui.service';
 import { Contract } from '../../../core/models/domain';
 import { DIALOG_SIZE } from '../../../shared/dialog-sizes';
-import { requiredActionFor, statusLevelFor } from '../../../core/services/contract-monitoring';
+import { remainingLabel, requiredActionFor, statusLevelFor } from '../../../core/services/contract-monitoring';
 
 interface VendorSummary {
   name: string;
@@ -150,7 +150,7 @@ export class ContractDashboardComponent {
     { key: 'parentReference', label: 'Parent Contract' },
     { key: 'startDate', label: 'Start Date', type: 'date' },
     { key: 'endDate', label: 'End Date', type: 'date' },
-    { key: 'daysRemaining', label: 'Days Remaining', type: 'number', align: 'right' },
+    { key: 'daysRemaining', label: 'Days Remaining', display: (r) => remainingLabel(r.endDate) },
     { key: 'amount', label: 'Contract Amount', type: 'currency', align: 'right' },
     { key: 'status', label: 'Status', type: 'status', statusFn: (row) => ({ label: row.status, level: row.level }) },
     { key: 'renewalStatus', label: 'Renewal Status' },

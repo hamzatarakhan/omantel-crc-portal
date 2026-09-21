@@ -120,7 +120,7 @@ export class ContractListComponent {
     { key: 'erpReference', label: 'ERP reference' },
     { key: 'startDate', label: 'Start date', type: 'date' },
     { key: 'endDate', label: 'End date', type: 'date' },
-    { key: 'daysRemaining', label: 'Days remaining', type: 'number', align: 'right' },
+    { key: 'daysRemaining', label: 'Days remaining', display: (r) => r.remaining },
     { key: 'amount', label: 'Amount', type: 'currency', align: 'right' },
     { key: 'status', label: 'Status', type: 'status', statusFn: (r) => ({ label: r.status, level: r.level }) },
     { key: 'renewalStatus', label: 'Renewal status' },

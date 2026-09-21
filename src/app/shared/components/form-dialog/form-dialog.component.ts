@@ -7,7 +7,7 @@ import { MatIconModule } from '@angular/material/icon';
 export interface FormField {
   key: string;
   label: string;
-  type?: 'text' | 'number' | 'email' | 'date' | 'time' | 'select' | 'textarea' | 'multiselect';
+  type?: 'text' | 'number' | 'email' | 'date' | 'time' | 'select' | 'textarea' | 'multiselect' | 'file';
   options?: Array<string | { value: string; label: string }>;
   required?: boolean;
   placeholder?: string;
@@ -61,6 +61,13 @@ const INPUT = 'w-full px-3 py-2.5 text-sm rounded-lg border border-surface-borde
                   <mat-icon class="!text-lg !text-ink-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none">expand_more</mat-icon>
                 </div>
               }
+              @case ('file') {
+                <label class="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg border border-surface-border bg-white text-ink-700 hover:border-brand-300 cursor-pointer transition-colors">
+                  <mat-icon class="!text-lg !text-brand-600">attach_file</mat-icon>Choose files
+                  <input type="file" multiple class="hidden" (change)="pickFiles(fld.key, $event)" />
+                </label>
+                @if ((model[fld.key] || []).length) { <div class="text-xs text-ink-500 mt-1.5">{{ model[fld.key].join(', ') }}</div> }
+              }
               @case ('multiselect') {
                 <div class="flex flex-wrap gap-1.5">
                   @for (o of fld.options || []; track optValue(o)) {
@@ -94,15 +101,20 @@ export class FormDialogComponent {
   constructor(@Inject(MAT_DIALOG_DATA) public data: FormDialogData, public ref: MatDialogRef<FormDialogComponent>) {
     for (const f of data.fields) {
       const v = data.values?.[f.key];
-      this.model[f.key] = f.type === 'multiselect' ? (Array.isArray(v) ? [...v] : v ? String(v).split(/,\s*/) : []) : (v ?? (f.type === 'number' ? null : ''));
+      this.model[f.key] = f.type === 'file' ? (Array.isArray(v) ? [...v] : []) : f.type === 'multiselect' ? (Array.isArray(v) ? [...v] : v ? String(v).split(/,\s*/) : []) : (v ?? (f.type === 'number' ? null : ''));
     }
+  }
+
+  pickFiles(key: string, e: Event) {
+    const files = Array.from((e.target as HTMLInputElement).files ?? []).map((x) => x.name);
+    this.model[key] = [...(this.model[key] || []), ...files.filter((n) => !(this.model[key] || []).includes(n))];
   }
 
   has(key: string, v: string) { return (this.model[key] as string[]).includes(v); }
   toggle(key: string, v: string) { const l = this.model[key] as string[]; this.model[key] = l.includes(v) ? l.filter((x) => x !== v) : [...l, v]; }
 
   /** Text-like fields span the full row; selects, numbers and dates pair up two per row when there is room. */
-  isFull(f: FormField) { return !f.type || f.type === 'text' || f.type === 'email' || f.type === 'textarea' || f.type === 'multiselect'; }
+  isFull(f: FormField) { return !f.type || f.type === 'text' || f.type === 'email' || f.type === 'textarea' || f.type === 'multiselect' || f.type === 'file'; }
 
   optValue(o: string | { value: string; label: string }) { return typeof o === 'string' ? o : o.value; }
   optLabel(o: string | { value: string; label: string }) { return typeof o === 'string' ? o : o.label; }

@@ -1,226 +1,495 @@
-import { Component, computed, inject } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
-import { FormsModule } from '@angular/forms';
+import { MatDialog } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
+import { MatTabsModule } from '@angular/material/tabs';
 import { PageHeaderComponent } from '../../../shared/components/page-header/page-header.component';
 import { KpiCardComponent } from '../../../shared/components/kpi-card/kpi-card.component';
-import { CrcStore } from '../../../core/services/crc-store.service';
-import { ProjectRequests } from '../../../core/services/project-requests.service';
-import { UiService } from '../../../shared/services/ui.service';
-import { BudgetAddition, BudgetLine } from '../../../core/models/domain';
 import { RequiresDirective } from '../../../shared/directives/requires.directive';
+import { DIALOG_SIZE } from '../../../shared/dialog-sizes';
+import { BudgetCycle, CycleStatus, MONTH_NAMES, OutsourcingLine, PettyLine } from '../../../core/services/budget-cycle.service';
+import { UiService } from '../../../shared/services/ui.service';
+import { CrcStore } from '../../../core/services/crc-store.service';
+import { projectTotal, resourceCost } from '../../../core/services/project-data';
+import { MonthlyBreakdownDialogComponent } from './monthly-breakdown-dialog.component';
 
-const CATEGORIES: BudgetLine['category'][] = ['Outsourcing', 'OJT', 'Petty Cash', 'Projects'];
-const LAYERS = ['No PO layer', 'PO1', 'PO2', 'PO3 - Outsource'];
-
-interface PrepLine {
-  id: string;
-  item: string;
-  category: string;
-  poLayer?: string;
-  source: 'Auto +3%' | 'Manual' | 'Project request';
-  note?: string;
-  prior: number | null;
-  draft: number;
-  addition?: BudgetAddition;
-}
+const FLOW: CycleStatus[] = ['Not Started', 'Draft', 'Under Review', 'Ready for Submission', 'Submitted'];
+const STATUS_CHIP: Record<CycleStatus, string> = { 'Not Started': 'neutral', Draft: 'neutral', 'Under Review': 'info', 'Ready for Submission': 'amber', Submitted: 'normal', Reopened: 'orange', Closed: 'neutral' };
+const PHASE_CHIP: Record<string, string> = { 'Not started': 'neutral', Open: 'normal', 'Due soon': 'amber', Closed: 'red', Submitted: 'info' };
+const num = (v: any) => Number(v ?? 0) || 0;
 
 @Component({
   selector: 'app-budget-preparation',
   standalone: true,
-  imports: [RequiresDirective, CommonModule, RouterModule, FormsModule, MatButtonModule, MatIconModule, PageHeaderComponent, KpiCardComponent],
+  imports: [RequiresDirective, CommonModule, RouterModule, MatButtonModule, MatIconModule, MatTabsModule, PageHeaderComponent, KpiCardComponent],
   template: `
     <app-page-header
       title="Budget Preparation"
-      subtitle="Start from the draft at 3% above the prior approved budget, add lines by hand, and bring in the projects that were kept"
+      [subtitle]="'Next financial year ' + c.settings().year + ' — start from last year\\'s values with the ' + c.settings().increasePct + '% increase, adjust, add projects and submit to the Budget Team'"
       [breadcrumbs]="[{ label: 'Contracts & Budget', link: '/contracts-budget/dashboard' }, { label: 'Budget' }, { label: 'Preparation' }]"
     >
-      <span class="status-chip" [class]="chip()">{{ plan().status }}</span>
-      @if (editable()) {
-        <button mat-stroked-button (click)="addLine()" appRequires="Prepare/Edit Draft Budget"><mat-icon class="!text-base !mr-1">add</mat-icon>Add budget line</button>
-        <button mat-stroked-button (click)="regenerate()" appRequires="Prepare/Edit Draft Budget"><mat-icon class="!text-base !mr-1">autorenew</mat-icon>Regenerate (+3%)</button>
-        <button mat-flat-button color="primary" (click)="submit()" appRequires="Prepare/Edit Draft Budget"><mat-icon class="!text-base !mr-1">send</mat-icon>Submit for Approval</button>
-      }
-      @if (plan().status === 'Submitted') {
-        <button mat-stroked-button color="warn" (click)="decide(false)" appRequires="Approve Budget"><mat-icon class="!text-base !mr-1">close</mat-icon>Reject</button>
-        <button mat-flat-button color="primary" (click)="decide(true)" appRequires="Approve Budget"><mat-icon class="!text-base !mr-1">check</mat-icon>Approve</button>
-      }
-      @if (plan().status === 'Approved' || plan().status === 'Rejected') {
-        <button mat-stroked-button (click)="reopen()" appRequires="Prepare/Edit Draft Budget"><mat-icon class="!text-base !mr-1">edit</mat-icon>Start a new draft</button>
-      }
+      <span class="status-chip" [class]="'status-chip--' + statusChip()">{{ c.status() }}</span>
+      <span class="status-chip" [class]="'status-chip--' + phaseChip()">{{ c.phase() }}</span>
+      <button mat-stroked-button (click)="settingsForm()" appRequires="Manage Budget Cycle"><mat-icon class="!text-base !mr-1">tune</mat-icon>Cycle settings</button>
     </app-page-header>
 
-    @if (plan().status === 'Submitted') {
-      <div class="status-chip status-chip--amber mb-4">Submitted {{ plan().submittedAt | date:'medium' }} — waiting for the Budget Owner to approve or reject.</div>
-    } @else if (plan().status === 'Approved') {
-      <div class="status-chip status-chip--normal mb-4">Approved {{ plan().decidedAt | date:'medium' }}{{ plan().decisionNote ? ' — ' + plan().decisionNote : '' }}</div>
-    } @else if (plan().status === 'Rejected') {
-      <div class="status-chip status-chip--red mb-4">Rejected {{ plan().decidedAt | date:'medium' }}{{ plan().decisionNote ? ' — ' + plan().decisionNote : '' }}</div>
-    }
+    @if (locked()) { <div class="surface-card px-4 py-3 mb-4 flex items-center gap-3 border-l-4 !border-l-status-neutral"><mat-icon class="text-status-neutral">lock</mat-icon><div class="text-sm text-ink-700">{{ locked() }}</div></div> }
 
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-      <app-kpi-card label="Prior approved budget" [value]="priorTotal() | number:'1.0-0'" unit="OMR" icon="history"></app-kpi-card>
-      <app-kpi-card label="Next-year draft" [value]="draftTotal() | number:'1.0-0'" unit="OMR" icon="edit_note"></app-kpi-card>
-      <app-kpi-card label="Change" [value]="pct(priorTotal(), draftTotal())" icon="trending_up"></app-kpi-card>
-      <app-kpi-card label="Added on top (manual + projects)" [value]="addedTotal() | number:'1.0-0'" unit="OMR" icon="playlist_add"></app-kpi-card>
-    </div>
+    <mat-tab-group [(selectedIndex)]="tab">
+      <!-- ============ Overview (Screen 1) ============ -->
+      <mat-tab label="Overview">
+        <div class="pt-4 flex flex-col gap-4">
+          <div class="surface-card px-4 py-3.5">
+            <ol class="flex items-center gap-1 flex-wrap text-xs font-semibold list-none p-0 m-0">
+              @for (s of flow(); track s; let last = $last) {
+                <li class="flex items-center gap-1"><span class="px-2.5 py-1 rounded-full border" [class]="s === c.status() ? 'bg-brand-50 border-brand-300 text-brand-700' : 'border-surface-border text-ink-400'">{{ s }}</span>@if (!last) { <mat-icon class="!text-base text-ink-300">chevron_right</mat-icon> }</li>
+              }
+            </ol>
+          </div>
 
-    @if (projects.waiting().length) {
-      <a routerLink="/contracts-budget/projects" class="surface-card flex items-center gap-3 px-4 py-3 mb-4 hover:border-brand-300 transition-colors">
-        <mat-icon class="text-status-amber">rocket_launch</mat-icon>
-        <div class="flex-1 text-sm text-ink-700"><b>{{ projects.waiting().length }} project request{{ projects.waiting().length === 1 ? '' : 's' }}</b> are waiting for a decision. Kept projects appear here as budget lines.</div>
-        <mat-icon class="text-ink-400">chevron_right</mat-icon>
-      </a>
-    }
+          <div class="grid grid-cols-2 xl:grid-cols-4 gap-4">
+            <app-kpi-card label="Total proposed budget" [value]="t().total | number:'1.0-0'" unit="OMR" icon="edit_note"></app-kpi-card>
+            <app-kpi-card label="Previous-year budget" [value]="t().previous | number:'1.0-0'" unit="OMR" icon="history"></app-kpi-card>
+            <app-kpi-card label="Variance" [value]="(t().variance >= 0 ? '+' : '') + (t().variance | number:'1.0-0')" unit="OMR" [level]="t().variancePct > c.settings().warnPct ? 'amber' : 'normal'" [trend]="pct(t().variancePct)" icon="trending_up"></app-kpi-card>
+            <app-kpi-card label="Total proposed head count" [value]="t().headCount" [trend]="'was ' + t().prevHeadCount" icon="groups"></app-kpi-card>
+            <app-kpi-card label="Outsourcing total" [value]="t().outsourcing | number:'1.0-0'" unit="OMR" icon="support_agent"></app-kpi-card>
+            <app-kpi-card label="Petty cash total" [value]="t().petty | number:'1.0-0'" unit="OMR" icon="payments"></app-kpi-card>
+            <app-kpi-card label="Project total" [value]="t().projects | number:'1.0-0'" unit="OMR" icon="rocket_launch"></app-kpi-card>
+            <div class="surface-card px-4 py-3">
+              <div class="text-xs text-ink-400">Budget completion</div>
+              <div class="text-lg font-extrabold text-ink-900 mt-0.5">{{ c.completion() }}%</div>
+              <div class="h-1.5 rounded-full bg-surface-subtle mt-2 overflow-hidden"><div class="h-full rounded-full bg-brand-500" [style.width.%]="c.completion()"></div></div>
+            </div>
+          </div>
 
-    <div class="surface-card overflow-x-auto">
-      <table class="crc-table w-full">
-        <thead>
-          <tr class="bg-surface-subtle text-left text-xs text-ink-500 uppercase tracking-wide">
-            <th class="px-4 py-2.5 font-medium">Item</th>
-            <th class="px-4 py-2.5 font-medium">Category</th>
-            <th class="px-4 py-2.5 font-medium">PO Layer</th>
-            <th class="px-4 py-2.5 font-medium">Source</th>
-            <th class="px-4 py-2.5 font-medium text-right">Prior Budget (OMR)</th>
-            <th class="px-4 py-2.5 font-medium text-right">Draft Budget (OMR)</th>
-            <th class="px-4 py-2.5 font-medium text-right">Change</th>
-            <th class="px-4 py-2.5 font-medium w-20"></th>
-          </tr>
-        </thead>
-        <tbody>
-          @for (line of lines(); track line.id) {
-            <tr class="border-t border-surface-border">
-              <td class="px-4 py-2 font-medium text-ink-700">{{ line.item }}@if (line.note) { <div class="text-xs font-normal text-ink-400 max-w-[320px] truncate" [title]="line.note">{{ line.note }}</div> }</td>
-              <td class="px-4 py-2 text-ink-500">{{ line.category }}</td>
-              <td class="px-4 py-2 text-ink-500">{{ line.poLayer || '—' }}</td>
-              <td class="px-4 py-2"><span class="status-chip" [class]="line.source === 'Auto +3%' ? 'status-chip--neutral' : line.source === 'Manual' ? 'status-chip--info' : 'status-chip--orange'">{{ line.source }}</span></td>
-              <td class="px-4 py-2 text-right text-ink-500">{{ line.prior === null ? '—' : (line.prior | number:'1.0-0') }}</td>
-              <td class="px-4 py-2 text-right">
-                <input
-                  type="number"
-                  class="w-28 text-right border border-surface-border rounded-lg px-2 py-1.5 focus:outline-none focus:border-brand-400 transition-colors disabled:bg-surface-subtle disabled:text-ink-500"
-                  [ngModel]="line.draft"
-                  (ngModelChange)="setDraft(line.id, $event)"
-                  [disabled]="!editable() || line.source === 'Project request'"
-                  [title]="line.source === 'Project request' ? 'This amount comes from the project request' : ''"
-                />
-              </td>
-              <td class="px-4 py-2 text-right text-xs font-semibold" [class]="line.prior === null ? 'text-status-info' : line.draft >= line.prior ? 'text-status-amber' : 'text-status-normal'">{{ line.prior === null ? 'New' : pct(line.prior, line.draft) }}</td>
-              <td class="px-4 py-2 text-right whitespace-nowrap">
-                @if (line.source === 'Manual' && editable()) {
-                  <button class="w-7 h-7 rounded-md inline-flex items-center justify-center text-ink-400 hover:bg-surface-subtle hover:text-brand-600" title="Edit line" (click)="editLine(line.addition!)"><mat-icon class="!text-[17px]">edit</mat-icon></button>
-                  <button class="w-7 h-7 rounded-md inline-flex items-center justify-center text-ink-400 hover:bg-red-50 hover:text-status-red" title="Remove line" (click)="removeLine(line.addition!)"><mat-icon class="!text-[17px]">delete_outline</mat-icon></button>
-                } @else if (line.source === 'Project request') {
-                  <a routerLink="/contracts-budget/projects" class="text-xs font-semibold text-brand-700 hover:underline">Project</a>
+          <div class="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
+            <div class="surface-card px-5 py-4">
+              <h3 class="text-[13.5px] font-bold text-ink-900">Cut-off</h3>
+              <div class="text-2xl font-extrabold mt-2" [class]="c.daysLeft() < 0 ? 'text-status-red' : c.daysLeft() <= 7 ? 'text-status-amber' : 'text-ink-900'">{{ c.daysLeft() < 0 ? 'Passed' : c.daysLeft() + ' days left' }}</div>
+              <div class="text-xs text-ink-400 mt-1">Cut-off date {{ c.settings().cutOff }} · after it normal users cannot submit or change the budget; a cycle manager can reopen it with a reason.</div>
+            </div>
+            <div class="surface-card px-5 py-4">
+              <h3 class="text-[13.5px] font-bold text-ink-900">Annual increase</h3>
+              <div class="text-2xl font-extrabold text-ink-900 mt-2">{{ c.settings().increasePct }}%</div>
+              <div class="text-xs text-ink-400 mt-1">Applied to last year's salary, incentive, overtime, OJT and petty cash. Head count starts at last year's. Change it in the cycle settings.</div>
+            </div>
+            <div class="surface-card px-5 py-4">
+              <h3 class="text-[13.5px] font-bold text-ink-900">What to do next</h3>
+              <div class="flex flex-col gap-2 mt-3">
+                @if (c.status() === 'Not Started') { <button mat-flat-button color="primary" (click)="openCycle()" appRequires="Manage Budget Cycle"><mat-icon class="!text-base !mr-1">play_arrow</mat-icon>Create draft</button> }
+                @else if (c.editable()) { <button mat-flat-button color="primary" (click)="tab = 1"><mat-icon class="!text-base !mr-1">edit_note</mat-icon>Continue preparation</button> }
+                <button mat-stroked-button (click)="tab = 4"><mat-icon class="!text-base !mr-1">fact_check</mat-icon>Review budget</button>
+                <button mat-stroked-button (click)="tab = 4" [disabled]="c.status() !== 'Ready for Submission'"><mat-icon class="!text-base !mr-1">send</mat-icon>Submit proposed budget</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </mat-tab>
+
+      <!-- ============ Outsourcing (Screen 2) ============ -->
+      <mat-tab label="Outsourcing">
+        <div class="pt-4 flex flex-col gap-3">
+          <div class="flex items-center justify-between gap-3 flex-wrap">
+            <p class="text-xs text-ink-500 max-w-3xl">Head count, salary, incentive, overtime and OJT per resource category, starting from last year plus {{ c.settings().increasePct }}%. Changes to head count or amounts need an adjustment reason.</p>
+            <div class="flex items-center gap-2 flex-wrap">
+              <button mat-stroked-button (click)="calculator()" [disabled]="!c.editable()"><mat-icon class="!text-base !mr-1">calculate</mat-icon>Additional resources</button>
+              <button mat-stroked-button (click)="addCategory()" [disabled]="!c.editable()"><mat-icon class="!text-base !mr-1">add</mat-icon>Add resource category</button>
+              <button mat-stroked-button (click)="reapply()" [disabled]="!c.editable()"><mat-icon class="!text-base !mr-1">restart_alt</mat-icon>Apply baseline</button>
+            </div>
+          </div>
+          <div class="surface-card overflow-x-auto">
+            <table class="crc-table w-full text-sm">
+              <thead><tr class="bg-surface-subtle text-left text-xs text-ink-500 uppercase tracking-wide">
+                <th class="px-3 py-2.5 font-medium">Vendor / Contract</th><th class="px-3 py-2.5 font-medium">Resource category</th>
+                <th class="px-3 py-2.5 font-medium text-right">Previous HC</th><th class="px-3 py-2.5 font-medium text-right">Proposed HC</th>
+                <th class="px-3 py-2.5 font-medium text-right">Previous salary</th><th class="px-3 py-2.5 font-medium text-right">Proposed salary</th>
+                <th class="px-3 py-2.5 font-medium text-right">Incentive</th><th class="px-3 py-2.5 font-medium text-right">Overtime</th><th class="px-3 py-2.5 font-medium text-right">OJT</th>
+                <th class="px-3 py-2.5 font-medium text-right">Annual total</th><th class="px-3 py-2.5 font-medium">Adjustment reason</th><th class="px-3 py-2.5 w-24"></th>
+              </tr></thead>
+              <tbody>
+                @for (l of c.outsourcing(); track l.id) {
+                  <tr class="border-t border-surface-border">
+                    <td class="px-3 py-2"><div class="font-medium text-ink-700">{{ l.vendor }}</div><div class="text-xs text-ink-400">{{ l.contract || '—' }}</div></td>
+                    <td class="px-3 py-2 text-ink-700">{{ l.category }}@if (l.prevHC === 0) { <span class="status-chip status-chip--info ml-1.5">New</span> }</td>
+                    <td class="px-3 py-2 text-right text-ink-500">{{ l.prevHC }}</td>
+                    <td class="px-3 py-2 text-right font-semibold" [class]="l.hc !== l.prevHC ? 'text-brand-700' : 'text-ink-900'">{{ l.hc }}</td>
+                    <td class="px-3 py-2 text-right text-ink-500">{{ l.prevSalary | number:'1.0-2' }}</td>
+                    <td class="px-3 py-2 text-right">{{ l.salary | number:'1.0-2' }}</td>
+                    <td class="px-3 py-2 text-right">{{ l.incentive | number:'1.0-0' }}</td>
+                    <td class="px-3 py-2 text-right">{{ l.overtime | number:'1.0-0' }}</td>
+                    <td class="px-3 py-2 text-right">{{ l.ojt | number:'1.0-0' }}</td>
+                    <td class="px-3 py-2 text-right font-semibold text-ink-900">{{ c.annual(l) | number:'1.0-0' }}<div class="text-[11px] font-normal" [class]="c.annual(l) >= c.prevAnnual(l) ? 'text-status-amber' : 'text-status-normal'">{{ pct(c.prevAnnual(l) ? (c.annual(l) - c.prevAnnual(l)) / c.prevAnnual(l) * 100 : 0) }}</div></td>
+                    <td class="px-3 py-2 text-xs text-ink-500 max-w-[220px]"><span class="line-clamp-2">{{ l.reason || (c.reasonNeeded(l) ? '⚠ reason needed' : '—') }}</span></td>
+                    <td class="px-3 py-2 text-right whitespace-nowrap">
+                      <button class="w-7 h-7 rounded-md inline-flex items-center justify-center text-ink-400 hover:bg-surface-subtle hover:text-brand-600" title="Monthly breakdown" (click)="monthly(l)"><mat-icon class="!text-[17px]">calendar_view_month</mat-icon></button>
+                      @if (c.editable()) {
+                        <button class="w-7 h-7 rounded-md inline-flex items-center justify-center text-ink-400 hover:bg-surface-subtle hover:text-brand-600" title="Edit line" (click)="editLine(l)"><mat-icon class="!text-[17px]">edit</mat-icon></button>
+                        @if (l.prevHC === 0) { <button class="w-7 h-7 rounded-md inline-flex items-center justify-center text-ink-400 hover:bg-red-50 hover:text-status-red" title="Remove" (click)="c.removeOutsourcing(l.id)"><mat-icon class="!text-[17px]">delete_outline</mat-icon></button> }
+                      }
+                    </td>
+                  </tr>
                 }
-              </td>
-            </tr>
+              </tbody>
+              <tfoot><tr class="border-t-2 border-surface-border font-semibold"><td class="px-3 py-2.5" colspan="2">Outsourcing total</td><td class="px-3 py-2.5 text-right">{{ hcPrev() }}</td><td class="px-3 py-2.5 text-right">{{ hcNow() }}</td><td colspan="4"></td><td class="px-3 py-2.5 text-right text-brand-700">{{ t().outsourcing | number:'1.0-0' }}</td><td colspan="2" class="px-3 py-2.5 text-xs font-normal text-ink-400">Previous {{ t().prevOut | number:'1.0-0' }} OMR</td></tr></tfoot>
+            </table>
+          </div>
+          <p class="text-xs text-ink-400">Salary is monthly per head, in OMR; incentive, overtime and OJT are yearly amounts. Annual total = head count × monthly salary × months + incentive + overtime + OJT.</p>
+        </div>
+      </mat-tab>
+
+      <!-- ============ Petty cash (Screen 3) ============ -->
+      <mat-tab label="Petty cash">
+        <div class="pt-4 flex flex-col gap-3">
+          <div class="surface-card px-4 py-3.5">
+            <div class="flex items-center justify-between gap-3 flex-wrap"><h3 class="text-[13.5px] font-bold text-ink-900">Current-year petty cash against its allocation</h3><span class="status-chip" [class]="'status-chip--' + pettyChip()">{{ track().flag }}</span></div>
+            <div class="grid grid-cols-2 md:grid-cols-6 gap-4 mt-3 text-sm">
+              <div><div class="text-xs text-ink-400">Approved</div><div class="font-extrabold text-ink-900">{{ track().approved | number:'1.0-0' }}</div></div>
+              <div><div class="text-xs text-ink-400">Spent</div><div class="font-extrabold text-ink-900">{{ track().spent | number:'1.0-0' }}</div></div>
+              <div><div class="text-xs text-ink-400">Remaining</div><div class="font-extrabold" [class]="track().remaining < 0 ? 'text-status-red' : 'text-status-normal'">{{ track().remaining | number:'1.0-0' }}</div></div>
+              <div><div class="text-xs text-ink-400">Forecast (full year)</div><div class="font-extrabold text-ink-900">{{ track().forecast | number:'1.0-0' }}</div></div>
+              <div><div class="text-xs text-ink-400">Variance</div><div class="font-extrabold" [class]="track().variance > 0 ? 'text-status-red' : 'text-status-normal'">{{ (track().variance > 0 ? '+' : '') + (track().variance | number:'1.0-0') }}</div></div>
+              <div><div class="text-xs text-ink-400">Utilization</div><div class="font-extrabold text-ink-900">{{ track().util }}%</div></div>
+            </div>
+          </div>
+          <div class="flex items-center justify-between gap-3 flex-wrap">
+            <p class="text-xs text-ink-500">Next year's petty cash starts from last year's amount plus {{ c.settings().increasePct }}%. Adjust any category, with a reason.</p>
+            <button mat-stroked-button (click)="addPetty()" [disabled]="!c.editable()"><mat-icon class="!text-base !mr-1">add</mat-icon>Add category</button>
+          </div>
+          <div class="surface-card overflow-x-auto">
+            <table class="crc-table w-full text-sm">
+              <thead><tr class="bg-surface-subtle text-left text-xs text-ink-500 uppercase tracking-wide"><th class="px-3 py-2.5 font-medium">Category</th><th class="px-3 py-2.5 font-medium text-right">Previous year</th><th class="px-3 py-2.5 font-medium text-right">Increase %</th><th class="px-3 py-2.5 font-medium text-right">System proposed</th><th class="px-3 py-2.5 font-medium text-right">User adjustment</th><th class="px-3 py-2.5 font-medium text-right">Final amount</th><th class="px-3 py-2.5 font-medium text-right">Monthly</th><th class="px-3 py-2.5 font-medium">Reason</th><th class="px-3 py-2.5 w-12"></th></tr></thead>
+              <tbody>
+                @for (l of c.petty(); track l.id) {
+                  <tr class="border-t border-surface-border">
+                    <td class="px-3 py-2 font-medium text-ink-700">{{ l.category }}</td><td class="px-3 py-2 text-right text-ink-500">{{ l.prev | number:'1.0-0' }}</td><td class="px-3 py-2 text-right text-ink-500">{{ c.settings().increasePct }}%</td>
+                    <td class="px-3 py-2 text-right">{{ c.pettySystem(l) | number:'1.0-0' }}</td>
+                    <td class="px-3 py-2 text-right" [class]="l.adjustment ? 'text-brand-700 font-semibold' : 'text-ink-400'">{{ l.adjustment ? ((l.adjustment > 0 ? '+' : '') + (l.adjustment | number:'1.0-0')) : '—' }}</td>
+                    <td class="px-3 py-2 text-right font-semibold text-ink-900">{{ c.pettyFinal(l) | number:'1.0-0' }}</td>
+                    <td class="px-3 py-2 text-right text-ink-500">{{ c.pettyFinal(l) / 12 | number:'1.0-0' }}</td>
+                    <td class="px-3 py-2 text-xs text-ink-500 max-w-[220px]"><span class="line-clamp-2">{{ l.reason || '—' }}</span></td>
+                    <td class="px-3 py-2 text-right">@if (c.editable()) { <button class="w-7 h-7 rounded-md inline-flex items-center justify-center text-ink-400 hover:bg-surface-subtle hover:text-brand-600" title="Edit" (click)="editPetty(l)"><mat-icon class="!text-[17px]">edit</mat-icon></button> }</td>
+                  </tr>
+                }
+              </tbody>
+              <tfoot><tr class="border-t-2 border-surface-border font-semibold"><td class="px-3 py-2.5">Petty cash total</td><td class="px-3 py-2.5 text-right">{{ t().prevPetty | number:'1.0-0' }}</td><td colspan="3"></td><td class="px-3 py-2.5 text-right text-brand-700">{{ t().petty | number:'1.0-0' }}</td><td class="px-3 py-2.5 text-right">{{ t().petty / 12 | number:'1.0-0' }}</td><td colspan="2"></td></tr></tfoot>
+            </table>
+          </div>
+        </div>
+      </mat-tab>
+
+      <!-- ============ Projects ============ -->
+      <mat-tab [label]="'Projects (' + c.projectsIncluded().length + ')'">
+        <div class="pt-4 flex flex-col gap-3">
+          <div class="flex items-center justify-between gap-3 flex-wrap">
+            <p class="text-xs text-ink-500 max-w-3xl">Projects the Budget Owner included, with their resource cost. Line managers and project managers add projects on <a class="text-brand-600 font-medium" routerLink="/contracts-budget/projects">Project Requests</a>.</p>
+            <a mat-stroked-button routerLink="/contracts-budget/projects"><mat-icon class="!text-base !mr-1">rocket_launch</mat-icon>Open Project Requests</a>
+          </div>
+          @if (c.projectsPending().length) {
+            <div class="surface-card px-4 py-3 flex items-start gap-3 border-l-4 !border-l-status-amber"><mat-icon class="text-status-amber">pending_actions</mat-icon><div class="text-sm text-ink-700"><b>{{ c.projectsPending().length }} not in the budget yet:</b> {{ pendingNames() }}.</div></div>
           }
-        </tbody>
-        <tfoot>
-          <tr class="border-t-2 border-surface-border font-semibold">
-            <td class="px-4 py-2.5" colspan="4">Total</td>
-            <td class="px-4 py-2.5 text-right">{{ priorTotal() | number:'1.0-0' }}</td>
-            <td class="px-4 py-2.5 text-right text-brand-700">{{ draftTotal() | number:'1.0-0' }}</td>
-            <td class="px-4 py-2.5 text-right text-xs">{{ pct(priorTotal(), draftTotal()) }}</td>
-            <td></td>
-          </tr>
-        </tfoot>
-      </table>
-    </div>
-    <p class="text-xs text-ink-400 mt-3">The +3% draft and the lines you add by hand sit side by side; regenerating the draft never removes a manual or project line. Submitted budgets route to the Budget Owner; the approved figure is what the Budget Dashboard shows as next-year budget.</p>
+          <div class="surface-card overflow-x-auto">
+            <table class="crc-table w-full text-sm">
+              <thead><tr class="bg-surface-subtle text-left text-xs text-ink-500 uppercase tracking-wide"><th class="px-3 py-2.5 font-medium">Project</th><th class="px-3 py-2.5 font-medium">Project status</th><th class="px-3 py-2.5 font-medium">Priority</th><th class="px-3 py-2.5 font-medium text-right">Head count</th><th class="px-3 py-2.5 font-medium text-right">Estimated cost</th><th class="px-3 py-2.5 font-medium text-right">Resource cost</th><th class="px-3 py-2.5 font-medium text-right">Total</th></tr></thead>
+              <tbody>
+                @for (p of c.projectsIncluded(); track p.id) {
+                  <tr class="border-t border-surface-border"><td class="px-3 py-2 font-medium text-ink-700">{{ p.name }}</td><td class="px-3 py-2 text-ink-500">{{ p.projectStatus }}</td><td class="px-3 py-2"><span class="status-chip" [class]="p.priority === 'High' ? 'status-chip--red' : p.priority === 'Medium' ? 'status-chip--amber' : 'status-chip--neutral'">{{ p.priority }}</span></td><td class="px-3 py-2 text-right">{{ p.headCount }}</td><td class="px-3 py-2 text-right">{{ p.budget | number:'1.0-0' }}</td><td class="px-3 py-2 text-right">{{ rc(p) | number:'1.0-0' }}</td><td class="px-3 py-2 text-right font-semibold">{{ pt(p) | number:'1.0-0' }}</td></tr>
+                } @empty { <tr><td colspan="7" class="px-4 py-8 text-center text-sm text-ink-400">No project is included yet.</td></tr> }
+              </tbody>
+              <tfoot><tr class="border-t-2 border-surface-border font-semibold"><td class="px-3 py-2.5" colspan="6">Project total (last year {{ t().prevProjects | number:'1.0-0' }})</td><td class="px-3 py-2.5 text-right text-brand-700">{{ t().projects | number:'1.0-0' }}</td></tr></tfoot>
+            </table>
+          </div>
+        </div>
+      </mat-tab>
+
+      <!-- ============ Review & submit (Screens 6 and 7) ============ -->
+      <mat-tab label="Review & submit">
+        <div class="pt-4 grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
+          <div class="xl:col-span-2 flex flex-col gap-4">
+            <div class="surface-card px-5 py-4">
+              <h3 class="text-[13.5px] font-bold text-ink-900">Budget summary</h3>
+              <table class="crc-table w-full mt-3 text-sm"><tbody>
+                @for (r of summaryRows(); track r[0]) {
+                  <tr class="border-t border-surface-border" [class.font-semibold]="r[3]"><td class="px-3 py-2" [class]="r[3] ? 'text-ink-900' : 'text-ink-700'">{{ r[0] }}</td><td class="px-3 py-2 text-right text-ink-500">{{ r[1] | number:'1.0-0' }}</td><td class="px-3 py-2 text-right" [class]="r[3] ? 'text-brand-700' : 'text-ink-900'">{{ r[2] | number:'1.0-0' }}</td></tr>
+                }
+              </tbody><thead><tr class="bg-surface-subtle text-left text-xs text-ink-500 uppercase tracking-wide"><th class="px-3 py-2 font-medium">Category (OMR)</th><th class="px-3 py-2 font-medium text-right">Previous year</th><th class="px-3 py-2 font-medium text-right">Proposed</th></tr></thead></table>
+            </div>
+
+            <div class="surface-card px-5 py-4">
+              <h3 class="text-[13.5px] font-bold text-ink-900">Validation</h3>
+              @if (!c.issues().length) { <div class="flex items-center gap-2 mt-3 text-sm text-status-normal"><mat-icon>check_circle</mat-icon>Everything is complete. The budget can be submitted.</div> }
+              <ul class="mt-2 flex flex-col gap-1.5 list-none p-0 m-0">
+                @for (i of c.issues(); track $index) { <li class="flex items-start gap-2 text-sm text-ink-700"><mat-icon class="!text-lg shrink-0" [class]="i.level === 'error' ? 'text-status-red' : 'text-status-amber'">{{ i.level === 'error' ? 'error' : 'warning' }}</mat-icon><span>{{ i.text }}</span></li> }
+              </ul>
+            </div>
+
+            @if (latest(); as s) {
+              <div class="surface-card px-5 py-4">
+                <div class="flex items-center gap-2"><mat-icon class="text-status-normal">task_alt</mat-icon><h3 class="text-[13.5px] font-bold text-ink-900">Submission confirmation</h3><span class="status-chip" [class]="s.emailStatus === 'Sent' ? 'status-chip--normal' : 'status-chip--red'">Email {{ s.emailStatus }}</span></div>
+                <dl class="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-3 mt-3 text-sm">
+                  <div><dt class="text-xs text-ink-400">Submission reference</dt><dd class="font-medium text-ink-900">{{ s.reference }}</dd></div>
+                  <div><dt class="text-xs text-ink-400">Financial year</dt><dd class="font-medium text-ink-900">{{ c.settings().year }}</dd></div>
+                  <div><dt class="text-xs text-ink-400">Total proposed budget</dt><dd class="font-medium text-ink-900">{{ s.total | number:'1.0-0' }} OMR</dd></div>
+                  <div><dt class="text-xs text-ink-400">Submitted</dt><dd class="font-medium text-ink-900">{{ s.at | date:'medium' }} by {{ s.by }}</dd></div>
+                  <div class="md:col-span-2"><dt class="text-xs text-ink-400">Email recipients</dt><dd class="font-medium text-ink-900">{{ s.recipients || '—' }}</dd></div>
+                  <div class="md:col-span-3"><dt class="text-xs text-ink-400">Generated budget sheet</dt><dd class="font-medium text-ink-900">{{ s.fileName }}</dd></div>
+                </dl>
+                @if (s.emailError) { <div class="text-sm text-status-red mt-3">{{ s.emailError }}</div> }
+                <div class="flex items-center gap-2 mt-4 flex-wrap">
+                  <button mat-stroked-button (click)="excel()"><mat-icon class="!text-base !mr-1">download</mat-icon>Download budget sheet</button>
+                  @if (s.emailStatus === 'Failed' || c.canManage()) { <button mat-stroked-button (click)="resend(s.reference)" appRequires="Manage Budget Cycle"><mat-icon class="!text-base !mr-1">forward_to_inbox</mat-icon>Resend email</button> }
+                </div>
+                <div class="mt-4 rounded-lg bg-surface-subtle border border-surface-border px-4 py-3 text-xs text-ink-600 leading-relaxed">
+                  <div class="font-semibold text-ink-900">Email to the Budget Team</div>
+                  <div>Subject: CRC proposed budget {{ c.settings().year }} — {{ s.total | number:'1.0-0' }} OMR ({{ s.reference }})</div>
+                  <div class="mt-1">Financial year {{ c.settings().year }} · Customer Care (CRC) · submitted {{ s.at | date:'mediumDate' }} by {{ s.by }} · total {{ s.total | number:'1.0-0' }} OMR · attachment {{ s.fileName }} · view the budget in CRC.</div>
+                </div>
+              </div>
+            }
+          </div>
+
+          <div class="flex flex-col gap-4">
+            <div class="surface-card px-5 py-4">
+              <h3 class="text-[13.5px] font-bold text-ink-900">Move the budget forward</h3>
+              <div class="flex flex-col gap-2 mt-3">
+                @switch (c.status()) {
+                  @case ('Not Started') { <button mat-flat-button color="primary" (click)="openCycle()" appRequires="Manage Budget Cycle"><mat-icon class="!text-base !mr-1">play_arrow</mat-icon>Open the budget cycle</button> }
+                  @case ('Draft') { <button mat-flat-button color="primary" (click)="c.sendToReview()" [disabled]="!c.editable()"><mat-icon class="!text-base !mr-1">visibility</mat-icon>Send for internal review</button> }
+                  @case ('Reopened') { <button mat-flat-button color="primary" (click)="c.sendToReview()" [disabled]="!c.editable()"><mat-icon class="!text-base !mr-1">visibility</mat-icon>Send for internal review</button> }
+                  @case ('Under Review') {
+                    <button mat-flat-button color="primary" (click)="ready()" [disabled]="!c.editable()"><mat-icon class="!text-base !mr-1">done_all</mat-icon>Mark ready for submission</button>
+                    <button mat-stroked-button (click)="c.backToDraft()" [disabled]="!c.editable()">Back to draft</button>
+                  }
+                  @case ('Ready for Submission') {
+                    <label class="flex items-start gap-2 text-sm text-ink-700 cursor-pointer"><input type="checkbox" class="mt-1 accent-[#ea6e00]" [checked]="confirmed()" (change)="confirmed.set(!confirmed())" /><span>I confirm the budget is complete and can be sent to the Budget Team.</span></label>
+                    <button mat-flat-button color="primary" (click)="submit()" [disabled]="!confirmed() || !c.editable()"><mat-icon class="!text-base !mr-1">send</mat-icon>Submit proposed budget</button>
+                    <button mat-stroked-button (click)="c.backToDraft()" [disabled]="!c.editable()">Back to draft</button>
+                  }
+                  @case ('Submitted') {
+                    <button mat-stroked-button (click)="reopen()" appRequires="Manage Budget Cycle"><mat-icon class="!text-base !mr-1">lock_open</mat-icon>Reopen the budget</button>
+                    <button mat-stroked-button (click)="closeCycle()" appRequires="Manage Budget Cycle"><mat-icon class="!text-base !mr-1">event_available</mat-icon>Close the cycle</button>
+                  }
+                  @case ('Closed') { <div class="text-sm text-ink-500">The budget cycle is closed and no further changes are permitted.</div> }
+                }
+              </div>
+              <p class="text-xs text-ink-400 mt-3 leading-relaxed">After submitting, the budget is locked, a versioned budget sheet is generated and emailed to the Budget Team. Reopening needs a reason and creates a new version when it is submitted again.</p>
+            </div>
+
+            <div class="surface-card px-5 py-4">
+              <h3 class="text-[13.5px] font-bold text-ink-900">Budget sheet</h3>
+              <p class="text-xs text-ink-400 mt-1">Download the consolidated sheet at any time. Excel has a summary plus one sheet each for outsourcing, petty cash and projects.</p>
+              <div class="flex items-center gap-2 mt-3"><button mat-stroked-button (click)="excel()"><mat-icon class="!text-base !mr-1">table_view</mat-icon>Excel</button><button mat-stroked-button (click)="pdf()"><mat-icon class="!text-base !mr-1">picture_as_pdf</mat-icon>PDF</button></div>
+            </div>
+
+            <div class="surface-card px-5 py-4">
+              <h3 class="text-[13.5px] font-bold text-ink-900">Submitted versions</h3>
+              @for (s of c.submissions(); track s.reference) { <div class="flex items-center justify-between gap-2 text-sm mt-2"><span class="text-ink-700">v{{ s.version }} · {{ s.reference }}</span><span class="text-xs text-ink-400">{{ s.total | number:'1.0-0' }} OMR · {{ s.at | date:'shortDate' }}</span></div> } @empty { <div class="text-xs text-ink-400 mt-2">Nothing submitted yet.</div> }
+              @for (r of c.reopenLog(); track r.at) { <div class="text-xs text-ink-500 mt-2 border-t border-surface-border pt-2">Reopened {{ r.at | date:'short' }} by {{ r.by }} — {{ r.reason }}</div> }
+            </div>
+          </div>
+        </div>
+      </mat-tab>
+    </mat-tab-group>
   `,
 })
 export class BudgetPreparationComponent {
-  private store = inject(CrcStore);
+  c = inject(BudgetCycle);
   private ui = inject(UiService);
-  projects = inject(ProjectRequests);
+  private store = inject(CrcStore);
+  private dialog = inject(MatDialog);
 
-  plan = this.store.budgetPlan;
-  lines = computed<PrepLine[]>(() => {
-    const drafts = this.plan().drafts;
-    const auto: PrepLine[] = this.store.budgetLines().map((l) => ({ id: l.id, item: l.item, category: l.category, poLayer: l.poLayer, source: 'Auto +3%', prior: l.allocated, draft: drafts[l.id] ?? Math.round(l.allocated * 1.03) }));
-    const added: PrepLine[] = this.store.budgetAdditions().map((a) => ({ id: a.id, item: a.item, category: a.category, poLayer: a.poLayer, source: a.source, note: a.note, prior: null, draft: drafts[a.id] ?? a.amount, addition: a }));
-    return [...auto, ...added];
+  tab = 0;
+  confirmed = signal(false);
+
+  t = this.c.totals;
+  track = this.c.pettyTracking;
+  flow = computed(() => (this.c.status() === 'Reopened' || this.c.status() === 'Closed' ? [...FLOW.slice(0, 4), this.c.status()] : FLOW));
+  statusChip = computed(() => STATUS_CHIP[this.c.status()]);
+  phaseChip = computed(() => PHASE_CHIP[this.c.phase()]);
+  pettyChip = computed(() => ({ 'Within allocation': 'normal', 'Expected to exceed': 'amber', Reached: 'orange', Exceeded: 'red' } as Record<string, string>)[this.track().flag]);
+  latest = computed(() => this.c.submissions()[0]);
+  hcPrev = computed(() => this.c.outsourcing().reduce((s, l) => s + l.prevHC, 0));
+  hcNow = computed(() => this.c.outsourcing().reduce((s, l) => s + l.hc, 0));
+  pendingNames = computed(() => this.c.projectsPending().map((p) => `${p.name} (${p.status})`).join(', '));
+  locked = computed(() => {
+    const s = this.c.status();
+    if (s === 'Submitted' || s === 'Closed') return `The budget is ${s.toLowerCase()} and read-only.${s === 'Submitted' ? ' A cycle manager can reopen it with a reason.' : ''}`;
+    if (this.c.status() !== 'Not Started' && this.c.daysLeft() < 0 && !this.c.canManage()) return 'The cut-off date has passed. Normal users can no longer change or submit the budget; a cycle manager can reopen it.';
+    if (!this.c.canPrepare() && !this.c.canManage()) return `Your role (${this.store.currentRole()}) can view the budget but not change it.`;
+    return '';
   });
-  editable = computed(() => this.plan().status === 'Draft' && this.store.can('Prepare/Edit Draft Budget'));
-  priorTotal = computed(() => this.lines().reduce((s, l) => s + (l.prior ?? 0), 0));
-  draftTotal = computed(() => this.lines().reduce((s, l) => s + Number(l.draft || 0), 0));
-  addedTotal = computed(() => this.lines().filter((l) => l.prior === null).reduce((s, l) => s + Number(l.draft || 0), 0));
-  chip = computed(() => ({ Draft: 'status-chip--neutral', Submitted: 'status-chip--amber', Approved: 'status-chip--normal', Rejected: 'status-chip--red' })[this.plan().status]);
+  summaryRows = computed<Array<[string, number, number, boolean]>>(() => {
+    const x = this.t(), o = this.c.outsourcing();
+    const prev = (f: (l: (typeof o)[number]) => number) => Math.round(o.reduce((s, l) => s + f(l), 0));
+    return [['Outsourcing', x.prevOut, x.outsourcing, false], ['   Salaries', prev((l) => l.prevHC * l.prevSalary * 12), x.salaries, false], ['   Incentives', prev((l) => l.prevIncentive), x.incentives, false], ['   Overtime', prev((l) => l.prevOvertime), x.overtime, false], ['   OJT', prev((l) => l.prevOjt), x.ojt, false], ['Petty cash', x.prevPetty, x.petty, false], ['Projects', x.prevProjects, x.projects, false], ['Total budget', x.previous, x.total, true]];
+  });
 
-  pct(from: number, to: number) {
-    if (!from) return '—';
-    const p = ((to - from) / from) * 100;
-    return `${p >= 0 ? '+' : ''}${p.toFixed(1)}%`;
-  }
+  pct = (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`;
+  rc = resourceCost;
+  pt = projectTotal;
 
-  setDraft(id: string, v: number) {
-    this.store.setDraft(id, Number(v) || 0);
-  }
+  private fail(msg: string | null | undefined) { if (msg) { this.ui.toast(msg, 5500); return true; } return false; }
 
-  async addLine(existing?: BudgetAddition) {
-    if (!this.ui.requires('Prepare/Edit Draft Budget')) return;
+  openCycle() { this.c.openCycle(); this.ui.toast('Budget cycle opened: last year\'s values copied and the increase applied.'); }
+
+  async settingsForm() {
+    if (!this.ui.requires('Manage Budget Cycle')) return;
+    const s = this.c.settings();
     const v = await this.ui.form({
-      title: existing ? 'Edit budget line' : 'Add a budget line', subtitle: 'A line typed in by hand, next to the auto-drafted ones', icon: 'playlist_add', submitLabel: existing ? 'Save line' : 'Add line',
-      values: existing ? { ...existing, poLayer: existing.poLayer ?? 'No PO layer' } : { category: 'Outsourcing', poLayer: 'No PO layer' },
+      title: 'Budget cycle settings', subtitle: `${s.year} — cut-off, annual increase and who receives the budget`, icon: 'tune', submitLabel: 'Save settings', values: { ...s },
       fields: [
-        { key: 'item', label: 'Item', required: true, placeholder: 'e.g. Extra headsets for the Sohar centre' },
-        { key: 'category', label: 'Category', type: 'select', options: CATEGORIES, required: true },
-        { key: 'poLayer', label: 'PO layer', type: 'select', options: LAYERS },
-        { key: 'amount', label: 'Next-year amount (OMR)', type: 'number', min: 0, required: true },
-        { key: 'note', label: 'Note (optional)', type: 'textarea', placeholder: 'What is it for?' },
+        { key: 'increasePct', label: 'Annual increase (%)', type: 'number', min: 0, max: 100, required: true, hint: 'The default is 5%. The original proposal said 3%.' },
+        { key: 'cutOff', label: 'Cut-off date', type: 'date', required: true },
+        { key: 'warnPct', label: 'Warn when the budget is above last year by (%)', type: 'number', min: 0 },
+        { key: 'to', label: 'Budget Team recipients (To)', placeholder: 'name@omantel.om, another@omantel.om' },
+        { key: 'cc', label: 'CC' },
+        { key: 'bcc', label: 'BCC', hint: 'Only if the organisation approves blind copies.' },
       ],
     });
     if (!v) return;
-    const data = { category: v['category'], item: v['item'], poLayer: v['poLayer'] === 'No PO layer' ? undefined : v['poLayer'], amount: Number(v['amount']), note: v['note'] || undefined };
-    if (existing) { this.store.updateBudgetAddition(existing.id, data); this.store.setDraft(existing.id, data.amount); this.ui.toast('Budget line updated.'); }
-    else { this.store.addBudgetAddition({ ...data, source: 'Manual' }); this.ui.toast('Budget line added to the draft.'); }
+    const pct = num(v['increasePct']);
+    const changed = pct !== s.increasePct;
+    this.c.saveSettings({ increasePct: pct, cutOff: v['cutOff'], warnPct: num(v['warnPct']), to: v['to'] ?? '', cc: v['cc'] ?? '', bcc: v['bcc'] ?? '' });
+    if (changed && this.c.editable()) {
+      const apply = await this.ui.confirm({ title: 'Apply the new increase?', message: `Last year's values × (1 + ${pct}%) replace the current baseline. Manual adjustments and their reasons will be cleared.`, confirmLabel: 'Apply', icon: 'restart_alt' });
+      if (apply) this.c.applyBaseline();
+    }
+    this.ui.toast('Cycle settings saved.');
   }
 
-  editLine(a: BudgetAddition) {
-    return this.addLine(a);
-  }
-
-  async removeLine(a: BudgetAddition) {
-    const ok = await this.ui.confirm({ title: 'Remove this budget line?', message: `${a.item} (${a.amount.toLocaleString()} OMR) will be taken out of the next-year draft.`, confirmLabel: 'Remove', danger: true });
+  async reapply() {
+    const ok = await this.ui.confirm({ title: 'Apply the baseline again?', message: `Every line goes back to last year's value × (1 + ${this.c.settings().increasePct}%). Adjustments and reasons will be cleared.`, confirmLabel: 'Apply baseline', icon: 'restart_alt' });
     if (!ok) return;
-    this.store.removeBudgetAddition(a.id);
-    this.ui.toast('Budget line removed.');
+    this.c.applyBaseline();
+    this.ui.toast('Baseline applied.');
   }
 
-  regenerate() {
-    if (!this.ui.requires('Prepare/Edit Draft Budget')) return;
-    this.store.regenerateDraft();
-    this.ui.toast('Draft regenerated at 3% above the prior approved budget. Manual and project lines were kept.');
-  }
-
-  async submit() {
-    if (!this.ui.requires('Prepare/Edit Draft Budget')) return;
-    const ok = await this.ui.confirm({ title: 'Submit budget for approval?', message: `Next-year budget of ${Math.round(this.draftTotal()).toLocaleString()} OMR will be locked and routed to the Budget Owner.`, confirmLabel: 'Submit', icon: 'send' });
-    if (!ok) return;
-    this.store.submitBudget();
-    this.ui.toast('Budget submitted for approval — the Budget Owner has been notified.');
-  }
-
-  async decide(approved: boolean) {
-    if (!this.ui.requires('Approve Budget')) return;
+  async editLine(l: OutsourcingLine) {
     const v = await this.ui.form({
-      title: approved ? 'Approve the budget' : 'Reject the budget',
-      subtitle: `${Math.round(this.draftTotal()).toLocaleString()} OMR next-year budget`,
-      icon: approved ? 'task_alt' : 'block',
-      submitLabel: approved ? 'Approve' : 'Reject',
-      fields: [{ key: 'note', label: approved ? 'Comment (optional)' : 'Reason', type: 'textarea', required: !approved, placeholder: approved ? 'Approved as submitted' : 'What needs to change?' }],
+      title: 'Edit resource category', subtitle: `${l.vendor} · ${l.category} — last year ${l.prevHC} head(s) at ${l.prevSalary.toLocaleString()} OMR a month`, icon: 'edit', submitLabel: 'Save line',
+      values: { hc: l.hc, salary: l.salary, incentive: l.incentive, overtime: l.overtime, ojt: l.ojt, other: l.other, reason: l.reason },
+      fields: [
+        { key: 'hc', label: 'Proposed head count', type: 'number', min: 0, required: true },
+        { key: 'salary', label: 'Monthly salary per head (OMR)', type: 'number', min: 0, required: true },
+        { key: 'incentive', label: 'Incentive per year (OMR)', type: 'number', min: 0 },
+        { key: 'overtime', label: 'Overtime per year (OMR)', type: 'number', min: 0 },
+        { key: 'ojt', label: 'OJT per year (OMR)', type: 'number', min: 0 },
+        { key: 'other', label: 'Other cost (OMR)', type: 'number', min: 0 },
+        { key: 'reason', label: 'Adjustment reason', type: 'textarea', hint: 'Required when head count changes, or the amount is below last year or above the calculated amount.' },
+      ],
     });
     if (!v) return;
-    this.store.decideBudget(approved, v['note']);
-    this.ui.toast(approved ? 'Budget approved.' : 'Budget rejected and returned to the preparer.');
+    if (!this.fail(this.c.editOutsourcing(l.id, { hc: num(v['hc']), salary: num(v['salary']), incentive: num(v['incentive']), overtime: num(v['overtime']), ojt: num(v['ojt']), other: num(v['other']), reason: v['reason'] ?? '' }))) this.ui.toast('Line updated.');
   }
 
-  reopen() {
-    this.store.regenerateDraft();
-    this.ui.toast('New draft started.');
+  async monthly(l: OutsourcingLine) {
+    const fresh = this.c.outsourcing().find((x) => x.id === l.id) ?? l;
+    const res = await new Promise<string | undefined>((resolve) => this.dialog.open(MonthlyBreakdownDialogComponent, { data: { line: fresh, editable: this.c.editable() }, panelClass: 'app-dialog-panel', autoFocus: false, ...DIALOG_SIZE.wide }).afterClosed().subscribe(resolve));
+    if (res !== 'edit') return;
+    const values: Record<string, any> = { reason: fresh.reason };
+    MONTH_NAMES.forEach((_, i) => (values['m' + i] = fresh.monthlyHC[i]));
+    const v = await this.ui.form({
+      title: 'Head count by month', subtitle: `${fresh.category} — recruitment, resignation, replacement or expansion during the year`, icon: 'calendar_view_month', submitLabel: 'Save head count', values,
+      fields: [...MONTH_NAMES.map((m, i) => ({ key: 'm' + i, label: m, type: 'number' as const, min: 0, required: true })), { key: 'reason', label: 'Reason', type: 'textarea' as const, required: true }],
+    });
+    if (!v) return;
+    if (!this.fail(this.c.setMonthlyHC(fresh.id, MONTH_NAMES.map((_, i) => num(v['m' + i])), v['reason']))) this.ui.toast('Monthly head count updated.');
   }
+
+  async addCategory() {
+    const v = await this.ui.form({
+      title: 'Add a resource category', subtitle: 'A new position or outsourcing arrangement in next year\'s budget', icon: 'group_add', submitLabel: 'Add category', values: { vendor: 'Infoline LLC', contract: '2025-013T-00-01' },
+      fields: [
+        { key: 'vendor', label: 'Vendor', required: true }, { key: 'contract', label: 'Contract' }, { key: 'category', label: 'Resource category or position', required: true },
+        { key: 'hc', label: 'Head count', type: 'number', min: 0, required: true }, { key: 'salary', label: 'Monthly salary per head (OMR)', type: 'number', min: 0, required: true },
+        { key: 'incentive', label: 'Incentive per year (OMR)', type: 'number', min: 0 }, { key: 'overtime', label: 'Overtime per year (OMR)', type: 'number', min: 0 }, { key: 'ojt', label: 'OJT per year (OMR)', type: 'number', min: 0 },
+        { key: 'reason', label: 'Reason', type: 'textarea', required: true },
+      ],
+    });
+    if (!v) return;
+    if (!this.fail(this.c.addOutsourcing({ vendor: v['vendor'], contract: v['contract'] ?? '', category: v['category'], hc: num(v['hc']), salary: num(v['salary']), incentive: num(v['incentive']), overtime: num(v['overtime']), ojt: num(v['ojt']), reason: v['reason'] }))) this.ui.toast('Resource category added.');
+  }
+
+  /** BR-OUT-010: estimate the effect of hiring extra resources, then optionally add them. */
+  async calculator() {
+    const lines = this.c.outsourcing();
+    const v = await this.ui.form({
+      title: 'Additional resources calculator', subtitle: 'See what hiring more resources would cost before adding them', icon: 'calculate', submitLabel: 'Calculate', values: { line: lines[0]?.id, count: 1, fromMonth: String(new Date().getMonth() + 2 > 12 ? 1 : new Date().getMonth() + 2), months: 12, salary: lines[0]?.salary },
+      fields: [
+        { key: 'line', label: 'Add to', type: 'select', options: lines.map((l) => ({ value: l.id, label: `${l.vendor} · ${l.category}` })), required: true },
+        { key: 'count', label: 'Number of additional resources', type: 'number', min: 1, required: true },
+        { key: 'fromMonth', label: 'Expected hiring month', type: 'select', options: MONTH_NAMES.map((m, i) => ({ value: String(i + 1), label: m })), required: true },
+        { key: 'months', label: 'Contract duration (months)', type: 'number', min: 1, max: 12, required: true },
+        { key: 'salary', label: 'Monthly salary per head (OMR)', type: 'number', min: 0, required: true },
+        { key: 'incentive', label: 'Extra incentive (OMR)', type: 'number', min: 0 }, { key: 'overtime', label: 'Extra overtime (OMR)', type: 'number', min: 0 }, { key: 'other', label: 'Other applicable costs (OMR)', type: 'number', min: 0 },
+      ],
+    });
+    if (!v) return;
+    const inp = { count: num(v['count']), fromMonth: num(v['fromMonth']), months: num(v['months']), salary: num(v['salary']), incentive: num(v['incentive']), overtime: num(v['overtime']), other: num(v['other']) };
+    const r = this.c.calcResources(inp);
+    const ok = await this.ui.confirm({
+      title: 'Effect of the additional resources', icon: 'calculate', confirmLabel: 'Add to the budget',
+      message: `Additional monthly cost: ${r.monthly.toLocaleString()} OMR\nRemaining annual cost (${r.months} months): ${r.remaining.toLocaleString()} OMR\nCurrent proposed budget: ${r.current.toLocaleString()} OMR\nRevised annual budget: ${r.revised.toLocaleString()} OMR\nDifference: +${r.difference.toLocaleString()} OMR`,
+    });
+    if (!ok) return;
+    if (!this.fail(this.c.addResources(v['line'], { count: inp.count, fromMonth: inp.fromMonth, months: inp.months, incentive: inp.incentive, overtime: inp.overtime, other: inp.other, reason: `${inp.count} additional resource(s) from ${MONTH_NAMES[inp.fromMonth - 1]}` }))) this.ui.toast('Additional resources added to the budget.');
+  }
+
+  async editPetty(l: PettyLine) {
+    const v = await this.ui.form({
+      title: 'Petty cash amount', subtitle: `${l.category} — last year ${l.prev.toLocaleString()} OMR, system proposal ${this.c.pettySystem(l).toLocaleString()} OMR`, icon: 'payments', submitLabel: 'Save', values: { final: this.c.pettyFinal(l), reason: l.reason },
+      fields: [{ key: 'final', label: 'Final annual amount (OMR)', type: 'number', min: 0, required: true }, { key: 'reason', label: 'Reason for the adjustment', type: 'textarea', hint: 'Required when the amount differs from the system proposal.' }],
+    });
+    if (!v) return;
+    if (!this.fail(this.c.setPettyFinal(l.id, num(v['final']), v['reason'] ?? ''))) this.ui.toast('Petty cash updated.');
+  }
+
+  async addPetty() {
+    const v = await this.ui.form({
+      title: 'Add a petty cash category', icon: 'add_card', submitLabel: 'Add category',
+      fields: [{ key: 'category', label: 'Expense category', required: true }, { key: 'prev', label: 'Last year amount (OMR)', type: 'number', min: 0 }, { key: 'final', label: 'Proposed annual amount (OMR)', type: 'number', min: 0, required: true }, { key: 'reason', label: 'Reason', type: 'textarea', required: true }],
+    });
+    if (!v) return;
+    if (!this.fail(this.c.addPetty(v['category'], num(v['prev']), num(v['final']), v['reason']))) this.ui.toast('Petty cash category added.');
+  }
+
+  ready() { if (!this.fail(this.c.markReady())) this.ui.toast('Marked ready for submission.'); else this.tab = 4; }
+
+  async submit() {
+    const ok = await this.ui.confirm({ title: 'Submit the proposed budget?', message: `${Math.round(this.t().total).toLocaleString()} OMR for ${this.c.settings().year} will be locked, a budget sheet generated and emailed to the Budget Team.`, confirmLabel: 'Submit', icon: 'send' });
+    if (!ok) return;
+    const r = this.c.submit();
+    if (r.error) { this.ui.toast(r.error, 5500); return; }
+    this.confirmed.set(false);
+    this.excel(false);
+    this.ui.toast(r.submission!.emailStatus === 'Sent' ? `Submitted as ${r.submission!.reference} and emailed to the Budget Team.` : `Submitted as ${r.submission!.reference}, but the email failed. Fix the recipients and resend.`, 6000);
+  }
+
+  async reopen() {
+    if (!this.ui.requires('Manage Budget Cycle')) return;
+    const v = await this.ui.form({ title: 'Reopen the budget', subtitle: 'It becomes editable again; the next submission creates a new version', icon: 'lock_open', submitLabel: 'Reopen', fields: [{ key: 'reason', label: 'Reason', type: 'textarea', required: true }] });
+    if (!v) return;
+    this.c.reopen(v['reason']);
+    this.ui.toast('Budget reopened.');
+  }
+
+  async closeCycle() {
+    if (!this.ui.requires('Manage Budget Cycle')) return;
+    const ok = await this.ui.confirm({ title: 'Close the budget cycle?', message: 'No further changes will be permitted.', confirmLabel: 'Close cycle', danger: true });
+    if (ok) this.c.close();
+  }
+
+  resend(ref: string) {
+    if (!this.ui.requires('Manage Budget Cycle')) return;
+    const err = this.c.resendEmail(ref);
+    this.ui.toast(err ?? 'Email sent again. No new submission was created.', 5500);
+  }
+
+  excel(toast = true) {
+    const sh = this.c.sheet();
+    this.ui.xlsxSheets(`CRC-Budget-${this.c.settings().year}`, [{ name: 'Summary', rows: sh.summary }, { name: 'Outsourcing', rows: sh.outsourcing }, { name: 'Petty cash', rows: sh.petty }, { name: 'Projects', rows: sh.projects }], toast);
+  }
+
+  pdf() { this.ui.pdf(`CRC-Budget-${this.c.settings().year}.pdf`, `CRC proposed budget ${this.c.settings().year}`, this.c.sheetLines()); }
 }

@@ -4,7 +4,7 @@ import { CURRENT_USER, CrcStore } from './crc-store.service';
 import { addDays, attachmentsFor, childRecordsFor } from './contract-data';
 import {
   ContractChange, DataIssue, EscalationEvent, EscalationRule, EscalationStatus, ListRow, MonitoringAction, NotificationTemplate, SEED_TEMPLATES, SyncConfig,
-  SyncError, SyncState, baseEscalationStatus, dataIssuesFor, escalationApplies, needsAction, nextRunAt, requiredActionFor, seedChanges, statusLevelFor,
+  SyncError, SyncState, remainingLabel, baseEscalationStatus, dataIssuesFor, escalationApplies, needsAction, nextRunAt, requiredActionFor, seedChanges, statusLevelFor,
 } from './contract-monitoring';
 
 export interface DataScope { vendor: string; contractType: string; department: string }
@@ -129,14 +129,14 @@ export class ContractOps {
       const syncStatus = sync[c.id]?.status === 'Failed' ? 'Failed' : 'Synced';
       rows.push({
         id: c.id, parentId: c.id, reference: c.reference, name: c.name, recordType: c.recordType, parentReference: '', contractType: c.contractType, vendorName: c.vendorName,
-        vendorRef: c.erpVendorId ?? '', poNumber: c.poNumber ?? '', startDate: c.startDate, endDate: c.endDate, daysRemaining: c.daysRemaining, amount: c.amount, currency: c.currency,
+        vendorRef: c.erpVendorId ?? '', poNumber: c.poNumber ?? '', startDate: c.startDate, endDate: c.endDate, daysRemaining: c.daysRemaining, remaining: remainingLabel(c.endDate), amount: c.amount, currency: c.currency,
         status: c.status, level: statusLevelFor(c), renewalStatus: c.renewalStatus ?? '', erpReference: c.erpReference, lastSyncedAt: c.lastSyncedAt, syncStatus, department: c.department ?? '',
       });
       for (const k of this.childrenOf(c)) {
         const status = k.status === 'Closed' ? 'Expired' : k.status;
         rows.push({
           id: k.id, parentId: c.id, reference: k.reference, name: k.description, recordType: k.recordType, parentReference: c.reference, contractType: c.contractType, vendorName: k.counterparty,
-          vendorRef: c.erpVendorId ?? '', poNumber: k.poNumber, startDate: k.startDate, endDate: k.endDate, daysRemaining: k.daysRemaining, amount: k.amount ?? null, currency: k.currency,
+          vendorRef: c.erpVendorId ?? '', poNumber: k.poNumber, startDate: k.startDate, endDate: k.endDate, daysRemaining: k.daysRemaining, remaining: remainingLabel(k.endDate), amount: k.amount ?? null, currency: k.currency,
           status, level: c.status === 'Cancelled' ? 'neutral' : statusLevelFor({ status: status as Contract['status'], daysRemaining: k.daysRemaining, renewalStatus: undefined }), renewalStatus: '', erpReference: k.erpReference, lastSyncedAt: c.lastSyncedAt, syncStatus, department: c.department ?? '',
         });
       }
@@ -236,7 +236,7 @@ export class ContractOps {
     if (this.failOnce.has(id)) {
       this.failOnce.delete(id);
       const message = `The ERP did not respond within ${this.syncConfig().timeoutSec} seconds (HTTP 504). Last synchronized data was kept.`;
-      const run = this.addRun({ type: 'Manual', startedAt: started, finishedAt: new Date().toISOString(), initiatedBy: CURRENT_USER, processed: 1, created: 0, updated: 0, rejected: 0, errors: 1, contractReference: c.reference, errorMessage: message, status: 'Failed' });
+      const run = this.addRun({ type: 'Manual', startedAt: started, finishedAt: new Date().toISOString(), initiatedBy: CURRENT_USER, processed: 1, created: 0, updated: 0, errors: 1, contractReference: c.reference, errorMessage: message, status: 'Failed' });
       this.addError({ runId: run.id, syncType: 'Manual', at: run.finishedAt, contractReference: c.reference, erpReference: c.erpReference, initiatedBy: CURRENT_USER, message, category: 'Timeout', processing: 'Failed – last valid data retained' });
       this.syncState.update((m) => ({ ...m, [id]: { status: 'Failed', at: run.finishedAt, by: CURRENT_USER, type: 'Manual', message } }));
       this.store.log('Contract Sync Failed', c.reference, message, 'Failed', CURRENT_USER, { erpReference: c.erpReference, syncType: 'Manual' });
@@ -250,7 +250,7 @@ export class ContractOps {
       this.addChange(c, 'Renewal status', c.renewalStatus ?? '—', contract.renewalStatus ?? '—', 'Manual sync');
       this.store.notify(`${c.reference} was renewed in the ERP.`, 'Contracts & Budget', 'info', '/contracts-budget/contracts/' + id);
     }
-    const run = this.addRun({ type: 'Manual', startedAt: started, finishedAt: new Date().toISOString(), initiatedBy: CURRENT_USER, processed: 1 + kids.length, created: 0, updated: changed ? 1 : 0, rejected: 0, errors: 0, contractReference: c.reference, status: changed ? 'Completed' : 'No Changes' });
+    const run = this.addRun({ type: 'Manual', startedAt: started, finishedAt: new Date().toISOString(), initiatedBy: CURRENT_USER, processed: 1 + kids.length, created: 0, updated: changed ? 1 : 0, errors: 0, contractReference: c.reference, status: changed ? 'Completed' : 'No Changes' });
     this.syncState.update((m) => ({ ...m, [id]: { status: changed ? 'Success' : 'No changes', at: run.finishedAt, by: CURRENT_USER, type: 'Manual' } }));
     this.errorLog.update((l) => l.map((e) => (e.contractReference === c.reference && e.resolution === 'Open' && e.syncType === 'Manual' ? { ...e, resolution: 'Retried successfully', resolvedAt: run.finishedAt, resolutionNote: 'A later manual synchronization succeeded.' } : e)));
     const scope = `${kids.length} linked record${kids.length === 1 ? '' : 's'} and ${atts} attachment${atts === 1 ? '' : 's'}`;
@@ -275,8 +275,8 @@ export class ContractOps {
       return r.contract;
     });
     this.store.contracts.set(next);
-    const run = this.addRun({ type: 'Automated', startedAt: started, finishedAt: new Date().toISOString(), initiatedBy: 'System Scheduler', processed, created: 0, updated, rejected: 0, errors: 0, status: updated ? 'Completed' : 'No Changes' });
-    this.store.log('Contract Sync', 'Scheduled sync', `Automated sync: ${processed} records retrieved, ${updated} updated, 0 rejected, 0 errors. Records are matched on the ERP reference, so no duplicates are created.`, 'Success', 'System Scheduler', { syncType: 'Automated' });
+    const run = this.addRun({ type: 'Automated', startedAt: started, finishedAt: new Date().toISOString(), initiatedBy: 'System Scheduler', processed, created: 0, updated, errors: 0, status: updated ? 'Completed' : 'No Changes' });
+    this.store.log('Contract Sync', 'Scheduled sync', `Automated sync: ${processed} records retrieved, ${updated} updated, 0 errors. Records are matched on the ERP reference, so no duplicates are created.`, 'Success', 'System Scheduler', { syncType: 'Automated' });
     if (updated) this.store.notify(`Scheduled ERP sync updated ${updated} contract${updated > 1 ? 's' : ''}.`, 'Contracts & Budget', 'info', '/contracts-budget/sync-history');
     return run;
   }

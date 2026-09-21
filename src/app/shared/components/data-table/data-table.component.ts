@@ -17,6 +17,8 @@ export interface TableColumn<T = any> {
   currency?: string;
   statusFn?: (row: T) => { label: string; level: StatusLevel };
   align?: 'left' | 'right';
+  /** Text shown in the cell instead of the raw value (sorting still uses the raw value). */
+  display?: (row: T) => string;
   /** Renders buttons in the cell instead of a value; clicks come out of (rowAction). */
   actions?: Array<{ id: string; label: string; icon?: string; hide?: (row: T) => boolean }>;
 }
@@ -108,6 +110,8 @@ export interface TableColumn<T = any> {
                         </div>
                       } @else if (col.type === 'status' && col.statusFn) {
                         <app-status-chip [label]="col.statusFn(row).label" [level]="col.statusFn(row).level"></app-status-chip>
+                      } @else if (col.display) {
+                        {{ col.display(row) }}
                       } @else if (col.type === 'currency' && (row[col.key] === null || row[col.key] === undefined)) {
                         <span class="text-ink-300" title="Not available yet — read from the ERP later">—</span>
                       } @else if (col.type === 'currency') {
@@ -222,7 +226,7 @@ export class DataTableComponent<T extends Record<string, any> = any> {
   private exportRows(): Array<Record<string, any>> {
     return this.filteredRows().map((row) => {
       const out: Record<string, any> = {};
-      for (const c of this.columns.filter((x) => !x.actions)) out[c.label] = c.type === 'status' && c.statusFn ? c.statusFn(row).label : c.type === 'date' ? this.fmtDate(row[c.key]) : row[c.key] ?? '';
+      for (const c of this.columns.filter((x) => !x.actions)) out[c.label] = c.type === 'status' && c.statusFn ? c.statusFn(row).label : c.display ? c.display(row) : c.type === 'date' ? this.fmtDate(row[c.key]) : row[c.key] ?? '';
       return out;
     });
   }

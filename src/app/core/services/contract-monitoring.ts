@@ -237,6 +237,20 @@ export function requiredActionFor(c: Contract): string {
 }
 export const needsAction = (c: Contract) => !/^(No action|None)/.test(requiredActionFor(c));
 
+/** "3 months and 4 days" — the remaining time to the end date, in calendar months and days. */
+export function remainingLabel(endDate: string, now = new Date()): string {
+  const end = new Date(endDate.slice(0, 10) + 'T00:00:00Z');
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
+  if (end < start) return `Expired ${plural(Math.round((+start - +end) / 86400000), 'day')} ago`;
+  if (+end === +start) return 'Ends today';
+  let months = (end.getUTCFullYear() - start.getUTCFullYear()) * 12 + end.getUTCMonth() - start.getUTCMonth();
+  let anchor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + months, start.getUTCDate()));
+  if (anchor > end) { months--; anchor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + months, start.getUTCDate())); }
+  const days = Math.round((+end - +anchor) / 86400000);
+  return [months ? plural(months, 'month') : '', days || !months ? plural(days, 'day') : ''].filter(Boolean).join(' and ');
+}
+
 // ---------- List rows (contracts and their child records in one table) ----------
 export interface ListRow {
   id: string;
@@ -252,6 +266,7 @@ export interface ListRow {
   startDate: string;
   endDate: string;
   daysRemaining: number;
+  remaining: string;
   amount: number | null;
   currency: string;
   status: string;

@@ -86,34 +86,47 @@ export class UiService {
   }
 
   /** Writes a real .xlsx workbook (one sheet) — numbers stay numbers so Excel can total and filter them. */
-  xlsx(filename: string, rows: Array<Record<string, any>>, sheet = 'Data') {
-    if (!rows.length) {
+  xlsx(filename: string, rows: Array<Record<string, any>>, sheet = 'Data', log = true) {
+    return this.xlsxSheets(filename, [{ name: sheet, rows }], log);
+  }
+
+  /** A workbook with several sheets, e.g. a summary sheet plus one sheet per section. Returns the file name, or undefined when there is nothing to write. */
+  xlsxSheets(filename: string, sheets: Array<{ name: string; rows: Array<Record<string, any>> }>, log = true): string | undefined {
+    const live = sheets.filter((sh) => sh.rows.length);
+    if (!live.length) {
       this.toast('Nothing to export.');
-      return;
+      return undefined;
     }
-    const cols = Object.keys(rows[0]);
     const xml = (v: string) => v.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' } as Record<string, string>)[ch]);
     const colName = (i: number) => (i >= 26 ? String.fromCharCode(64 + Math.floor(i / 26)) : '') + String.fromCharCode(65 + (i % 26));
     const cell = (v: any, r: number, c: number) => {
       const ref = colName(c) + r;
       return typeof v === 'number' && isFinite(v) ? `<c r="${ref}"><v>${v}</v></c>` : `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${xml(String(v ?? ''))}</t></is></c>`;
     };
-    const data = [cols, ...rows.map((r) => cols.map((k) => r[k]))].map((row, ri) => `<row r="${ri + 1}">${row.map((v, ci) => cell(v, ri + 1, ci)).join('')}</row>`).join('');
-    const head = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-    const files = {
-      '[Content_Types].xml': strToU8(`${head}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`),
-      '_rels/.rels': strToU8(`${head}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`),
-      'xl/workbook.xml': strToU8(`${head}<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${xml(sheet.slice(0, 31))}" sheetId="1" r:id="rId1"/></sheets></workbook>`),
-      'xl/_rels/workbook.xml.rels': strToU8(`${head}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>`),
-      'xl/worksheets/sheet1.xml': strToU8(`${head}<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${data}</sheetData></worksheet>`),
+    const sheetXml = (rows: Array<Record<string, any>>) => {
+      const cols = Object.keys(rows[0]);
+      const data = [cols, ...rows.map((r) => cols.map((k) => r[k]))].map((row, ri) => `<row r="${ri + 1}">${row.map((v, ci) => cell(v, ri + 1, ci)).join('')}</row>`).join('');
+      return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${data}</sheetData></worksheet>`;
     };
+    const head = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+    const files: Record<string, Uint8Array> = {
+      '[Content_Types].xml': strToU8(`${head}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>${live.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}</Types>`),
+      '_rels/.rels': strToU8(`${head}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`),
+      'xl/workbook.xml': strToU8(`${head}<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${live.map((sh, i) => `<sheet name="${xml(sh.name.replace(/[\\/?*\[\]:]/g, ' ').slice(0, 31))}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('')}</sheets></workbook>`),
+      'xl/_rels/workbook.xml.rels': strToU8(`${head}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${live.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('')}</Relationships>`),
+    };
+    live.forEach((sh, i) => (files[`xl/worksheets/sheet${i + 1}.xml`] = strToU8(sheetXml(sh.rows))));
     const url = URL.createObjectURL(new Blob([zipSync(files)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename.endsWith('.xlsx') ? filename : filename + '.xlsx';
-    a.click();
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename.endsWith('.xlsx') ? filename : filename + '.xlsx';
+    link.click();
     URL.revokeObjectURL(url);
-    this.store.log('Data Exported', a.download, `${rows.length} row(s) exported as Excel.`);
-    this.toast(`Downloaded ${a.download} (${rows.length} rows).`);
+    const count = live.reduce((n, sh) => n + sh.rows.length, 0);
+    if (log) {
+      this.store.log('Data Exported', link.download, `${count} row(s) exported as Excel.`);
+      this.toast(`Downloaded ${link.download} (${count} rows).`);
+    }
+    return link.download;
   }
 }

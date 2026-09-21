@@ -56,7 +56,6 @@ export class SyncHistoryComponent {
     { key: 'processed', label: 'Processed', type: 'number', align: 'right' },
     { key: 'created', label: 'Created', type: 'number', align: 'right' },
     { key: 'updated', label: 'Updated', type: 'number', align: 'right' },
-    { key: 'rejected', label: 'Rejected', type: 'number', align: 'right' },
     { key: 'errors', label: 'Errors', type: 'number', align: 'right' },
     { key: 'status', label: 'Status', type: 'status', statusFn: (r) => ({ label: r.status, level: r.status === 'Failed' ? 'red' : r.status === 'No Changes' ? 'neutral' : 'normal' }) },
     { key: 'error', label: 'Error details' },

@@ -9,13 +9,14 @@ import { KpiCardComponent } from '../../../shared/components/kpi-card/kpi-card.c
 import { DataTableComponent, TableColumn } from '../../../shared/components/data-table/data-table.component';
 import { RequiresDirective } from '../../../shared/directives/requires.directive';
 import { CrcStore } from '../../../core/services/crc-store.service';
-import { ProjectRequests } from '../../../core/services/project-requests.service';
+import { ProjectInput, ProjectRequests } from '../../../core/services/project-requests.service';
 import { UiService } from '../../../shared/services/ui.service';
 import { DIALOG_SIZE } from '../../../shared/dialog-sizes';
-import { ProjectRequest } from '../../../core/services/project-data';
-import { PROJECT_LEVEL, ProjectDetailDialogComponent } from './project-detail-dialog.component';
+import { CURRENT_FY, PRIORITIES, PROJECT_STATUSES, ProjectRequest, SUBMISSION_STATUSES, projectTotal } from '../../../core/services/project-data';
+import { PRIORITY_LEVEL, PROJECT_LEVEL, ProjectDetailDialogComponent } from './project-detail-dialog.component';
 
-const FILTERS = ['Active', 'Draft', 'Submitted', 'Kept', 'Sent back', 'Removed'];
+const FIELD = 'w-full px-2.5 py-2 text-xs font-semibold rounded-lg border border-surface-border bg-white text-ink-700 focus:outline-none focus:border-brand-400';
+const num = (v: any) => Number(v ?? 0) || 0;
 
 @Component({
   selector: 'app-project-requests',
@@ -24,7 +25,7 @@ const FILTERS = ['Active', 'Draft', 'Submitted', 'Kept', 'Sent back', 'Removed']
   template: `
     <app-page-header
       title="Project Requests"
-      [subtitle]="store.can('Approve Projects') ? 'Projects proposed by team leads and line managers — keep them, send them back for changes, or remove them' : 'Add the projects you need, the budget for each and why — then submit them for a decision'"
+      [subtitle]="store.can('Approve Projects') ? 'Projects proposed by line managers and project managers for the next budget — include them, return them for changes, or exclude them' : 'Add the projects you need for next year with the cost, priority, head count and why — then submit them for a decision'"
       [breadcrumbs]="[{ label: 'Contracts & Budget', link: '/contracts-budget/dashboard' }, { label: 'Budget' }, { label: 'Project Requests' }]"
     >
       <button mat-flat-button color="primary" (click)="form()" appRequires="Submit Project Requests"><mat-icon class="!text-base !mr-1">add</mat-icon>New project</button>
@@ -34,31 +35,39 @@ const FILTERS = ['Active', 'Draft', 'Submitted', 'Kept', 'Sent back', 'Removed']
       <div class="surface-card px-4 py-3 mb-4 flex items-center gap-3 border-l-4 !border-l-status-amber">
         <mat-icon class="text-status-amber">pending_actions</mat-icon>
         <div class="flex-1 text-sm text-ink-700"><b>{{ svc.waiting().length }} project{{ svc.waiting().length === 1 ? '' : 's' }}</b> waiting for your decision, {{ waitingBudget() | number:'1.0-0' }} OMR in total.</div>
-        <button mat-stroked-button (click)="filter.set('Submitted')">Show them</button>
+        <button mat-stroked-button (click)="showStatus('Submitted')">Show them</button>
       </div>
-    } @else if (returned().length && store.can('Submit Project Requests')) {
+    } @else if (svc.returned().length && store.can('Submit Project Requests')) {
       <div class="surface-card px-4 py-3 mb-4 flex items-center gap-3 border-l-4 !border-l-status-orange">
         <mat-icon class="text-status-orange">undo</mat-icon>
-        <div class="flex-1 text-sm text-ink-700"><b>{{ returned().length }} project{{ returned().length === 1 ? ' was' : 's were' }} sent back</b> with a note. Edit and submit again.</div>
-        <button mat-stroked-button (click)="filter.set('Sent back')">Show them</button>
+        <div class="flex-1 text-sm text-ink-700"><b>{{ svc.returned().length }} project{{ svc.returned().length === 1 ? ' was' : 's were' }} returned</b> with a note. Edit and submit again.</div>
+        <button mat-stroked-button (click)="showStatus('Returned for Modification')">Show them</button>
       </div>
     }
 
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
       <app-kpi-card label="Waiting for a decision" [value]="svc.waiting().length" level="amber" icon="pending_actions"></app-kpi-card>
-      <app-kpi-card label="Kept" [value]="svc.kept().length" level="normal" icon="check_circle"></app-kpi-card>
-      <app-kpi-card label="Budget kept" [value]="svc.keptBudget() | number:'1.0-0'" unit="OMR" icon="payments"></app-kpi-card>
-      <app-kpi-card label="Sent back" [value]="returned().length" [level]="returned().length ? 'orange' : 'neutral'" icon="undo"></app-kpi-card>
+      <app-kpi-card label="Included in budget" [value]="svc.included().length" level="normal" icon="check_circle"></app-kpi-card>
+      <app-kpi-card label="Included cost" [value]="svc.includedTotal() | number:'1.0-0'" unit="OMR" icon="payments"></app-kpi-card>
+      <app-kpi-card label="Returned" [value]="svc.returned().length" [level]="svc.returned().length ? 'orange' : 'neutral'" icon="undo"></app-kpi-card>
     </div>
 
-    <app-data-table title="Projects" [columns]="columns" [rows]="rows()" [pageSize]="8" [exportable]="store.can('Export Contract Data')" [searchKeys]="['reason']" (rowClick)="open($event)" (rowAction)="act($event)" emptyTitle="No projects here" emptyDescription="Add a project with the budget it needs and why, then submit it for a decision.">
-      <div toolbar class="flex items-center gap-1 bg-surface-subtle border border-surface-border rounded-lg p-0.5 flex-wrap">
-        @for (f of filters; track f) {
-          <button (click)="filter.set(f)" class="px-2.5 py-1 text-xs font-semibold rounded-md transition-colors" [class]="filter() === f ? 'bg-white text-brand-700 border border-surface-border' : 'text-ink-500 hover:text-ink-900 border border-transparent'">{{ f }}</button>
+    <div class="surface-card px-4 py-3.5 mb-4">
+      <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2.5">
+        @for (f of selects(); track f.key) {
+          <label class="block"><span class="text-[10.5px] font-bold text-ink-400 uppercase tracking-wide">{{ f.label }}</span>
+            <select [class]="field + ' mt-1'" [value]="f.value()" (change)="f.set($any($event.target).value)">
+              @for (o of f.options; track o) { <option [value]="o" [selected]="o === f.value()">{{ o === 'All' ? f.all : o }}</option> }
+            </select>
+          </label>
         }
+        <div class="flex items-end"><button (click)="clear()" class="text-xs font-semibold text-brand-700 hover:underline pb-2">Clear filters</button></div>
       </div>
+    </div>
+
+    <app-data-table title="Project submissions" [columns]="columns" [rows]="rows()" [pageSize]="8" [exportable]="store.can('Export Contract Data') || store.can('View Budget')" [searchKeys]="['reason', 'scope', 'lineManager', 'contractRef', 'poNumber']" (rowClick)="open($event)" (rowAction)="act($event)" emptyTitle="No projects here" emptyDescription="Add a project with its cost, priority and head count, then submit it for a decision.">
     </app-data-table>
-    <p class="text-xs text-ink-400 mt-3">Kept projects are added to next year's budget on <a class="text-brand-600 font-medium" routerLink="/contracts-budget/budget-preparation">Budget Preparation</a>. Removed projects stay in the history with who removed them and why. Contract, PO and dates are optional — a project can start before a contract exists.</p>
+    <p class="text-xs text-ink-400 mt-3">Included projects go into the next-year budget on <a class="text-brand-600 font-medium" routerLink="/contracts-budget/budget-preparation">Budget Preparation</a>. Excluded and cancelled projects stay in the history. Previous years are read-only — copy a project into next year to reuse it. Contract, PO and dates are optional.</p>
   `,
 })
 export class ProjectRequestsComponent {
@@ -67,102 +76,154 @@ export class ProjectRequestsComponent {
   private ui = inject(UiService);
   private dialog = inject(MatDialog);
 
-  filters = FILTERS;
-  filter = signal('Active');
+  field = FIELD;
+  year = signal(CURRENT_FY);
+  projectStatus = signal('All');
+  priority = signal('All');
+  submission = signal('All');
+  manager = signal('All');
+  lineManager = signal('All');
 
-  returned = computed(() => this.svc.projects().filter((p) => p.status === 'Sent back'));
-  waitingBudget = computed(() => this.svc.waiting().reduce((s, p) => s + p.budget, 0));
+  private uniq = (get: (p: ProjectRequest) => string) => [...new Set(this.svc.projects().map(get))].filter(Boolean).sort();
+  selects = computed(() => [
+    { key: 'year', label: 'Financial year', all: 'All years', value: this.year, set: (v: string) => this.year.set(v), options: ['All', ...this.uniq((p) => p.financialYear).reverse()] },
+    { key: 'ps', label: 'Project status', all: 'All statuses', value: this.projectStatus, set: (v: string) => this.projectStatus.set(v), options: ['All', ...PROJECT_STATUSES] },
+    { key: 'pr', label: 'Priority', all: 'All priorities', value: this.priority, set: (v: string) => this.priority.set(v), options: ['All', ...PRIORITIES] },
+    { key: 'ss', label: 'Submission status', all: 'All submission statuses', value: this.submission, set: (v: string) => this.submission.set(v), options: ['All', ...SUBMISSION_STATUSES] },
+    { key: 'pm', label: 'Project manager', all: 'All managers', value: this.manager, set: (v: string) => this.manager.set(v), options: ['All', ...this.uniq((p) => p.projectManager)] },
+    { key: 'lm', label: 'Line manager', all: 'All line managers', value: this.lineManager, set: (v: string) => this.lineManager.set(v), options: ['All', ...this.uniq((p) => p.lineManager)] },
+  ]);
+
+  waitingBudget = computed(() => this.svc.waiting().reduce((s, p) => s + projectTotal(p), 0));
   rows = computed(() => this.svc.projects()
-    .filter((p) => (this.filter() === 'Active' ? p.status !== 'Removed' : p.status === this.filter()))
-    .map((p) => ({ ...p, note: p.decisionNote ?? '' })));
+    .filter((p) => (this.year() === 'All' || p.financialYear === this.year()) && (this.projectStatus() === 'All' || p.projectStatus === this.projectStatus()) && (this.priority() === 'All' || p.priority === this.priority())
+      && (this.submission() === 'All' || p.status === this.submission()) && (this.manager() === 'All' || p.projectManager === this.manager()) && (this.lineManager() === 'All' || p.lineManager === this.lineManager()))
+    .map((p) => ({ ...p, cost: projectTotal(p) })));
 
-  private mine = (r: ProjectRequest) => (r.status === 'Draft' || r.status === 'Sent back') && this.store.can('Submit Project Requests');
+  private current = (r: ProjectRequest) => r.financialYear === CURRENT_FY;
+  private mine = (r: ProjectRequest) => (r.status === 'Draft' || r.status === 'Returned for Modification') && this.current(r) && this.store.can('Submit Project Requests');
   private decide = (r: ProjectRequest) => r.status === 'Submitted' && this.store.can('Approve Projects');
 
   columns: TableColumn<any>[] = [
-    { key: 'name', label: 'Project' },
-    { key: 'scope', label: 'Scope of work' },
-    { key: 'contractRef', label: 'Contract' },
-    { key: 'poNumber', label: 'PO' },
-    { key: 'from', label: 'From', type: 'date' },
-    { key: 'to', label: 'To', type: 'date' },
-    { key: 'budget', label: 'Budget needed', type: 'currency', align: 'right' },
-    { key: 'status', label: 'Status', type: 'status', statusFn: (r) => ({ label: r.status, level: PROJECT_LEVEL[r.status] }) },
-    { key: 'requestedBy', label: 'Requested by' },
-    { key: 'note', label: 'Decision note' },
+    { key: 'name', label: 'Project name' },
+    { key: 'projectManager', label: 'Manager' },
+    { key: 'projectStatus', label: 'Project status' },
+    { key: 'priority', label: 'Priority', type: 'status', statusFn: (r) => ({ label: r.priority, level: PRIORITY_LEVEL[r.priority] }) },
+    { key: 'cost', label: 'Estimated cost', type: 'currency', align: 'right' },
+    { key: 'headCount', label: 'Head count', type: 'number', align: 'right' },
+    { key: 'financialYear', label: 'Financial year' },
+    { key: 'status', label: 'Submission status', type: 'status', statusFn: (r) => ({ label: r.status, level: PROJECT_LEVEL[r.status] }) },
     {
       key: 'do', label: 'Actions',
       actions: [
         { id: 'edit', label: 'Edit', icon: 'edit', hide: (r) => !this.mine(r) },
         { id: 'submit', label: 'Submit', icon: 'send', hide: (r) => !this.mine(r) },
-        { id: 'keep', label: 'Keep', icon: 'check_circle', hide: (r) => !this.decide(r) },
-        { id: 'back', label: 'Send back', icon: 'undo', hide: (r) => !this.decide(r) },
-        { id: 'remove', label: 'Remove', icon: 'delete_outline', hide: (r) => !(this.mine(r) || this.decide(r) || (r.status === 'Kept' && this.store.can('Approve Projects'))) },
+        { id: 'include', label: 'Include', icon: 'check_circle', hide: (r) => !this.decide(r) },
+        { id: 'return', label: 'Return', icon: 'undo', hide: (r) => !this.decide(r) },
+        { id: 'exclude', label: 'Exclude', icon: 'block', hide: (r) => !(this.decide(r) || (r.status === 'Included in Budget' && this.current(r) && this.store.can('Approve Projects'))) },
+        { id: 'cancel', label: 'Cancel', icon: 'delete_outline', hide: (r) => !this.mine(r) },
+        { id: 'copy', label: 'Copy to ' + CURRENT_FY, icon: 'content_copy', hide: (r) => this.current(r) || !this.store.can('Submit Project Requests') },
       ],
     },
   ];
 
+  showStatus(s: string) { this.year.set(CURRENT_FY); this.submission.set(s); }
+  clear() { this.year.set(CURRENT_FY); for (const s of [this.projectStatus, this.priority, this.submission, this.manager, this.lineManager]) s.set('All'); }
+
   open(p: ProjectRequest) {
     const fresh = this.svc.projects().find((x) => x.id === p.id) ?? p;
-    this.dialog.open(ProjectDetailDialogComponent, { data: { project: fresh }, panelClass: 'app-dialog-panel', autoFocus: false, ...DIALOG_SIZE.form });
+    this.dialog.open(ProjectDetailDialogComponent, { data: { project: fresh }, panelClass: 'app-dialog-panel', autoFocus: false, ...DIALOG_SIZE.wide });
   }
 
+  /** The project submission form (Screen 5). */
   async form(p?: ProjectRequest) {
     if (!this.ui.requires('Submit Project Requests')) return;
     const v = await this.ui.form({
-      title: p ? 'Edit project' : 'New project', subtitle: p ? 'Change what you need, then submit it again' : 'Describe the project, the budget you need and why', icon: 'rocket_launch', submitLabel: p ? 'Save changes' : 'Add project',
-      values: p ? { ...p } : {},
+      title: p ? 'Edit project' : 'New project', subtitle: p ? 'Change what you need, then submit it again' : 'Describe the project, what it costs, why it is needed and the resources it needs', icon: 'rocket_launch', submitLabel: p ? 'Save changes' : 'Save draft',
+      values: p ? { ...p, budget: p.budget, attachments: p.attachments } : { financialYear: CURRENT_FY, projectStatus: 'New Proposed Project', priority: 'Medium', lineManager: 'Khalid Al-Farsi', projectManager: 'Noor Al-Rawahi', headCount: 0 },
       fields: [
-        { key: 'name', label: 'Project name or supplier', required: true, placeholder: 'e.g. Speech analytics for call quality' },
-        { key: 'scope', label: 'Scope of work', type: 'textarea', required: true, placeholder: 'What will be delivered?' },
-        { key: 'budget', label: 'Budget needed (OMR)', type: 'number', min: 1, required: true },
-        { key: 'contractRef', label: 'Contract reference', placeholder: 'Leave empty if there is none yet', hint: 'Can be "Still under RFT".' },
-        { key: 'poNumber', label: 'PO number', placeholder: 'Leave empty if there is none yet' },
-        { key: 'from', label: 'From', type: 'date' },
-        { key: 'to', label: 'To', type: 'date' },
-        { key: 'reason', label: 'Why is this project needed?', type: 'textarea', required: true, hint: 'The Budget Owner decides based on this.' },
+        { key: 'name', label: 'Project name', required: true, placeholder: 'e.g. Speech analytics for call quality' },
+        { key: 'projectStatus', label: 'Project status', type: 'select', options: PROJECT_STATUSES, required: true },
+        { key: 'financialYear', label: 'Financial year', type: 'select', options: [CURRENT_FY], required: true },
+        { key: 'projectManager', label: 'Project manager', required: true },
+        { key: 'lineManager', label: 'Line manager or requesting department', required: true },
+        { key: 'scope', label: 'Scope of work', type: 'textarea', required: true, placeholder: 'Purpose, main activities, expected deliverables, business area and outcome' },
+        { key: 'budget', label: 'Estimated cost (OMR)', type: 'number', min: 0, required: true, hint: 'Required for new and renewed projects.' },
+        { key: 'priority', label: 'Priority', type: 'select', options: [...PRIORITIES], required: true },
+        { key: 'reason', label: 'Justification', type: 'textarea', required: true, hint: 'For a new project: the business need, expected benefits, the risk of not proceeding and how it fits CRC objectives.' },
+        { key: 'from', label: 'Proposed start date', type: 'date' },
+        { key: 'to', label: 'Proposed end date', type: 'date' },
+        { key: 'headCount', label: 'Required head count', type: 'number', min: 0 },
+        { key: 'resourceRole', label: 'Resource role or position' },
+        { key: 'costPerResource', label: 'Cost per resource per month (OMR)', type: 'number', min: 0 },
+        { key: 'months', label: 'Months needed', type: 'number', min: 0, max: 12, hint: 'Resource cost = head count × cost per resource × months.' },
+        { key: 'contractRef', label: 'Related vendor or contract', placeholder: 'Leave empty if there is none yet' },
+        { key: 'poNumber', label: 'PO number' },
+        { key: 'comments', label: 'Additional comments', type: 'textarea' },
+        { key: 'attachments', label: 'Supporting attachments', type: 'file' },
       ],
     });
     if (!v) return;
-    const data = { name: v['name'], scope: v['scope'], budget: Number(v['budget']), contractRef: v['contractRef'] || undefined, poNumber: v['poNumber'] || undefined, from: v['from'] || undefined, to: v['to'] || undefined, reason: v['reason'] };
+    const data: ProjectInput = {
+      financialYear: v['financialYear'], name: v['name'], projectStatus: v['projectStatus'], scope: v['scope'], budget: num(v['budget']), reason: v['reason'], priority: v['priority'],
+      projectManager: v['projectManager'], lineManager: v['lineManager'], headCount: num(v['headCount']), resourceRole: v['resourceRole'] || undefined, costPerResource: num(v['costPerResource']) || undefined, months: num(v['months']) || undefined,
+      comments: v['comments'] || undefined, attachments: v['attachments'] ?? [], contractRef: v['contractRef'] || undefined, poNumber: v['poNumber'] || undefined, from: v['from'] || undefined, to: v['to'] || undefined,
+    };
+    const check = this.svc.validate(data, p?.id);
+    if (check.error) { this.ui.toast(check.error, 6000); return; }
     if (p) { this.svc.edit(p.id, data); this.ui.toast('Project updated.'); }
-    else { this.svc.create(data); this.ui.toast('Project added as a draft. Submit it when it is ready.'); }
+    else { this.svc.create(data); this.ui.toast('Project saved as a draft. Submit it when it is ready.'); }
+    if (check.warnings.length) setTimeout(() => this.ui.toast(check.warnings[0], 6500), 800);
   }
 
   async act(e: { row: any; id: string }) {
     const p = this.svc.projects().find((x) => x.id === e.row.id);
     if (!p) return;
     if (e.id === 'edit') return this.form(p);
+    if (e.id === 'copy') {
+      const c = this.svc.copy(p.id, CURRENT_FY);
+      this.ui.toast(c ? `Copied to ${CURRENT_FY} as a draft. Check the status and the cost, then submit it.` : 'Could not copy.');
+      this.year.set(CURRENT_FY);
+      return;
+    }
     if (e.id === 'submit') {
       if (!this.ui.requires('Submit Project Requests')) return;
+      const check = this.svc.validate(p, p.id);
+      if (check.error) { this.ui.toast(check.error, 6000); return; }
       this.svc.submit(p.id);
       this.ui.toast('Submitted — the Budget Owner has been notified.');
       return;
     }
-    if (e.id === 'keep') {
+    if (e.id === 'include') {
       if (!this.ui.requires('Approve Projects')) return;
-      const v = await this.ui.form({ title: 'Keep this project', subtitle: `${p.name} · ${p.budget.toLocaleString()} OMR will be added to next year's budget`, icon: 'check_circle', submitLabel: 'Keep', fields: [{ key: 'note', label: 'Comment (optional)', type: 'textarea' }] });
+      const v = await this.ui.form({ title: 'Include this project', subtitle: `${p.name} · ${projectTotal(p).toLocaleString()} OMR goes into next year's budget`, icon: 'check_circle', submitLabel: 'Include', fields: [{ key: 'note', label: 'Comment (optional)', type: 'textarea' }] });
       if (!v) return;
-      this.svc.keep(p.id, v['note'] ?? '');
-      this.ui.toast('Project kept and added to next year\'s budget.');
+      this.svc.include(p.id, v['note'] ?? '');
+      this.ui.toast('Project included in the budget.');
       return;
     }
-    if (e.id === 'back') {
+    if (e.id === 'return') {
       if (!this.ui.requires('Approve Projects')) return;
-      const v = await this.ui.form({ title: 'Send back for changes', subtitle: `${p.name} returns to ${p.requestedBy}`, icon: 'undo', submitLabel: 'Send back', fields: [{ key: 'note', label: 'What needs to change?', type: 'textarea', required: true }] });
+      const v = await this.ui.form({ title: 'Return for modification', subtitle: `${p.name} goes back to ${p.requestedBy}`, icon: 'undo', submitLabel: 'Return', fields: [{ key: 'note', label: 'What needs to change?', type: 'textarea', required: true }] });
       if (!v) return;
-      this.svc.sendBack(p.id, v['note']);
-      this.ui.toast('Sent back to the requester.');
+      this.svc.returnForModification(p.id, v['note']);
+      this.ui.toast('Returned to the requester.');
       return;
     }
-    if (e.id === 'remove') {
-      const allowed = this.store.can('Approve Projects') || this.store.can('Submit Project Requests');
-      if (!allowed) { this.ui.requires('Approve Projects'); return; }
-      const wasKept = p.status === 'Kept';
-      const v = await this.ui.form({ title: 'Remove this project', subtitle: wasKept ? `${p.name} — its ${p.budget.toLocaleString()} OMR is taken out of next year's budget` : p.name, icon: 'delete_outline', submitLabel: 'Remove', fields: [{ key: 'note', label: 'Reason', type: 'textarea', required: true, hint: 'Removed projects stay in the history.' }] });
+    if (e.id === 'exclude') {
+      if (!this.ui.requires('Approve Projects')) return;
+      const v = await this.ui.form({ title: 'Exclude from the budget', subtitle: p.status === 'Included in Budget' ? `${p.name} — its ${projectTotal(p).toLocaleString()} OMR is taken out of the budget` : p.name, icon: 'block', submitLabel: 'Exclude', fields: [{ key: 'note', label: 'Reason', type: 'textarea', required: true, hint: 'Excluded projects stay in the history.' }] });
       if (!v) return;
-      this.svc.remove(p.id, v['note']);
-      this.ui.toast('Project removed. It stays in the history under "Removed".');
+      this.svc.exclude(p.id, v['note']);
+      this.ui.toast('Project excluded. It stays in the history.');
+      return;
+    }
+    if (e.id === 'cancel') {
+      if (!this.ui.requires('Submit Project Requests')) return;
+      const ok = await this.ui.confirm({ title: 'Cancel this project?', message: `${p.name} will be marked as Cancelled and stay in the history.`, confirmLabel: 'Cancel project', danger: true });
+      if (!ok) return;
+      this.svc.cancel(p.id, 'Cancelled by the requester.');
+      this.ui.toast('Project cancelled.');
     }
   }
 }

@@ -17,7 +17,7 @@ import { UiService } from '../../../shared/services/ui.service';
 import { Contract, ContractAttachment, ContractRecord } from '../../../core/models/domain';
 import { daysRemainingToLevel } from '../../../core/models/status';
 import { addDays, attachmentsFor, ruleApplies, timelineFor, yearlyBudgetFor } from '../../../core/services/contract-data';
-import { ACTION_STATUSES, ACTION_TYPES, ESCALATION_STATUSES, EscalationStatus, MonitoringAction, statusLevelFor } from '../../../core/services/contract-monitoring';
+import { ACTION_STATUSES, ACTION_TYPES, ESCALATION_STATUSES, EscalationStatus, MonitoringAction, remainingLabel, statusLevelFor } from '../../../core/services/contract-monitoring';
 import { RequiresDirective } from '../../../shared/directives/requires.directive';
 import { DIALOG_SIZE } from '../../../shared/dialog-sizes';
 import { RecordDetailDialogComponent } from './record-detail-dialog.component';
@@ -78,7 +78,7 @@ const today = () => new Date().toISOString().slice(0, 10);
         <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Vendor</div><div class="text-sm font-medium text-ink-900 mt-0.5">{{ c.vendorName }}</div></div>
         <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Contract Amount</div><div class="text-sm font-medium text-ink-900 mt-0.5">{{ c.amount | number:'1.0-2' }} {{ c.currency }}</div></div>
         <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Start &rarr; End Date</div><div class="text-sm font-medium text-ink-900 mt-0.5">{{ c.startDate }} &rarr; {{ c.endDate }}</div></div>
-        <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Days Remaining</div><div class="text-sm font-medium mt-0.5" [class]="c.daysRemaining < 0 ? 'text-status-red' : 'text-ink-900'">{{ c.daysRemaining }}</div></div>
+        <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Days Remaining</div><div class="text-sm font-medium mt-0.5" [class]="c.daysRemaining < 0 ? 'text-status-red' : 'text-ink-900'" [title]="c.daysRemaining + ' days'">{{ remaining(c) }}</div></div>
         <div class="surface-card px-4 py-3 col-span-2 md:col-span-1"><div class="text-xs text-ink-400">Required action</div><div class="text-sm font-medium text-ink-900 mt-0.5">{{ ops.requiredAction(c) }}</div></div>
       </div>
 
@@ -469,7 +469,6 @@ export class ContractDetailComponent {
     { key: 'processed', label: 'Retrieved', type: 'number', align: 'right' },
     { key: 'created', label: 'Created', type: 'number', align: 'right' },
     { key: 'updated', label: 'Updated', type: 'number', align: 'right' },
-    { key: 'rejected', label: 'Rejected', type: 'number', align: 'right' },
     { key: 'errors', label: 'Errors', type: 'number', align: 'right' },
     { key: 'status', label: 'Status', type: 'status', statusFn: (r) => ({ label: r.status, level: r.status === 'Failed' ? 'red' : r.status === 'No Changes' ? 'neutral' : 'normal' }) },
     { key: 'error', label: 'Error details' },
@@ -497,6 +496,10 @@ export class ContractDetailComponent {
 
   level(c: Contract) {
     return statusLevelFor(c);
+  }
+
+  remaining(c: Contract) {
+    return remainingLabel(c.endDate);
   }
 
   min(a: number, b: number) {

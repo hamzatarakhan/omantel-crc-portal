@@ -7,6 +7,7 @@ import { KpiCardComponent } from '../../../shared/components/kpi-card/kpi-card.c
 import { ChartCardComponent } from '../../../shared/components/chart-card/chart-card.component';
 import { CrcStore } from '../../../core/services/crc-store.service';
 import { ProjectRequests } from '../../../core/services/project-requests.service';
+import { BudgetCycle } from '../../../core/services/budget-cycle.service';
 import { percentUsedToLevel } from '../../../core/models/status';
 
 @Component({
@@ -30,17 +31,17 @@ import { percentUsedToLevel } from '../../../core/models/status';
     <a routerLink="/contracts-budget/budget-preparation" class="surface-card flex items-center gap-3 px-4 py-3 mb-6 hover:border-brand-300 transition-colors">
       <mat-icon class="!text-brand-600">edit_note</mat-icon>
       <div class="flex-1 text-sm text-ink-700">
-        Next-year budget: <span class="font-semibold text-ink-900">{{ store.nextYearTotal() | number:'1.0-0' }} OMR</span>
+        Next-year budget: <span class="font-semibold text-ink-900">{{ cycle.nextYearTotal() | number:'1.0-0' }} OMR</span>
         <span class="text-ink-400"> &middot; +{{ growth() }}% vs current</span>
       </div>
-      <span class="status-chip" [class]="planChip()">{{ store.budgetPlan().status }}</span>
+      <span class="status-chip" [class]="planChip()">{{ cycle.status() }}</span>
       <mat-icon class="!text-ink-400">chevron_right</mat-icon>
     </a>
 
     <a routerLink="/contracts-budget/projects" class="surface-card flex items-center gap-3 px-4 py-3 mb-6 hover:border-brand-300 transition-colors">
       <mat-icon class="!text-brand-600">rocket_launch</mat-icon>
       <div class="flex-1 text-sm text-ink-700">
-        Project requests: <span class="font-semibold text-ink-900">{{ projects.kept().length }} kept</span> ({{ projects.keptBudget() | number:'1.0-0' }} OMR added to next year)
+        Project requests: <span class="font-semibold text-ink-900">{{ projects.included().length }} included</span> ({{ projects.includedTotal() | number:'1.0-0' }} OMR in next year's budget)
         <span class="text-ink-400"> &middot; {{ projects.waiting().length }} waiting for a decision</span>
       </div>
       <mat-icon class="!text-ink-400">chevron_right</mat-icon>
@@ -66,14 +67,15 @@ import { percentUsedToLevel } from '../../../core/models/status';
 export class BudgetDashboardComponent {
   store = inject(CrcStore);
   projects = inject(ProjectRequests);
+  cycle = inject(BudgetCycle);
 
   totals = this.store.budgetTotals;
   level = computed(() => percentUsedToLevel(this.totals().pct));
   growth = computed(() => {
     const t = this.totals().allocated;
-    return t ? (((this.store.nextYearTotal() - t) / t) * 100).toFixed(1) : '0';
+    return t ? (((this.cycle.nextYearTotal() - t) / t) * 100).toFixed(1) : '0';
   });
-  planChip = computed(() => ({ Draft: 'status-chip--neutral', Submitted: 'status-chip--amber', Approved: 'status-chip--normal', Rejected: 'status-chip--red' })[this.store.budgetPlan().status]);
+  planChip = computed(() => ({ 'Not Started': 'status-chip--neutral', Draft: 'status-chip--neutral', 'Under Review': 'status-chip--info', 'Ready for Submission': 'status-chip--amber', Submitted: 'status-chip--normal', Reopened: 'status-chip--orange', Closed: 'status-chip--neutral' })[this.cycle.status()]);
   alerts = computed(() =>
     this.store.budgetByCategory()
       .map((c) => ({ category: c.category, pct: Math.round((c.spent / c.allocated) * 100), remaining: c.allocated - c.spent }))

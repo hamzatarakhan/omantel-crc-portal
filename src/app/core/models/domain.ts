@@ -43,20 +43,6 @@ export interface BudgetLine {
   spent: number;
 }
 
-/** A line added to next year's budget on top of the auto-drafted lines: typed in by hand, or coming from a kept project request. */
-export interface BudgetAddition {
-  id: string;
-  category: BudgetLine['category'];
-  poLayer?: BudgetLine['poLayer'];
-  item: string;
-  amount: number;
-  source: 'Manual' | 'Project request';
-  projectId?: string;
-  note?: string;
-  addedBy: string;
-  addedAt: string;
-}
-
 // ---------- CSR Management ----------
 export interface Agent {
   id: string;
@@ -207,7 +193,6 @@ export interface SyncRun {
   processed: number;
   created: number;
   updated: number;
-  rejected: number;
   errors?: number;
   contractReference?: string;
   errorMessage?: string;
@@ -235,16 +220,6 @@ export interface NotificationRule {
   language?: string;
   vendor?: string;
   department?: string;
-}
-
-export type BudgetPlanStatus = 'Draft' | 'Submitted' | 'Approved' | 'Rejected';
-
-export interface BudgetPlan {
-  status: BudgetPlanStatus;
-  drafts: Record<string, number>;
-  submittedAt?: string;
-  decidedAt?: string;
-  decisionNote?: string;
 }
 
 export interface PayableRules {

@@ -28,6 +28,9 @@ export const routes: Routes = [
       { path: 'contracts-budget/budget-dashboard', loadComponent: () => import('./features/contracts-budget/budget-dashboard/budget-dashboard.component').then((m) => m.BudgetDashboardComponent) },
       { path: 'contracts-budget/budget-preparation', loadComponent: () => import('./features/contracts-budget/budget-preparation/budget-preparation.component').then((m) => m.BudgetPreparationComponent) },
       { path: 'contracts-budget/budget-breakdown', loadComponent: () => import('./features/contracts-budget/budget-breakdown/budget-breakdown.component').then((m) => m.BudgetBreakdownComponent) },
+      { path: 'contracts-budget/accrual-forecast', loadComponent: () => import('./features/contracts-budget/accrual-forecast/accrual-forecast.component').then((m) => m.AccrualForecastComponent) },
+      { path: 'contracts-budget/team-forecast', loadComponent: () => import('./features/contracts-budget/team-forecast/team-forecast.component').then((m) => m.TeamForecastComponent) },
+      { path: 'contracts-budget/forecast-settings', loadComponent: () => import('./features/contracts-budget/forecast-settings/forecast-settings.component').then((m) => m.ForecastSettingsComponent) },
       { path: 'contracts-budget/forecast', loadComponent: () => import('./features/contracts-budget/cost-forecast/cost-forecast.component').then((m) => m.CostForecastComponent) },
 
       // CSR Management

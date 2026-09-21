@@ -7,6 +7,7 @@ import { PageHeaderComponent } from '../../../shared/components/page-header/page
 import { ChartCardComponent } from '../../../shared/components/chart-card/chart-card.component';
 import { KpiCardComponent } from '../../../shared/components/kpi-card/kpi-card.component';
 import { CrcStore } from '../../../core/services/crc-store.service';
+import { BudgetCycle } from '../../../core/services/budget-cycle.service';
 import { UiService } from '../../../shared/services/ui.service';
 import { percentUsedToLevel } from '../../../core/models/status';
 import { RequiresDirective } from '../../../shared/directives/requires.directive';
@@ -110,6 +111,7 @@ const INPUT = 'w-full px-3 py-2.5 pr-16 text-sm rounded-lg border border-surface
 })
 export class CostForecastComponent {
   store = inject(CrcStore);
+  private cycle = inject(BudgetCycle);
   private ui = inject(UiService);
   input = INPUT;
 
@@ -156,17 +158,14 @@ export class CostForecastComponent {
 
   async applyToDraft() {
     if (!this.ui.requires('Prepare/Edit Draft Budget')) return;
-    if (this.store.budgetPlan().status !== 'Draft') {
-      this.ui.toast('The next-year budget is already submitted. Start a new draft on the Budget Preparation screen first.');
+    if (!this.cycle.editable()) {
+      this.ui.toast('The next-year budget cannot be changed right now (submitted, past the cut-off, or closed). Open Budget Preparation.');
       return;
     }
-    const target = this.store.budgetLines().find((l) => l.poLayer === 'PO1');
-    if (!target) return;
-    const ok = await this.ui.confirm({ title: 'Add hiring cost to the budget draft?', message: `${Math.round(this.yearCost()).toLocaleString()} OMR will be added to "${target.item}" in the next-year draft.`, confirmLabel: 'Add to draft', icon: 'playlist_add' });
+    const first = this.cycle.outsourcing()[0];
+    const ok = await this.ui.confirm({ title: 'Add hiring cost to the budget draft?', message: `${Math.round(this.yearCost()).toLocaleString()} OMR will be added to "${first?.category}" in the next-year outsourcing budget.`, confirmLabel: 'Add to draft', icon: 'playlist_add' });
     if (!ok) return;
-    const current = this.store.budgetPlan().drafts[target.id] ?? Math.round(target.allocated * 1.03);
-    this.store.setDraft(target.id, current + Math.round(this.yearCost()));
-    this.store.log('Budget Draft Adjusted', target.id, `+${Math.round(this.yearCost()).toLocaleString()} OMR for ${this.extraHeadcount()} additional resource(s) from the forecast calculator.`);
-    this.ui.toast('Added to the next-year budget draft.');
+    const err = this.cycle.addOutsourcingExtra(Math.round(this.yearCost()), `${this.extraHeadcount()} additional resource(s) from the forecast calculator`);
+    this.ui.toast(err ?? 'Added to the next-year budget draft.');
   }
 }

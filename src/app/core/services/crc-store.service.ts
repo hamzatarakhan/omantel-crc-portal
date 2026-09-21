@@ -1,6 +1,6 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import {
-  Agent, AnnexureImport, AppNotification, AppUser, AuditEntry, BudgetAddition, BudgetLine, BudgetPlan, Candidate, CandidateStatus, Contract, IdDocument,
+  Agent, AnnexureImport, AppNotification, AppUser, AuditEntry, BudgetLine, Candidate, CandidateStatus, Contract, IdDocument,
   InterviewQuestion, InvoiceRun, MovementAnnouncement, MovementRequest, NotificationRule, PayableLine,
   PayableRules, PaymentRecord, PayrollLine, PerformanceRecord, ResignationRecord, SyncRun, WorkforceSnapshot,
 } from '../models/domain';
@@ -9,7 +9,6 @@ import { MockDataService } from './mock-data.service';
 import { NAV_GROUPS, NavGroup } from '../nav.config';
 import { attachmentsFor, childRecordsFor, enrichContract, timelineFor } from './contract-data';
 import { seedChanges } from './contract-monitoring';
-import { SEED_PROJECTS } from './project-data';
 
 export const CURRENT_USER = 'Hamza Tarkan';
 /** The contract's flat management fee per employee per month (OMR). */
@@ -19,11 +18,13 @@ export const ROLE_SUMMARY: Record<string, string> = {
   'Contract Mgmt Manager': 'Contract risk, escalations and notification rules',
   'Budget Owner': 'Contracts and budget approval',
   'CSR/Workforce Team': 'Agents, leave, recruitment and movement',
-  'Team Lead': 'Agents, leave, movement and project requests',
-  'Finance': 'Contracts, budgets, invoices and payments',
+  'Team Lead': 'Agents, leave, movement and project requests (also acts as Line Manager)',
+  'Project Manager': 'Project budget requests and their head count',
+  'Budget Team': 'Receives and reviews the submitted budget and team forecasts',
+  'Finance': 'Budgets, invoices, payments and the accrual forecast',
   'System Admin': 'Everything, plus access control and audit',
 };
-export const ROLES = ['Contract Mgmt Team', 'Contract Mgmt Manager', 'Budget Owner', 'CSR/Workforce Team', 'Team Lead', 'Finance', 'System Admin'];
+export const ROLES = ['Contract Mgmt Team', 'Contract Mgmt Manager', 'Budget Owner', 'CSR/Workforce Team', 'Team Lead', 'Project Manager', 'Finance', 'Budget Team', 'System Admin'];
 
 export interface Permission { permission: string; module: string; }
 export const PERMISSIONS: Permission[] = [
@@ -40,9 +41,17 @@ export const PERMISSIONS: Permission[] = [
   { permission: 'Manage Monitoring Actions', module: 'Contracts & Budget' },
   { permission: 'View Audit History', module: 'Contracts & Budget' },
   { permission: 'Prepare/Edit Draft Budget', module: 'Contracts & Budget' },
-  { permission: 'Approve Budget', module: 'Contracts & Budget' },
+  { permission: 'View Budget', module: 'Contracts & Budget' },
+  { permission: 'Manage Budget Cycle', module: 'Contracts & Budget' },
   { permission: 'Submit Project Requests', module: 'Contracts & Budget' },
   { permission: 'Approve Projects', module: 'Contracts & Budget' },
+  { permission: 'View Accrual Forecast', module: 'Forecast' },
+  { permission: 'Edit Accrual Forecast', module: 'Forecast' },
+  { permission: 'Close Forecast Period', module: 'Forecast' },
+  { permission: 'Export Forecast', module: 'Forecast' },
+  { permission: 'Configure Forecast', module: 'Forecast' },
+  { permission: 'View Team Forecast', module: 'Forecast' },
+  { permission: 'Export Team Forecast', module: 'Forecast' },
   { permission: 'View Agent Profiles', module: 'CSR Management' },
   { permission: 'Manage Recruitment', module: 'CSR Management' },
   { permission: 'View Employee Salary', module: 'CSR Management' },
@@ -52,6 +61,24 @@ export const PERMISSIONS: Permission[] = [
   { permission: 'Validate Invoice', module: 'Invoicing & Payments' },
   { permission: 'Configure Payable Rules', module: 'Invoicing & Payments' },
 ];
+
+/** Who holds the permissions whose default (the whole module) does not fit. Finance is not a Contract Tracking actor. */
+const CT_ROLES = ['Contract Mgmt Team', 'Contract Mgmt Manager', 'Budget Owner'];
+const SPECIAL: Record<string, string[]> = {
+  'View Contracts': CT_ROLES, 'View Contract Details': CT_ROLES, 'View Sync History': CT_ROLES, 'View Attachments': CT_ROLES, 'View Dashboards': CT_ROLES, 'Export Contract Data': CT_ROLES,
+  'View Budget': ['Contract Mgmt Team', 'Contract Mgmt Manager', 'Budget Owner', 'Finance', 'Budget Team'],
+  'Prepare/Edit Draft Budget': ['Contract Mgmt Team', 'Budget Owner'],
+  'Manage Budget Cycle': ['Budget Owner', 'Contract Mgmt Manager'],
+  'Submit Project Requests': ['Team Lead', 'CSR/Workforce Team', 'Project Manager'],
+  'Approve Projects': ['Budget Owner'],
+  'View Accrual Forecast': ['Finance', 'Contract Mgmt Team', 'Contract Mgmt Manager', 'Budget Owner', 'Budget Team'],
+  'Edit Accrual Forecast': ['Contract Mgmt Team', 'Contract Mgmt Manager'],
+  'Configure Forecast': ['Contract Mgmt Manager'],
+  'Close Forecast Period': ['Finance'],
+  'Export Forecast': ['Finance', 'Contract Mgmt Team', 'Contract Mgmt Manager'],
+  'View Team Forecast': ['Contract Mgmt Team', 'Contract Mgmt Manager', 'Budget Owner', 'Budget Team'],
+  'Export Team Forecast': ['Contract Mgmt Team', 'Contract Mgmt Manager'],
+};
 
 export const INTERVIEW_QUESTIONS: InterviewQuestion[] = [
   { id: 'q1', category: 'Communication', text: 'Explain a billing charge to a customer who is upset, in clear simple language.' },
@@ -113,11 +140,11 @@ export class CrcStore {
   // ---------- data ----------
   readonly contracts = signal<Contract[]>(this.mock.getContracts().map(enrichContract));
   readonly syncRuns = signal<SyncRun[]>([
-    { id: 'S5', type: 'Manual', startedAt: isoDay(0) + 'T03:29:00', finishedAt: isoDay(0) + 'T03:30:00', initiatedBy: CURRENT_USER, processed: 1, created: 0, updated: 0, rejected: 0, errors: 1, contractReference: '2025-013T-00-04', errorMessage: 'The ERP did not respond within 60 seconds (HTTP 504). Last synchronized data was kept.', status: 'Failed' },
-    { id: 'S4', type: 'Automated', startedAt: isoDay(0) + 'T02:00:00', finishedAt: isoDay(0) + 'T02:04:00', initiatedBy: 'System Scheduler', processed: 214, created: 2, updated: 11, rejected: 0, status: 'Completed' },
-    { id: 'S3', type: 'Manual', startedAt: isoDay(-1) + 'T14:22:00', finishedAt: isoDay(-1) + 'T14:22:40', initiatedBy: CURRENT_USER, processed: 1, created: 0, updated: 0, rejected: 0, errors: 0, contractReference: '2025-013T-00-02', status: 'No Changes' },
-    { id: 'S2', type: 'Automated', startedAt: isoDay(-1) + 'T02:00:00', finishedAt: isoDay(-1) + 'T02:03:00', initiatedBy: 'System Scheduler', processed: 214, created: 0, updated: 4, rejected: 1, errors: 1, errorMessage: 'Record rejected: end date is earlier than the start date (BR-CT-003).', status: 'Completed' },
-    { id: 'S1', type: 'Automated', startedAt: isoDay(-2) + 'T02:00:00', finishedAt: isoDay(-2) + 'T02:01:10', initiatedBy: 'System Scheduler', processed: 0, created: 0, updated: 0, rejected: 0, errors: 1, errorMessage: 'ERP endpoint returned HTTP 503 (Service Unavailable). Last synchronized data was retained.', status: 'Failed' },
+    { id: 'S5', type: 'Manual', startedAt: isoDay(0) + 'T03:29:00', finishedAt: isoDay(0) + 'T03:30:00', initiatedBy: CURRENT_USER, processed: 1, created: 0, updated: 0, errors: 1, contractReference: '2025-013T-00-04', errorMessage: 'The ERP did not respond within 60 seconds (HTTP 504). Last synchronized data was kept.', status: 'Failed' },
+    { id: 'S4', type: 'Automated', startedAt: isoDay(0) + 'T02:00:00', finishedAt: isoDay(0) + 'T02:04:00', initiatedBy: 'System Scheduler', processed: 214, created: 2, updated: 11, status: 'Completed' },
+    { id: 'S3', type: 'Manual', startedAt: isoDay(-1) + 'T14:22:00', finishedAt: isoDay(-1) + 'T14:22:40', initiatedBy: CURRENT_USER, processed: 1, created: 0, updated: 0, errors: 0, contractReference: '2025-013T-00-02', status: 'No Changes' },
+    { id: 'S2', type: 'Automated', startedAt: isoDay(-1) + 'T02:00:00', finishedAt: isoDay(-1) + 'T02:03:00', initiatedBy: 'System Scheduler', processed: 214, created: 0, updated: 4, errors: 1, errorMessage: 'Record rejected: end date is earlier than the start date (BR-CT-003).', status: 'Completed' },
+    { id: 'S1', type: 'Automated', startedAt: isoDay(-2) + 'T02:00:00', finishedAt: isoDay(-2) + 'T02:01:10', initiatedBy: 'System Scheduler', processed: 0, created: 0, updated: 0, errors: 1, errorMessage: 'ERP endpoint returned HTTP 503 (Service Unavailable). Last synchronized data was retained.', status: 'Failed' },
   ]);
   readonly notificationRules = signal<NotificationRule[]>([
     { id: '1', contractType: 'All Contracts', thresholdDays: 60, channel: 'Email', recipients: 'Contract owner, Contract Management team', active: true, templateId: 'T1', language: 'English', vendor: 'All vendors', department: 'All departments' },
@@ -128,13 +155,6 @@ export class CrcStore {
   ]);
 
   readonly budgetLines = signal<BudgetLine[]>(this.mock.getBudgetLines().filter((l) => l.category !== 'Total Budget'));
-  readonly budgetPlan = signal<BudgetPlan>({ status: 'Draft', drafts: {} });
-  /** Next-year lines added by hand or from kept project requests, on top of the auto-drafted ones. */
-  readonly budgetAdditions = signal<BudgetAddition[]>(
-    SEED_PROJECTS.filter((p) => p.status === 'Kept').map((p) => ({
-      id: 'ADD-' + p.id, category: 'Projects' as const, item: p.name, amount: p.budget, source: 'Project request' as const, projectId: p.id, note: p.scope, addedBy: p.decidedBy ?? '', addedAt: p.decidedAt ?? new Date().toISOString(),
-    })),
-  );
 
   readonly agents = signal<Agent[]>(this.mock.getAgents(48));
   readonly attendanceDays = signal<string[]>(Array.from({ length: 14 }, (_, i) => isoDay(i - 13)));
@@ -334,54 +354,6 @@ export class CrcStore {
     const r = this.notificationRules().find((x) => x.id === id);
     this.notificationRules.update((list) => list.filter((x) => x.id !== id));
     if (r) this.log('Notification Rule Deleted', r.contractType, `${r.thresholdDays}-day rule removed.`);
-  }
-
-  // ---------- budget ----------
-  readonly nextYearTotal = computed(() => {
-    const drafts = this.budgetPlan().drafts;
-    return this.budgetLines().reduce((s, l) => s + (drafts[l.id] ?? Math.round(l.allocated * 1.03)), 0) + this.budgetAdditions().reduce((s, a) => s + (drafts[a.id] ?? a.amount), 0);
-  });
-
-  setDraft(lineId: string, value: number) {
-    this.budgetPlan.update((p) => ({ ...p, status: p.status === 'Approved' ? p.status : 'Draft', drafts: { ...p.drafts, [lineId]: value } }));
-  }
-
-  addBudgetAddition(a: Omit<BudgetAddition, 'id' | 'addedBy' | 'addedAt'> & { id?: string }) {
-    const line: BudgetAddition = { ...a, id: a.id ?? 'ADD-' + this.next(), addedBy: CURRENT_USER, addedAt: new Date().toISOString() };
-    this.budgetAdditions.update((l) => [...l, line]);
-    this.log(a.source === 'Manual' ? 'Budget Line Added' : 'Project Added to Budget', a.item, `${a.category}: ${a.amount.toLocaleString()} OMR added to next year's budget (${a.source.toLowerCase()}).`, 'Success', CURRENT_USER, { newValue: String(a.amount) });
-    return line;
-  }
-
-  updateBudgetAddition(id: string, patch: Partial<BudgetAddition>) {
-    const before = this.budgetAdditions().find((x) => x.id === id);
-    this.budgetAdditions.update((l) => l.map((x) => (x.id === id ? { ...x, ...patch } : x)));
-    if (before) this.log('Budget Line Edited', before.item, `Next-year line updated.`, 'Success', CURRENT_USER, { previousValue: String(before.amount), newValue: String(patch.amount ?? before.amount) });
-  }
-
-  removeBudgetAddition(id: string) {
-    const before = this.budgetAdditions().find((x) => x.id === id);
-    this.budgetAdditions.update((l) => l.filter((x) => x.id !== id));
-    this.budgetPlan.update((p) => { const { [id]: _drop, ...rest } = p.drafts; return { ...p, drafts: rest }; });
-    if (before) this.log('Budget Line Removed', before.item, `${before.amount.toLocaleString()} OMR removed from next year's budget.`, 'Success', CURRENT_USER, { previousValue: String(before.amount) });
-  }
-
-  regenerateDraft() {
-    // The +3% draft is rebuilt for the existing lines; manual and project lines keep their own amounts.
-    this.budgetPlan.set({ status: 'Draft', drafts: {} });
-    this.log('Budget Draft Regenerated', 'FY-NEXT', 'Draft regenerated at 3% above the prior approved budget.');
-  }
-
-  submitBudget() {
-    this.budgetPlan.update((p) => ({ ...p, status: 'Submitted', submittedAt: new Date().toISOString() }));
-    this.log('Budget Submitted', 'FY-NEXT', `Next-year budget of ${Math.round(this.nextYearTotal()).toLocaleString()} OMR submitted for approval.`);
-    this.notify('Next-year budget is waiting for approval.', 'Budget', 'info', '/contracts-budget/budget-preparation');
-  }
-
-  decideBudget(approved: boolean, note = '') {
-    this.budgetPlan.update((p) => ({ ...p, status: approved ? 'Approved' : 'Rejected', decidedAt: new Date().toISOString(), decisionNote: note }));
-    this.log(approved ? 'Budget Approved' : 'Budget Rejected', 'FY-NEXT', note || (approved ? 'Approved as submitted.' : 'Returned to the budget preparer.'));
-    this.notify(`Next-year budget was ${approved ? 'approved' : 'rejected'}.`, 'Budget', approved ? 'green' : 'red', '/contracts-budget/budget-preparation');
   }
 
   // ---------- CSR ----------
@@ -714,7 +686,7 @@ export class CrcStore {
   private seedPermissions(): Record<string, boolean> {
     const granted = (p: Permission, role: string): boolean => {
       if (role === 'System Admin') return true;
-      if (p.permission === 'Approve Budget' || p.permission === 'Approve Projects') return role === 'Budget Owner';
+      if (SPECIAL[p.permission]) return SPECIAL[p.permission].includes(role);
       if (p.permission === 'View Employee Salary') return role === 'Finance' || role === 'CSR/Workforce Team';
       if (p.permission === 'Submit Project Requests') return role === 'Team Lead' || role === 'CSR/Workforce Team';
       if (p.module === 'Contracts & Budget') {
