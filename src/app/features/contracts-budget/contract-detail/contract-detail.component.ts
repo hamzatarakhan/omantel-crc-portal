@@ -187,8 +187,8 @@ const today = () => new Date().toISOString().slice(0, 10);
               <div class="surface-card px-4 py-3"><div class="text-[11px] font-bold text-ink-400 uppercase tracking-wide">Amendments</div><div class="text-lg font-extrabold text-ink-900">{{ count('Amendment') }}</div></div>
               <div class="surface-card px-4 py-3"><div class="text-[11px] font-bold text-ink-400 uppercase tracking-wide">Time extensions</div><div class="text-lg font-extrabold text-ink-900">{{ count('Time Extension') }}</div></div>
             </div>
-            <app-data-table title="Variation Orders, amendments and time extensions" [columns]="childColumns" [rows]="children()" [pageSize]="10" [exportable]="store.can('Export Contract Data')" (rowClick)="openRecord($event)" emptyTitle="No variation orders yet" emptyDescription="The lines of this contract's PO, plus its amendments and time extensions, appear here."></app-data-table>
-            <p class="text-xs text-ink-400 mt-3">Click a row to see the scope of work, its parent contract and its documents. Everything here is read from the ERP; CRC does not change it or perform actions on other systems.</p>
+            <app-data-table title="Changes made to this contract" [columns]="childColumns" [rows]="children()" [pageSize]="10" [exportable]="store.can('Export Contract Data')" (rowClick)="openRecord($event)" emptyTitle="No changes yet" emptyDescription="Variation orders, amendments and time extensions made to this contract appear here."></app-data-table>
+            <p class="text-xs text-ink-400 mt-3">Click a row to see the change, the contract it applies to and its documents. Everything here is read from the ERP; CRC does not change it or perform actions on other systems.</p>
           </div>
         </mat-tab>
 
@@ -378,15 +378,16 @@ export class ContractDetailComponent {
   pickYear(y: { year: number }) { this.pickedYearNo.set(y.year); }
 
   childColumns: TableColumn<any>[] = [
-    { key: 'recordType', label: 'Type' },
-    { key: 'description', label: 'Scope of work' },
+    { key: 'reference', label: 'Change reference' },
+    { key: 'recordType', label: 'Change type' },
+    { key: 'description', label: 'Description of change' },
+    { key: 'issuedDate', label: 'Issued on', type: 'date' },
+    { key: 'startDate', label: 'Effective from', type: 'date' },
+    { key: 'endDate', label: 'Effective to', type: 'date' },
+    { key: 'amount', label: 'Value change', type: 'currency', align: 'right' },
     { key: 'poNumber', label: 'PO number' },
-    { key: 'startDate', label: 'From', type: 'date' },
-    { key: 'endDate', label: 'To', type: 'date' },
-    { key: 'amount', label: 'Amount', type: 'currency', align: 'right' },
-    { key: 'reference', label: 'Line reference' },
     { key: 'erpReference', label: 'ERP reference' },
-    { key: 'attachments', label: 'Attachments', type: 'number', align: 'right' },
+    { key: 'attachments', label: 'Documents', type: 'number', align: 'right' },
     { key: 'status', label: 'Status', type: 'status', statusFn: (r) => ({ label: r.status, level: r.status === 'Closed' ? 'neutral' : r.status === 'Expiring Soon' ? daysRemainingToLevel(r.daysRemaining) : 'normal' }) },
   ];
 
