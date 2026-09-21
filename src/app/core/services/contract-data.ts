@@ -15,7 +15,7 @@ export function ruleApplies(r: NotificationRule, c: Contract): boolean {
 /**
  * Sample ERP data behind every contract's detail tabs. Everything here is derived from the contract itself
  * (dates, amount, type, vendor) with a stable hash, so each contract always shows the same, internally
- * consistent set of subcontract lines, attachments and history — and follows the contract when an ERP sync moves its dates.
+ * consistent set of variation order lines, attachments and history — and follows the contract when an ERP sync moves its dates.
  */
 
 const DAY = 86400000;
@@ -102,7 +102,7 @@ export function enrichContract(c: Contract, i: number): Contract {
 }
 
 /**
- * What the ERP holds under a contract: its single PO's lines (shown as Subcontracts, each with a scope of work), plus amendments and
+ * What the ERP holds under a contract: its single PO's lines (shown as Variation Orders, each with a scope of work), plus amendments and
  * time extensions. Line amounts are not read from the ERP yet, so they stay empty and show as "—".
  */
 export function childRecordsFor(c: Contract): ContractRecord[] {
@@ -119,7 +119,7 @@ export function childRecordsFor(c: Contract): ContractRecord[] {
   lines.forEach(([scope, po], i) => {
     const days = diffDays(e, now);
     out.push({
-      ...base(`L${i + 1}`, 'SC', 'L' + i), reference: `${c.reference}/L${String(i + 1).padStart(2, '0')}`, poNumber: po ?? c.poNumber ?? '', recordType: 'Subcontract', description: scope, counterparty: c.vendorName,
+      ...base(`L${i + 1}`, 'SC', 'L' + i), reference: `${c.reference}/L${String(i + 1).padStart(2, '0')}`, poNumber: po ?? c.poNumber ?? '', recordType: 'Variation Order', description: scope, counterparty: c.vendorName,
       issuedDate: s, startDate: s, endDate: e, status: status(e, days), daysRemaining: days, attachments: 0,
     });
   });
@@ -136,7 +136,26 @@ export function childRecordsFor(c: Contract): ContractRecord[] {
   return out;
 }
 
-const DOC_LABEL: Record<ContractRecord['recordType'], string> = { Subcontract: 'Subcontract agreement', Amendment: 'Amendment letter', 'Time Extension': 'Time-extension letter' };
+export interface YearlyBudgetLine { line: number; description: string; startDate: string; endDate: string; allocated: number }
+
+/**
+ * The contract's budget split by contract year (start date + 12 months, ...). A contract of one year or less gets a single line
+ * with the contract's own start and end date. Not read from the ERP yet: the amount is split by days, the last line takes the rounding.
+ * ponytail: proportional-by-days split, replace with the ERP's per-year allocation when it is synced.
+ */
+export function yearlyBudgetFor(c: Contract): YearlyBudgetLine[] {
+  const spans: Array<[string, string]> = [];
+  for (let s = c.startDate; s <= c.endDate; s = addMonths(c.startDate, 12 * spans.length)) spans.push([s, minIso(addDays(addMonths(s, 12), -1), c.endDate)]);
+  const total = diffDays(c.endDate, c.startDate) + 1;
+  let left = c.amount;
+  return spans.map(([startDate, endDate], i) => {
+    const allocated = i === spans.length - 1 ? left : Math.round((c.amount * (diffDays(endDate, startDate) + 1)) / total);
+    left -= allocated;
+    return { line: i + 1, description: spans.length === 1 ? `Contract budget — ${c.name}` : `Year ${i + 1} of ${spans.length} — ${c.name}`, startDate, endDate, allocated };
+  });
+}
+
+const DOC_LABEL: Record<ContractRecord['recordType'], string> = { 'Variation Order': 'Variation Order agreement', Amendment: 'Amendment letter', 'Time Extension': 'Time-extension letter' };
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 
 /** Documents held in the ERP for the contract and for each linked record. */
@@ -171,9 +190,9 @@ export function timelineFor(c: Contract, children: ContractRecord[], attachments
   push({ at: at(created, '02:04:00'), kind: 'created', title: 'Record created from ERP', details: `${c.erpReference} imported for ${c.vendorName} (${c.contractType}).`, actor: 'System (Scheduled Sync)' });
   push({ at: at(created, '02:05:00'), kind: 'attachments', title: `${attachments.length} attachments synced`, details: 'Signed agreement and supporting documents pulled from the ERP document store.', actor: 'System (Scheduled Sync)' });
   push({ at: at(created, '02:10:00'), kind: 'notice', title: 'New contract registered', details: `${c.contractManager} was notified that ${c.reference} is now tracked in CRC.`, actor: 'System (Notification Engine)', channel: 'Email + In-App', recipients: 'Contract Management Team' });
-  const lineCount = children.filter((k) => k.recordType === 'Subcontract').length;
-  if (lineCount) push({ at: at(c.startDate, '02:06:00'), kind: 'linked', title: `${lineCount} subcontract lines linked`, details: `PO ${c.poNumber}: ${children.filter((k) => k.recordType === 'Subcontract').slice(0, 4).map((k) => k.description).join(', ')}${lineCount > 4 ? ` and ${lineCount - 4} more` : ''}.`, actor: 'System (Scheduled Sync)' });
-  for (const ch of children.filter((k) => k.recordType !== 'Subcontract')) push({ at: at(ch.issuedDate, '02:06:00'), kind: 'linked', title: `${ch.recordType} linked`, details: `${ch.reference} (${ch.erpReference})${ch.amount ? ' · ' + ch.amount.toLocaleString() + ' ' + ch.currency : ''} · ${ch.description}.`, actor: 'System (Scheduled Sync)' });
+  const lineCount = children.filter((k) => k.recordType === 'Variation Order').length;
+  if (lineCount) push({ at: at(c.startDate, '02:06:00'), kind: 'linked', title: `${lineCount} variation order lines linked`, details: `PO ${c.poNumber}: ${children.filter((k) => k.recordType === 'Variation Order').slice(0, 4).map((k) => k.description).join(', ')}${lineCount > 4 ? ` and ${lineCount - 4} more` : ''}.`, actor: 'System (Scheduled Sync)' });
+  for (const ch of children.filter((k) => k.recordType !== 'Variation Order')) push({ at: at(ch.issuedDate, '02:06:00'), kind: 'linked', title: `${ch.recordType} linked`, details: `${ch.reference} (${ch.erpReference})${ch.amount ? ' · ' + ch.amount.toLocaleString() + ' ' + ch.currency : ''} · ${ch.description}.`, actor: 'System (Scheduled Sync)' });
   if (c.renewalStatus) push({ at: at(addDays(c.endDate, -45), '09:12:00'), kind: 'renewal', title: 'Renewal initiated in ERP', details: `${c.renewalStatus} — flagged by ${c.contractManager}.`, actor: c.contractManager ?? 'Contract Manager' });
 
   const cancelled = c.status === 'Cancelled';

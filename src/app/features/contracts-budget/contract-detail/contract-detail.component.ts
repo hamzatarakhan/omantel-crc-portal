@@ -16,14 +16,14 @@ import { ContractOps } from '../../../core/services/contract-ops.service';
 import { UiService } from '../../../shared/services/ui.service';
 import { Contract, ContractAttachment, ContractRecord } from '../../../core/models/domain';
 import { daysRemainingToLevel } from '../../../core/models/status';
-import { addDays, attachmentsFor, ruleApplies, timelineFor } from '../../../core/services/contract-data';
+import { addDays, attachmentsFor, ruleApplies, timelineFor, yearlyBudgetFor } from '../../../core/services/contract-data';
 import { ACTION_STATUSES, ACTION_TYPES, ESCALATION_STATUSES, EscalationStatus, MonitoringAction, statusLevelFor } from '../../../core/services/contract-monitoring';
 import { RequiresDirective } from '../../../shared/directives/requires.directive';
 import { DIALOG_SIZE } from '../../../shared/dialog-sizes';
 import { RecordDetailDialogComponent } from './record-detail-dialog.component';
 
 const kb = (n: number) => (n >= 1024 ? (n / 1024).toFixed(1) + ' MB' : n + ' KB');
-const TABS = ['summary', 'records', 'attachments', 'alerts', 'actions', 'sync', 'audit'];
+const TABS = ['summary', 'records', 'yearly-budget', 'attachments', 'alerts', 'actions', 'sync', 'audit'];
 const today = () => new Date().toISOString().slice(0, 10);
 
 @Component({
@@ -112,10 +112,10 @@ const today = () => new Date().toISOString().slice(0, 10);
                 <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-3">
                   <div><div class="text-xs text-ink-400">Contract value</div><div class="text-base font-extrabold text-ink-900">{{ c.amount | number:'1.0-0' }} <span class="text-xs font-medium text-ink-400">{{ c.currency }}</span></div></div>
                   <div><div class="text-xs text-ink-400">PO number</div><div class="text-base font-extrabold text-ink-900">{{ c.poNumber }}</div></div>
-                  <div><div class="text-xs text-ink-400">Subcontract lines</div><div class="text-base font-extrabold text-ink-900">{{ count('Subcontract') }}</div></div>
+                  <div><div class="text-xs text-ink-400">Variation Order lines</div><div class="text-base font-extrabold text-ink-900">{{ count('Variation Order') }}</div></div>
                   <div><div class="text-xs text-ink-400">Amendments</div><div class="text-base font-extrabold text-ink-900">{{ amendmentValue() | number:'1.0-0' }} <span class="text-xs font-medium text-ink-400">{{ c.currency }}</span></div></div>
                 </div>
-                <div class="text-xs text-ink-400 mt-3">Each contract has one PO. Amounts per subcontract line will be read from the ERP later and show as "—" until then.</div>
+                <div class="text-xs text-ink-400 mt-3">Each contract has one PO. Amounts per variation order line will be read from the ERP later and show as "—" until then.</div>
               </div>
 
               <div class="surface-card px-4 pt-3.5 pb-4 sm:px-5">
@@ -171,24 +171,32 @@ const today = () => new Date().toISOString().slice(0, 10);
           </div>
         </mat-tab>
 
-        <!-- ============ Subcontracts ============ -->
-        <mat-tab [label]="'Subcontracts (' + children().length + ')'">
+        <!-- ============ Variation Orders ============ -->
+        <mat-tab [label]="'Variation Orders (' + children().length + ')'">
           <div class="pt-4">
             <div class="surface-card px-4 py-3 mb-4 flex items-center gap-2 flex-wrap text-sm">
               <button class="inline-flex items-center gap-1.5 font-semibold text-brand-700 hover:underline" (click)="openVendor(c)"><mat-icon class="!text-lg">store</mat-icon>{{ c.vendorName }}</button>
               <mat-icon class="!text-lg text-ink-300">chevron_right</mat-icon>
               <span class="font-semibold text-ink-900">{{ c.reference }} (parent contract)</span>
               <mat-icon class="!text-lg text-ink-300">chevron_right</mat-icon>
-              <span class="text-ink-500">PO {{ c.poNumber }} · {{ count('Subcontract') }} subcontract{{ count('Subcontract') === 1 ? '' : 's' }} · {{ count('Amendment') }} amendment{{ count('Amendment') === 1 ? '' : 's' }} · {{ count('Time Extension') }} time extension{{ count('Time Extension') === 1 ? '' : 's' }}</span>
+              <span class="text-ink-500">PO {{ c.poNumber }} · {{ count('Variation Order') }} variation order{{ count('Variation Order') === 1 ? '' : 's' }} · {{ count('Amendment') }} amendment{{ count('Amendment') === 1 ? '' : 's' }} · {{ count('Time Extension') }} time extension{{ count('Time Extension') === 1 ? '' : 's' }}</span>
             </div>
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
               <div class="surface-card px-4 py-3"><div class="text-[11px] font-bold text-ink-400 uppercase tracking-wide">PO number</div><div class="text-lg font-extrabold text-ink-900">{{ c.poNumber }}</div></div>
-              <div class="surface-card px-4 py-3"><div class="text-[11px] font-bold text-ink-400 uppercase tracking-wide">Subcontracts</div><div class="text-lg font-extrabold text-ink-900">{{ count('Subcontract') }}</div></div>
+              <div class="surface-card px-4 py-3"><div class="text-[11px] font-bold text-ink-400 uppercase tracking-wide">Variation Orders</div><div class="text-lg font-extrabold text-ink-900">{{ count('Variation Order') }}</div></div>
               <div class="surface-card px-4 py-3"><div class="text-[11px] font-bold text-ink-400 uppercase tracking-wide">Amendments</div><div class="text-lg font-extrabold text-ink-900">{{ count('Amendment') }}</div></div>
               <div class="surface-card px-4 py-3"><div class="text-[11px] font-bold text-ink-400 uppercase tracking-wide">Time extensions</div><div class="text-lg font-extrabold text-ink-900">{{ count('Time Extension') }}</div></div>
             </div>
-            <app-data-table title="Subcontracts, amendments and time extensions" [columns]="childColumns" [rows]="children()" [pageSize]="10" [exportable]="store.can('Export Contract Data')" (rowClick)="openRecord($event)" emptyTitle="No subcontracts yet" emptyDescription="The lines of this contract's PO, plus its amendments and time extensions, appear here."></app-data-table>
+            <app-data-table title="Variation Orders, amendments and time extensions" [columns]="childColumns" [rows]="children()" [pageSize]="10" [exportable]="store.can('Export Contract Data')" (rowClick)="openRecord($event)" emptyTitle="No variation orders yet" emptyDescription="The lines of this contract's PO, plus its amendments and time extensions, appear here."></app-data-table>
             <p class="text-xs text-ink-400 mt-3">Click a row to see the scope of work, its parent contract and its documents. Everything here is read from the ERP; CRC does not change it or perform actions on other systems.</p>
+          </div>
+        </mat-tab>
+
+        <!-- ============ Yearly Budget ============ -->
+        <mat-tab [label]="'Yearly Budget (' + yearlyBudget().length + ')'">
+          <div class="pt-4">
+            <app-data-table title="Yearly budget" [columns]="yearlyColumns()" [rows]="yearlyBudget()" [pageSize]="10" [exportable]="store.can('Export Contract Data')" emptyTitle="No budget lines"></app-data-table>
+            <p class="text-xs text-ink-400 mt-3">One line per contract year, adding up to the contract amount of {{ c.amount | number:'1.0-2' }} {{ c.currency }}. A contract of one year or less has a single line with the contract's own start and end date. Allocations are not read from the ERP yet, so they are split by days.</p>
           </div>
         </mat-tab>
 
@@ -345,6 +353,15 @@ export class ContractDetailComponent {
   syncRows = computed(() => { const c = this.contract(); return c ? this.store.syncRuns().filter((r) => !r.contractReference || r.contractReference === c.reference).map((r) => ({ ...r, scope: r.contractReference ? 'This contract' : 'All contracts', error: r.errorMessage ?? '' })) : []; });
   changeRows = computed(() => { const c = this.contract(); return c ? this.ops.changes().filter((x) => x.contractId === c.id) : []; });
   auditRows = computed(() => { const c = this.contract(); return c ? this.store.audit().filter((a) => a.reference === c.reference) : []; });
+
+  yearlyBudget = computed(() => { const c = this.contract(); return c ? yearlyBudgetFor(c) : []; });
+  yearlyColumns = computed<TableColumn<any>[]>(() => [
+    { key: 'line', label: 'Line', type: 'number' },
+    { key: 'description', label: 'Line description' },
+    { key: 'startDate', label: 'Start date', type: 'date' },
+    { key: 'endDate', label: 'End date', type: 'date' },
+    { key: 'allocated', label: 'Allocated budget', type: 'currency', currency: this.contract()?.currency, align: 'right' },
+  ]);
 
   childColumns: TableColumn<any>[] = [
     { key: 'recordType', label: 'Type' },

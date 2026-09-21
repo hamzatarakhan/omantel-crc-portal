@@ -64,7 +64,7 @@ export class MockDataService {
         id: `CT-${1000 + i}`,
         reference: `2025-013T-00-${(i + 1).toString().padStart(2, '0')}`,
         name: `${types[i % types.length]} Agreement ${2025 + (i % 2)}`,
-        recordType: i % 4 === 0 ? 'Parent Contract' : 'Subcontract',
+        recordType: i % 4 === 0 ? 'Parent Contract' : 'Variation Order',
         parentReference: i % 4 === 0 ? undefined : `2025-013T-00-${((i % 4) + 1).toString().padStart(2, '0')}`,
         contractType: types[i % types.length],
         vendorName: vendors[i % vendors.length],

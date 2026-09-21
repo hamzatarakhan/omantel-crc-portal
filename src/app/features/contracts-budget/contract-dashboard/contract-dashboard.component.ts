@@ -62,10 +62,10 @@ const FIELD = 'w-full px-2.5 py-2 text-xs font-semibold rounded-lg border border
       <app-kpi-card label="Expiring Soon" [value]="count('Expiring Soon')" level="amber" icon="schedule"></app-kpi-card>
       <app-kpi-card label="Expired" [value]="count('Expired')" level="red" icon="event_busy"></app-kpi-card>
       <app-kpi-card label="Total Contract Value" [value]="totalValue() | number:'1.0-0'" unit="OMR" icon="payments"></app-kpi-card>
-      <app-kpi-card label="Subcontracts" [value]="subcontracts()" icon="call_split"></app-kpi-card>
+      <app-kpi-card label="Variation Orders" [value]="variationOrders()" icon="call_split"></app-kpi-card>
     </div>
 
-    <p class="text-xs text-ink-500 mb-4"><b class="text-ink-900">{{ rows().length }}</b> contracts, each with one PO · <b class="text-ink-900">{{ subcontracts() }}</b> subcontract lines · <b class="text-ink-900">{{ changes() }}</b> amendments and extensions · <a routerLink="/contracts-budget/needs-attention" class="text-brand-600 font-medium">{{ actionCount() }} need attention</a></p>
+    <p class="text-xs text-ink-500 mb-4"><b class="text-ink-900">{{ rows().length }}</b> contracts, each with one PO · <b class="text-ink-900">{{ variationOrders() }}</b> variation order lines · <b class="text-ink-900">{{ changes() }}</b> amendments and extensions · <a routerLink="/contracts-budget/needs-attention" class="text-brand-600 font-medium">{{ actionCount() }} need attention</a></p>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6 lg:grid-rows-[380px]">
       <app-chart-card title="Contract Expiry Trend" subtitle="Contracts ending in the next 6 months" type="bar" [data]="expiryChart()"></app-chart-card>
@@ -130,8 +130,8 @@ export class ContractDashboardComponent {
     (!this.from() || c.endDate >= this.from()) && (!this.to() || c.endDate <= this.to())));
 
   private children = computed(() => this.rows().flatMap((c) => this.ops.childrenOf(c)));
-  changes = computed(() => this.children().filter((k) => k.recordType !== 'Subcontract').length);
-  subcontracts = computed(() => this.children().filter((k) => k.recordType === 'Subcontract').length);
+  changes = computed(() => this.children().filter((k) => k.recordType !== 'Variation Order').length);
+  variationOrders = computed(() => this.children().filter((k) => k.recordType === 'Variation Order').length);
   totalValue = computed(() => this.rows().reduce((s, c) => s + c.amount, 0));
   actionCount = computed(() => this.rows().filter((c) => this.ops.needsAction(c)).length);
   count = (s: string) => this.rows().filter((c) => c.status === s).length;

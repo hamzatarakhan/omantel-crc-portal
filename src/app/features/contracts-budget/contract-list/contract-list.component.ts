@@ -10,7 +10,7 @@ import { UiService } from '../../../shared/services/ui.service';
 import { ListRow } from '../../../core/services/contract-monitoring';
 
 const STATUSES = ['All', 'Active', 'Expiring Soon', 'Expired', 'Historical'] as const;
-const RECORD_TYPES: Array<[string, string]> = [['All', 'All records'], ['Parent Contract', 'Parent contracts'], ['Subcontract', 'Subcontracts'], ['Amendment', 'Amendments'], ['Time Extension', 'Time extensions']];
+const RECORD_TYPES: Array<[string, string]> = [['All', 'All records'], ['Parent Contract', 'Parent contracts'], ['Variation Order', 'Variation Orders'], ['Amendment', 'Amendments'], ['Time Extension', 'Time extensions']];
 const FIELD = 'w-full px-2.5 py-2 text-xs font-semibold rounded-lg border border-surface-border bg-white text-ink-700 focus:outline-none focus:border-brand-400';
 
 @Component({
@@ -20,7 +20,7 @@ const FIELD = 'w-full px-2.5 py-2 text-xs font-semibold rounded-lg border border
   template: `
     <app-page-header
       title="Contract List"
-      subtitle="Read-only view synced from the ERP &middot; contracts, their subcontracts, amendments and extensions &middot; click a row to open the contract"
+      subtitle="Read-only view synced from the ERP &middot; contracts, their variation orders, amendments and extensions &middot; click a row to open the contract"
       [breadcrumbs]="[{ label: 'Contracts & Budget', link: '/contracts-budget/dashboard' }, { label: 'Contract List' }]"
     ></app-page-header>
 

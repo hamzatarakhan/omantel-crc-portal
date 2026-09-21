@@ -72,11 +72,11 @@ export class ContractReportsComponent {
     { title: 'Contracts by Vendor', description: 'Contract count and value grouped by vendor.', icon: 'store', file: 'contracts-by-vendor', build: () => this.group((c) => c.vendorName, 'Vendor') },
     { title: 'Contracts by Type', description: 'Breakdown by contract classification.', icon: 'category', file: 'contracts-by-type', build: () => this.group((c) => c.contractType, 'Type') },
     {
-      title: 'Contracts & Subcontracts', description: 'Each contract with its PO number, subcontract lines, amendments and extensions, and any review flag.', icon: 'account_tree', file: 'contracts-subcontracts',
+      title: 'Contracts & Variation Orders', description: 'Each contract with its PO number, variation order lines, amendments and extensions, and any review flag.', icon: 'account_tree', file: 'contracts-variation-orders',
       build: () => this.live().map((p) => {
         const kids = this.ops.childrenOf(p);
         const issues = this.ops.issuesFor(p);
-        return { Contract: p.reference, Vendor: p.vendorName, 'PO number': p.poNumber ?? '', Subcontracts: kids.filter((k) => k.recordType === 'Subcontract').length, Amendments: kids.filter((k) => k.recordType === 'Amendment').length, 'Time extensions': kids.filter((k) => k.recordType === 'Time Extension').length, 'Contract amount': p.amount, 'Review flag': issues.map((i) => i.code).join(', ') || 'OK' };
+        return { Contract: p.reference, Vendor: p.vendorName, 'PO number': p.poNumber ?? '', 'Variation Orders': kids.filter((k) => k.recordType === 'Variation Order').length, Amendments: kids.filter((k) => k.recordType === 'Amendment').length, 'Time extensions': kids.filter((k) => k.recordType === 'Time Extension').length, 'Contract amount': p.amount, 'Review flag': issues.map((i) => i.code).join(', ') || 'OK' };
       }),
     },
 

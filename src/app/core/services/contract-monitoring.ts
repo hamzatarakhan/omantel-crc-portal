@@ -217,10 +217,10 @@ export interface DataIssue { code: 'BR-CT-003' | 'BR-CT-007'; message: string }
 export function dataIssuesFor(c: Contract, children: ContractRecord[]): DataIssue[] {
   const issues: DataIssue[] = [];
   if (c.endDate < c.startDate) issues.push({ code: 'BR-CT-003', message: `The end date (${c.endDate}) is earlier than the start date (${c.startDate}).` });
-  const lines = children.filter((k) => k.recordType === 'Subcontract' && k.amount !== undefined);
+  const lines = children.filter((k) => k.recordType === 'Variation Order' && k.amount !== undefined);
   const pos = lines.reduce((s, k) => s + (k.amount ?? 0), 0);
   const explained = children.filter((k) => k.recordType === 'Amendment' || k.recordType === 'Time Extension').reduce((s, k) => s + (k.amount ?? 0), 0);
-  if (lines.length && pos > c.amount + explained) issues.push({ code: 'BR-CT-007', message: `Subcontract lines total ${pos.toLocaleString('en-GB')} ${c.currency}, above the contract amount of ${c.amount.toLocaleString('en-GB')} ${c.currency}; the amendments and extensions on record (${explained.toLocaleString('en-GB')} ${c.currency}) do not explain the difference.` });
+  if (lines.length && pos > c.amount + explained) issues.push({ code: 'BR-CT-007', message: `Variation Order lines total ${pos.toLocaleString('en-GB')} ${c.currency}, above the contract amount of ${c.amount.toLocaleString('en-GB')} ${c.currency}; the amendments and extensions on record (${explained.toLocaleString('en-GB')} ${c.currency}) do not explain the difference.` });
   return issues;
 }
 

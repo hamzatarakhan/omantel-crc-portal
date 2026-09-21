@@ -79,7 +79,7 @@ export class ContractTrendsComponent {
     { key: 'type', label: 'Contract type', all: 'All types', value: this.type, set: (v: string) => this.type.set(v), options: ['All', ...new Set(this.base().map((c) => c.contractType))].sort() },
     { key: 'parent', label: 'Parent contract', all: 'All contracts', value: this.parent, set: (v: string) => this.parent.set(v), options: ['All', ...this.base().map((c) => c.reference)] },
     { key: 'status', label: 'Status', all: 'All statuses', value: this.status, set: (v: string) => this.status.set(v), options: ['All', 'Active', 'Expiring Soon', 'Expired'] },
-    { key: 'category', label: 'Record type', all: 'All records', value: this.category, set: (v: string) => this.category.set(v), options: ['All', 'Subcontract', 'Amendment', 'Time Extension'] },
+    { key: 'category', label: 'Record type', all: 'All records', value: this.category, set: (v: string) => this.category.set(v), options: ['All', 'Variation Order', 'Amendment', 'Time Extension'] },
   ]);
 
   contracts = computed(() => {
@@ -137,7 +137,7 @@ export class ContractTrendsComponent {
       ] } },
       { title: 'Contract Value by Vendor', subtitle: 'OMR', type: 'bar' as const, options: this.horizontal, data: { labels: byVendor, datasets: [{ label: 'Contract value (OMR)', data: byVendor.map((v) => sum(bucket(v).map((c) => c.amount))), backgroundColor: PALETTE }] } },
       { title: 'Contract Value by Contract Type', subtitle: 'OMR', type: 'doughnut' as const, options: { responsive: true, maintainAspectRatio: false, cutout: '60%', plugins: { legend: { position: 'right' as const, labels: { boxWidth: 10, font: { size: 11 } } } } }, data: { labels: byType, datasets: [{ data: byType.map((t) => sum(cs.filter((c) => c.contractType === t).map((c) => c.amount))), backgroundColor: PALETTE, borderWidth: 0 }] } },
-      { title: 'Subcontracts per Contract', subtitle: 'Scope-of-work lines under each contract\'s PO', type: 'bar' as const, options: this.horizontal, data: { labels: cs.map((c) => c.reference.slice(-8)), datasets: [{ label: 'Subcontract lines', data: cs.map((c) => this.kids(c).filter((k) => k.recordType === 'Subcontract').length), backgroundColor: C.teal }] } },
+      { title: 'Variation Orders per Contract', subtitle: 'Scope-of-work lines under each contract\'s PO', type: 'bar' as const, options: this.horizontal, data: { labels: cs.map((c) => c.reference.slice(-8)), datasets: [{ label: 'Variation Order lines', data: cs.map((c) => this.kids(c).filter((k) => k.recordType === 'Variation Order').length), backgroundColor: C.teal }] } },
       { title: 'Amendments and Time Extensions over Time', subtitle: 'Issued per month, last 12 months', type: 'bar' as const, data: { labels: past12.map(monthLabel), datasets: [
         { label: 'Amendments', data: past12.map((m) => allKids.filter((k) => k.recordType === 'Amendment' && sameMonth(k.issuedDate, m)).length), backgroundColor: C.orange },
         { label: 'Time extensions', data: past12.map((m) => allKids.filter((k) => k.recordType === 'Time Extension' && sameMonth(k.issuedDate, m)).length), backgroundColor: C.brand },

@@ -5,7 +5,7 @@ export interface Contract {
   id: string;
   reference: string;
   name: string;
-  recordType: 'Parent Contract' | 'Subcontract' | 'Amendment' | 'Time Extension';
+  recordType: 'Parent Contract' | 'Variation Order' | 'Amendment' | 'Time Extension';
   parentReference?: string;
   contractType: string;
   vendorName: string;
@@ -330,7 +330,7 @@ export interface ContractRecord {
   reference: string;
   /** The contract's single PO number; a line shows its own PO number when the ERP gives one. */
   poNumber: string;
-  recordType: 'Subcontract' | 'Amendment' | 'Time Extension';
+  recordType: 'Variation Order' | 'Amendment' | 'Time Extension';
   /** Scope of work of the line. */
   description: string;
   counterparty: string;
@@ -338,7 +338,7 @@ export interface ContractRecord {
   issuedDate: string;
   startDate: string;
   endDate: string;
-  /** Not read from the ERP yet for subcontract lines, so it is shown as "—". */
+  /** Not read from the ERP yet for variation order lines, so it is shown as "—". */
   amount?: number;
   currency: 'OMR' | 'USD';
   status: 'Active' | 'Expiring Soon' | 'Closed';

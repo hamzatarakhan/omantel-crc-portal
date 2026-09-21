@@ -14,7 +14,7 @@ export interface RecordDetailData {
   openAttachment: (a: ContractAttachment, mode: 'view' | 'download') => void;
 }
 
-/** Read-only detail of one subcontract line, amendment or time extension, with its parent contract and documents. */
+/** Read-only detail of one variation order line, amendment or time extension, with its parent contract and documents. */
 @Component({
   selector: 'app-record-detail-dialog',
   standalone: true,
