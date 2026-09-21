@@ -48,8 +48,10 @@ const FIELD = 'w-full px-2.5 py-2 text-xs font-semibold rounded-lg border border
               </select>
             </label>
           }
+        <div class="col-span-2 grid grid-cols-2 gap-2.5 md:contents">
           <label class="block"><span class="text-[10.5px] font-bold text-ink-400 uppercase tracking-wide">Ends from</span><input type="date" [class]="field + ' mt-1'" [value]="from()" (change)="from.set($any($event.target).value)" /></label>
           <label class="block"><span class="text-[10.5px] font-bold text-ink-400 uppercase tracking-wide">Ends to</span><input type="date" [class]="field + ' mt-1'" [value]="to()" (change)="to.set($any($event.target).value)" /></label>
+        </div>
         </div>
         <div class="flex justify-end mt-2.5"><button (click)="clear()" class="text-xs font-semibold text-brand-700 hover:underline">Clear filters</button></div>
       </div>

@@ -318,3 +318,13 @@ router-outlet + * {
   .invoice-sheet { position: absolute; left: 0; top: 0; width: 100%; max-width: none !important; overflow: visible !important; }
   .no-print { display: none !important; }
 }
+
+// Date fields: phones draw them at their own size and alignment. Make them fill their cell and read like the dropdowns beside them.
+input[type='date'] {
+  min-width: 0;
+  min-height: 2.125rem;
+  text-align: left;
+  -webkit-appearance: none;
+  appearance: none;
+}
+input[type='date']::-webkit-date-and-time-value { text-align: left; }

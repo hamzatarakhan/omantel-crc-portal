@@ -73,19 +73,49 @@ function open(sel: HTMLSelectElement) {
 }
 
 export function enableCustomSelects() {
+  const selectOf = (e: Event) => (e.target as HTMLElement | null)?.closest?.('select') as HTMLSelectElement | null;
+  const toggle = (sel: HTMLSelectElement) => {
+    sel.focus();
+    if (owner === sel) close();
+    else open(sel);
+  };
+  let touchAt = 0; // when a tap was last handled, so the mouse events a phone adds after it are ignored
+  let tapFrom: { x: number; y: number } | null = null;
+
   // Capture phase so we run before the browser (and before Material's dialog focus handling) sees the click.
   document.addEventListener('mousedown', (e) => {
+    const sel = selectOf(e);
+    if (Date.now() - touchAt < 700) { if (sel) e.preventDefault(); return; }
     const t = e.target as HTMLElement | null;
-    const sel = t?.closest?.('select') as HTMLSelectElement | null;
     if (sel && !sel.disabled) {
       e.preventDefault();
-      sel.focus();
-      if (owner === sel) close();
-      else open(sel);
+      toggle(sel);
     } else if (panel && !panel.contains(t)) {
       close();
     }
   }, true);
+
+  // Phones open their own picker on the tap itself, so a tap has to be claimed on touchend (mousedown is too late there).
+  document.addEventListener('touchstart', (e) => {
+    tapFrom = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null;
+  }, { capture: true, passive: true });
+  document.addEventListener('touchend', (e) => {
+    const t = e.changedTouches[0];
+    const isTap = !!tapFrom && Math.hypot(t.clientX - tapFrom.x, t.clientY - tapFrom.y) < 10; // a scroll or swipe is not a tap
+    tapFrom = null;
+    if (!isTap) return;
+    const sel = selectOf(e);
+    if (sel && !sel.disabled) {
+      touchAt = Date.now();
+      e.preventDefault();
+      toggle(sel);
+    } else if (panel && !panel.contains(e.target as Node)) {
+      close();
+    }
+  }, { capture: true, passive: false });
+
+  // Last line of defence: whatever the browser, a click on a <select> never reaches its native list.
+  document.addEventListener('click', (e) => { if (selectOf(e)) e.preventDefault(); }, true);
 
   document.addEventListener('keydown', (e) => {
     const t = e.target as HTMLElement | null;
@@ -106,6 +136,8 @@ export function enableCustomSelects() {
   }, true);
 
   const away = (e: Event) => { if (panel && !panel.contains(e.target as Node)) close(); };
-  window.addEventListener('resize', () => close());
+  // A phone's address bar sliding in and out only changes the height; that must not close the list.
+  let width = window.innerWidth;
+  window.addEventListener('resize', () => { if (window.innerWidth !== width) { width = window.innerWidth; close(); } });
   window.addEventListener('scroll', away, true);
 }

@@ -40,10 +40,14 @@ interface ChartDef { title: string; subtitle: string; type: ChartType; data: Cha
             </select>
           </label>
         }
+        <div class="col-span-2 grid grid-cols-2 gap-2.5 md:contents">
         <label class="block"><span class="text-[10.5px] font-bold text-ink-400 uppercase tracking-wide">Ends from</span><input type="date" [class]="field + ' mt-1'" [value]="from()" (change)="from.set($any($event.target).value)" /></label>
         <label class="block"><span class="text-[10.5px] font-bold text-ink-400 uppercase tracking-wide">Ends to</span><input type="date" [class]="field + ' mt-1'" [value]="to()" (change)="to.set($any($event.target).value)" /></label>
+        </div>
+        <div class="col-span-2 grid grid-cols-2 gap-2.5 md:contents">
         <label class="block"><span class="text-[10.5px] font-bold text-ink-400 uppercase tracking-wide">Amount min (OMR)</span><input type="number" min="0" [class]="field + ' mt-1'" [value]="min()" (input)="min.set($any($event.target).value)" placeholder="0" /></label>
         <label class="block"><span class="text-[10.5px] font-bold text-ink-400 uppercase tracking-wide">Amount max (OMR)</span><input type="number" min="0" [class]="field + ' mt-1'" [value]="max()" (input)="max.set($any($event.target).value)" placeholder="Any" /></label>
+        </div>
       </div>
     </div>
 
