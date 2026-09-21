@@ -136,22 +136,28 @@ export function childRecordsFor(c: Contract): ContractRecord[] {
   return out;
 }
 
-export interface YearlyBudgetLine { line: number; description: string; startDate: string; endDate: string; allocated: number }
+export interface YearlyBudgetLine { line: number; description: string; scope: string; allocated: number }
+export interface YearlyBudgetYear { year: number; description: string; startDate: string; endDate: string; allocated: number; lines: YearlyBudgetLine[] }
 
 /**
- * The contract's budget split by contract year (start date + 12 months, ...). A contract of one year or less gets a single line
- * with the contract's own start and end date. Not read from the ERP yet: the amount is split by days, the last line takes the rounding.
- * ponytail: proportional-by-days split, replace with the ERP's per-year allocation when it is synced.
+ * The contract's budget by contract year (start date + 12 months, ...), each year holding one line per Variation Order line of the PO.
+ * A contract of one year or less has a single year with the contract's own start and end date. Not read from the ERP yet: the amount
+ * is split across years by days and across a year's lines evenly, the last one taking the rounding.
+ * ponytail: even split and scope picked round-robin from the contract scope, replace with the ERP per-line data when it is synced.
  */
-export function yearlyBudgetFor(c: Contract): YearlyBudgetLine[] {
+export function yearlyBudgetFor(c: Contract, children: ContractRecord[]): YearlyBudgetYear[] {
   const spans: Array<[string, string]> = [];
   for (let s = c.startDate; s <= c.endDate; s = addMonths(c.startDate, 12 * spans.length)) spans.push([s, minIso(addDays(addMonths(s, 12), -1), c.endDate)]);
   const total = diffDays(c.endDate, c.startDate) + 1;
+  const names = children.filter((k) => k.recordType === 'Variation Order').map((k) => k.description);
+  if (!names.length) names.push(c.name);
+  const scopes = c.scope?.length ? c.scope : templateFor(c).scope;
+  const split = (amount: number, n: number, i: number) => (i === n - 1 ? amount - Math.round(amount / n) * (n - 1) : Math.round(amount / n));
   let left = c.amount;
-  return spans.map(([startDate, endDate], i) => {
-    const allocated = i === spans.length - 1 ? left : Math.round((c.amount * (diffDays(endDate, startDate) + 1)) / total);
+  return spans.map(([startDate, endDate], y) => {
+    const allocated = y === spans.length - 1 ? left : Math.round((c.amount * (diffDays(endDate, startDate) + 1)) / total);
     left -= allocated;
-    return { line: i + 1, description: spans.length === 1 ? `Contract budget — ${c.name}` : `Year ${i + 1} of ${spans.length} — ${c.name}`, startDate, endDate, allocated };
+    return { year: y + 1, description: `Year ${y + 1} of ${spans.length} — ${c.name}`, startDate, endDate, allocated, lines: names.map((description, i) => ({ line: i + 1, description, scope: scopes[i % scopes.length], allocated: split(allocated, names.length, i) })) };
   });
 }
 

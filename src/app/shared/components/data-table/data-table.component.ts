@@ -91,6 +91,7 @@ export interface TableColumn<T = any> {
                 <tr
                   class="border-t border-surface-border hover:bg-surface-subtle transition-colors"
                   [class.cursor-pointer]="rowClick.observed"
+                  [class.!bg-brand-50]="row === selectedRow"
                   (click)="rowClick.emit(row)"
                 >
                   @for (col of columns; track col.key) {
@@ -154,6 +155,8 @@ export class DataTableComponent<T extends Record<string, any> = any> {
   @Input() set pageSize(v: number) { this._pageSize.set(v); }
   get pageSize() { return this._pageSize(); }
   @Input() exportable = true;
+  /** Row to highlight as selected (compared by reference). */
+  @Input() selectedRow: T | null = null;
   @Input() emptyTitle = 'No records found';
   @Input() emptyDescription = 'Try adjusting your search or check back after the next sync.';
   @Output() rowClick = new EventEmitter<T>();

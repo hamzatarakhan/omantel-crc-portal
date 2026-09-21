@@ -194,9 +194,14 @@ const today = () => new Date().toISOString().slice(0, 10);
 
         <!-- ============ Yearly Budget ============ -->
         <mat-tab [label]="'Yearly Budget (' + yearlyBudget().length + ')'">
-          <div class="pt-4">
-            <app-data-table title="Yearly budget" [columns]="yearlyColumns()" [rows]="yearlyBudget()" [pageSize]="10" [exportable]="store.can('Export Contract Data')" emptyTitle="No budget lines"></app-data-table>
-            <p class="text-xs text-ink-400 mt-3">One line per contract year, adding up to the contract amount of {{ c.amount | number:'1.0-2' }} {{ c.currency }}. A contract of one year or less has a single line with the contract's own start and end date. Allocations are not read from the ERP yet, so they are split by days.</p>
+          <div class="pt-4 flex flex-col gap-4">
+            <app-data-table title="Yearly budgets" [columns]="yearlyColumns()" [rows]="yearlyBudget()" [pageSize]="10" [exportable]="store.can('Export Contract Data')" [selectedRow]="pickedYear()" (rowClick)="pickYear($event)" emptyTitle="No yearly budgets"></app-data-table>
+            @if (pickedYear(); as y) {
+              <app-data-table [title]="'Lines of ' + y.description" [columns]="lineColumns()" [rows]="y.lines" [pageSize]="20" [exportable]="store.can('Export Contract Data')" emptyTitle="No budget lines"></app-data-table>
+            } @else {
+              <div class="surface-card px-4 py-6 text-center text-sm text-ink-500">Select a yearly budget above to see its lines.</div>
+            }
+            <p class="text-xs text-ink-400">One row per contract year, adding up to the contract amount of {{ c.amount | number:'1.0-2' }} {{ c.currency }}. A contract of one year or less has a single row with the contract's own start and end date. Each year's lines are the lines of the contract's PO. Allocations are not read from the ERP yet: years are split by days and lines evenly.</p>
           </div>
         </mat-tab>
 
@@ -354,14 +359,23 @@ export class ContractDetailComponent {
   changeRows = computed(() => { const c = this.contract(); return c ? this.ops.changes().filter((x) => x.contractId === c.id) : []; });
   auditRows = computed(() => { const c = this.contract(); return c ? this.store.audit().filter((a) => a.reference === c.reference) : []; });
 
-  yearlyBudget = computed(() => { const c = this.contract(); return c ? yearlyBudgetFor(c) : []; });
+  yearlyBudget = computed(() => { const c = this.contract(); return c ? yearlyBudgetFor(c, this.children()) : []; });
+  private allocatedCol = (): TableColumn<any> => ({ key: 'allocated', label: 'Allocated budget', type: 'currency', currency: this.contract()?.currency, align: 'right' });
   yearlyColumns = computed<TableColumn<any>[]>(() => [
-    { key: 'line', label: 'Line', type: 'number' },
-    { key: 'description', label: 'Line description' },
+    { key: 'description', label: 'Yearly budget' },
     { key: 'startDate', label: 'Start date', type: 'date' },
     { key: 'endDate', label: 'End date', type: 'date' },
-    { key: 'allocated', label: 'Allocated budget', type: 'currency', currency: this.contract()?.currency, align: 'right' },
+    this.allocatedCol(),
   ]);
+  lineColumns = computed<TableColumn<any>[]>(() => [
+    { key: 'line', label: 'Line', type: 'number' },
+    { key: 'description', label: 'Line description' },
+    { key: 'scope', label: 'Line scope' },
+    this.allocatedCol(),
+  ]);
+  pickedYearNo = signal<number | null>(null);
+  pickedYear = computed(() => this.yearlyBudget().find((y) => y.year === this.pickedYearNo()) ?? null);
+  pickYear(y: { year: number }) { this.pickedYearNo.set(y.year); }
 
   childColumns: TableColumn<any>[] = [
     { key: 'recordType', label: 'Type' },
