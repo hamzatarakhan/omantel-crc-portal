@@ -40,7 +40,11 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
         <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Degree</div><div class="text-sm font-medium mt-0.5">{{ a.degree }}</div></div>
         <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Nationality</div><div class="text-sm font-medium mt-0.5">{{ a.nationality }}</div></div>
         <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Join Date</div><div class="text-sm font-medium mt-0.5">{{ a.joinDate }}</div></div>
-        <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Vendor</div><div class="text-sm font-medium mt-0.5">{{ a.vendor }}</div></div>
+        @if (canSeePay() && pay(); as p) {
+          <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Basic salary</div><div class="text-sm font-extrabold mt-0.5 text-brand-700">{{ p.basic | number:'1.3-3' }} <span class="text-xs font-medium text-ink-400">OMR</span></div></div>
+        } @else {
+          <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Vendor</div><div class="text-sm font-medium mt-0.5">{{ a.vendor }}</div></div>
+        }
       </div>
 
       <mat-tab-group>
@@ -75,6 +79,45 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
               <input type="file" accept="image/*,.pdf" class="hidden" (change)="upload(a.id, $event)" />
             </label>
             <p class="text-xs text-ink-400">Supported: JPG, PNG or PDF. The name and ID number are read automatically and must be confirmed by a person before they are trusted.</p>
+          </div>
+        </mat-tab>
+
+        <mat-tab label="Salary & Pay">
+          <div class="pt-4">
+            @if (!canSeePay()) {
+              <div class="surface-card p-8 text-center max-w-xl"><mat-icon class="text-ink-300 !text-4xl !w-10 !h-10">lock</mat-icon><div class="text-sm text-ink-600 mt-2">Salary details are restricted. Your role ({{ store.currentRole() }}) does not have the "View Employee Salary" permission.</div></div>
+            } @else {
+             @if (pay(); as p) {
+              <div class="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
+                <div class="surface-card px-5 py-4 xl:col-span-2">
+                  <h3 class="text-[13.5px] font-bold text-ink-900">Pay and billing rate (monthly, OMR)</h3>
+                  <table class="crc-table w-full mt-3 text-sm">
+                    <tbody>
+                      <tr class="border-t border-surface-border bg-brand-50/50"><td class="px-3 py-2 font-semibold text-ink-900">Basic salary</td><td class="px-3 py-2 text-right font-extrabold text-brand-700">{{ p.basic | number:'1.3-3' }}</td></tr>
+                      <tr class="border-t border-surface-border"><td class="px-3 py-2 text-ink-700">Housing allowance (HRA)</td><td class="px-3 py-2 text-right">{{ p.hra | number:'1.3-3' }}</td></tr>
+                      <tr class="border-t border-surface-border"><td class="px-3 py-2 text-ink-700">Conveyance</td><td class="px-3 py-2 text-right">{{ p.conveyance | number:'1.3-3' }}</td></tr>
+                      <tr class="border-t border-surface-border"><td class="px-3 py-2 text-ink-700">Special allowance</td><td class="px-3 py-2 text-right">{{ p.special | number:'1.3-3' }}</td></tr>
+                      <tr class="border-t border-surface-border"><td class="px-3 py-2 text-ink-700">Other allowance</td><td class="px-3 py-2 text-right">{{ p.other | number:'1.3-3' }}</td></tr>
+                      <tr class="border-t-2 border-surface-border font-semibold"><td class="px-3 py-2 text-ink-900">Gross salary</td><td class="px-3 py-2 text-right text-ink-900">{{ p.gross | number:'1.3-3' }}</td></tr>
+                      <tr class="border-t border-surface-border"><td class="px-3 py-2 text-ink-700">Management fee</td><td class="px-3 py-2 text-right">{{ p.managementFee | number:'1.3-3' }}</td></tr>
+                      <tr class="border-t border-surface-border"><td class="px-3 py-2 text-ink-700">Additional</td><td class="px-3 py-2 text-right">{{ p.additional | number:'1.3-3' }}</td></tr>
+                      <tr class="border-t border-surface-border"><td class="px-3 py-2 text-ink-700">Deduction</td><td class="px-3 py-2 text-right">{{ p.deduction | number:'1.3-3' }}</td></tr>
+                      <tr class="border-t-2 border-surface-border font-semibold"><td class="px-3 py-2 text-ink-900">Billing rate (what the vendor bills per month)</td><td class="px-3 py-2 text-right text-brand-700">{{ p.billingRate | number:'1.3-3' }}</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div class="surface-card px-5 py-4">
+                  <h3 class="text-[13.5px] font-bold text-ink-900">Employment record</h3>
+                  <dl class="grid gap-y-3 mt-3 text-sm">
+                    <div><dt class="text-xs text-ink-400">Resident ID</dt><dd class="font-medium text-ink-900">{{ p.residentId }}</dd></div>
+                    <div><dt class="text-xs text-ink-400">Degree tier</dt><dd class="font-medium text-ink-900">{{ a.degree }}</dd></div>
+                    <div><dt class="text-xs text-ink-400">Vendor</dt><dd class="font-medium text-ink-900">{{ a.vendor }}</dd></div>
+                  </dl>
+                  <p class="text-xs text-ink-400 mt-4 leading-relaxed">These are the same figures as the monthly annexure. Importing the vendor's workbook on <a class="text-brand-600 font-medium" routerLink="/invoicing/reconciliation">Reconciliation Workspace</a> updates them. Salary details are visible only to roles with the "View Employee Salary" permission.</p>
+                </div>
+              </div>
+             }
+            }
           </div>
         </mat-tab>
 
@@ -119,7 +162,7 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
   `,
 })
 export class AgentProfileComponent {
-  private store = inject(CrcStore);
+  store = inject(CrcStore);
   private ui = inject(UiService);
   private router = inject(Router);
   private id = toSignal(inject(ActivatedRoute).paramMap.pipe(map((p) => p.get('id'))));
@@ -127,6 +170,8 @@ export class AgentProfileComponent {
   days = this.store.attendanceDays;
   agent = computed(() => this.store.agents().find((a) => a.id === this.id()));
   doc = computed(() => this.store.idDocs()[this.id() ?? '']);
+  canSeePay = computed(() => this.store.can('View Employee Salary'));
+  pay = computed(() => { const a = this.agent(); return a && this.canSeePay() ? this.store.payrollFor(a) : null; });
   codes = computed(() => this.store.attendance()[this.id() ?? ''] ?? []);
   perf = computed(() => this.store.performance().find((p) => p.agentId === this.id()));
   moves = computed(() => this.store.movementRequests().filter((m) => m.agentId === this.id() && (m.status === 'Active' || m.status === 'Ending Soon' || m.status === 'Expired')));

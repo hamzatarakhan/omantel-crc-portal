@@ -45,6 +45,7 @@ export const PERMISSIONS: Permission[] = [
   { permission: 'Approve Projects', module: 'Contracts & Budget' },
   { permission: 'View Agent Profiles', module: 'CSR Management' },
   { permission: 'Manage Recruitment', module: 'CSR Management' },
+  { permission: 'View Employee Salary', module: 'CSR Management' },
   { permission: 'Manage Leave & Attendance', module: 'CSR Management' },
   { permission: 'Create Movement Announcement', module: 'Internal Project Movement' },
   { permission: 'Review/Approve Movement Requests', module: 'Internal Project Movement' },
@@ -714,6 +715,7 @@ export class CrcStore {
     const granted = (p: Permission, role: string): boolean => {
       if (role === 'System Admin') return true;
       if (p.permission === 'Approve Budget' || p.permission === 'Approve Projects') return role === 'Budget Owner';
+      if (p.permission === 'View Employee Salary') return role === 'Finance' || role === 'CSR/Workforce Team';
       if (p.permission === 'Submit Project Requests') return role === 'Team Lead' || role === 'CSR/Workforce Team';
       if (p.module === 'Contracts & Budget') {
         if (p.permission === 'Manage Sync Configuration') return false;
