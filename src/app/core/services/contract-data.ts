@@ -1,4 +1,4 @@
-import { Contract, ContractAttachment, ContractRecord, ContractTimelineEvent, NotificationRule } from '../models/domain';
+import { Contract, ContractAttachment, ContractRecord, ContractTimelineEvent, NotificationRule, PurchaseOrder } from '../models/domain';
 
 export const DEPARTMENT_BY_TYPE: Record<string, string> = {
   'Manpower Outsourcing': 'Customer Care — Contact Centre', 'Facilities Management': 'Facilities & Administration', 'IT Support': 'IT Operations',
@@ -105,6 +105,29 @@ export function enrichContract(c: Contract, i: number): Contract {
  * What the ERP holds under a contract: its single PO's lines (shown as Variation Orders, each with a scope of work), plus amendments and
  * time extensions. Line amounts are not read from the ERP yet, so they stay empty and show as "—".
  */
+/**
+ * The purchase orders of a contract: its main PO (whose value is the contract amount plus any amendments) and every other PO number
+ * found on its lines. Amounts of the other POs are not read from the ERP yet.
+ */
+export function purchaseOrdersFor(c: Contract, children: ContractRecord[]): PurchaseOrder[] {
+  const numbers = [...new Set([c.poNumber ?? '', ...children.map((k) => k.poNumber)].filter(Boolean))];
+  return numbers.map((po): PurchaseOrder => {
+    const main = po === c.poNumber;
+    const recs = children.filter((k) => k.poNumber === po);
+    const known = recs.filter((k) => k.amount !== undefined);
+    const extra = known.reduce((s, k) => s + (k.amount ?? 0), 0);
+    const status: PurchaseOrder['status'] = main ? c.status : recs.every((k) => k.status === 'Closed') ? 'Closed' : recs.some((k) => k.status === 'Expiring Soon') ? 'Expiring Soon' : 'Active';
+    const cats = [...new Set(recs.map((k) => k.recordType))];
+    return {
+      poNumber: po, main, poType: c.contractType === 'Manpower Outsourcing' ? 'Outsource' : 'Standard', category: main ? 'Original PO' : cats.join(' + ') || 'Variation Order',
+      amount: main ? c.amount + extra : known.length ? extra : undefined, currency: c.currency,
+      poDate: main ? c.signedDate ?? c.startDate : recs.map((k) => k.issuedDate).sort()[0] ?? c.startDate,
+      startDate: main ? c.startDate : recs.map((k) => k.startDate).sort()[0] ?? c.startDate, endDate: main ? c.endDate : recs.map((k) => k.endDate).sort().reverse()[0] ?? c.endDate,
+      status, parentReference: c.reference, erpReference: 'ERP-PO-' + po, documents: recs.reduce((s, k) => s + k.attachments, 0), records: recs,
+    };
+  });
+}
+
 export function childRecordsFor(c: Contract): ContractRecord[] {
   const t = templateFor(c);
   const now = today();

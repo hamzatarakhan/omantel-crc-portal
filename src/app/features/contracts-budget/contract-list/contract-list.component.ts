@@ -10,7 +10,7 @@ import { UiService } from '../../../shared/services/ui.service';
 import { ListRow } from '../../../core/services/contract-monitoring';
 
 const STATUSES = ['All', 'Active', 'Expiring Soon', 'Expired', 'Historical'] as const;
-const RECORD_TYPES: Array<[string, string]> = [['All', 'All records'], ['Parent Contract', 'Parent contracts'], ['Variation Order', 'Variation Orders'], ['Amendment', 'Amendments'], ['Time Extension', 'Time extensions']];
+const RECORD_TYPES: Array<[string, string]> = [['All', 'All records'], ['Parent Contract', 'Parent contracts'], ['Purchase Order', 'Purchase orders'], ['Variation Order', 'Variation Orders'], ['Amendment', 'Amendments'], ['Time Extension', 'Time extensions']];
 const FIELD = 'w-full px-2.5 py-2 text-xs font-semibold rounded-lg border border-surface-border bg-white text-ink-700 focus:outline-none focus:border-brand-400';
 
 @Component({
@@ -137,6 +137,6 @@ export class ContractListComponent {
 
   open(row: ListRow) {
     if (!this.ui.requires('View Contract Details')) return;
-    this.router.navigate(['/contracts-budget/contracts', row.parentId], row.recordType === 'Parent Contract' ? {} : { queryParams: { tab: 'records' } });
+    this.router.navigate(['/contracts-budget/contracts', row.parentId], row.recordType === 'Parent Contract' ? {} : { queryParams: { tab: row.recordType === 'Purchase Order' ? 'purchase-orders' : 'records' } });
   }
 }

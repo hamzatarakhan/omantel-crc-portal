@@ -115,7 +115,7 @@ const num = (v: any) => Number(v ?? 0) || 0;
                 @for (l of c.outsourcing(); track l.id) {
                   <tr class="border-t border-surface-border">
                     <td class="px-3 py-2"><div class="font-medium text-ink-700">{{ l.vendor }}</div><div class="text-xs text-ink-400">{{ l.contract || '—' }}</div></td>
-                    <td class="px-3 py-2 text-ink-700">{{ l.category }}@if (l.prevHC === 0) { <span class="status-chip status-chip--info ml-1.5">New</span> }</td>
+                    <td class="px-3 py-2 text-ink-700">{{ l.category }}@if (l.prevHC === 0) { <span class="status-chip status-chip--info ml-1.5">New</span> }@if (l.notes) { <div class="text-[11px] text-ink-400 line-clamp-1 max-w-[220px]" [title]="l.notes">{{ l.notes }}</div> }</td>
                     <td class="px-3 py-2 text-right text-ink-500">{{ l.prevHC }}</td>
                     <td class="px-3 py-2 text-right font-semibold" [class]="l.hc !== l.prevHC ? 'text-brand-700' : 'text-ink-900'">{{ l.hc }}</td>
                     <td class="px-3 py-2 text-right text-ink-500">{{ l.prevSalary | number:'1.0-2' }}</td>
@@ -170,9 +170,9 @@ const num = (v: any) => Number(v ?? 0) || 0;
                     <td class="px-3 py-2 text-right">{{ c.pettySystem(l) | number:'1.0-0' }}</td>
                     <td class="px-3 py-2 text-right" [class]="l.adjustment ? 'text-brand-700 font-semibold' : 'text-ink-400'">{{ l.adjustment ? ((l.adjustment > 0 ? '+' : '') + (l.adjustment | number:'1.0-0')) : '—' }}</td>
                     <td class="px-3 py-2 text-right font-semibold text-ink-900">{{ c.pettyFinal(l) | number:'1.0-0' }}</td>
-                    <td class="px-3 py-2 text-right text-ink-500">{{ c.pettyFinal(l) / 12 | number:'1.0-0' }}</td>
+                    <td class="px-3 py-2 text-right text-ink-500">{{ c.pettyFinal(l) / 12 | number:'1.0-0' }}@if (l.monthly) { <span class="status-chip status-chip--info ml-1">by month</span> }</td>
                     <td class="px-3 py-2 text-xs text-ink-500 max-w-[220px]"><span class="line-clamp-2">{{ l.reason || '—' }}</span></td>
-                    <td class="px-3 py-2 text-right">@if (c.editable()) { <button class="w-7 h-7 rounded-md inline-flex items-center justify-center text-ink-400 hover:bg-surface-subtle hover:text-brand-600" title="Edit" (click)="editPetty(l)"><mat-icon class="!text-[17px]">edit</mat-icon></button> }</td>
+                    <td class="px-3 py-2 text-right">@if (c.editable()) { <button class="w-7 h-7 rounded-md inline-flex items-center justify-center text-ink-400 hover:bg-surface-subtle hover:text-brand-600" title="Edit the annual amount" (click)="editPetty(l)"><mat-icon class="!text-[17px]">edit</mat-icon></button><button class="w-7 h-7 rounded-md inline-flex items-center justify-center text-ink-400 hover:bg-surface-subtle hover:text-brand-600" title="Edit month by month" (click)="editPettyMonthly(l)"><mat-icon class="!text-[17px]">calendar_view_month</mat-icon></button> }</td>
                   </tr>
                 }
               </tbody>
@@ -217,6 +217,27 @@ const num = (v: any) => Number(v ?? 0) || 0;
                   <tr class="border-t border-surface-border" [class.font-semibold]="r[3]"><td class="px-3 py-2" [class]="r[3] ? 'text-ink-900' : 'text-ink-700'">{{ r[0] }}</td><td class="px-3 py-2 text-right text-ink-500">{{ r[1] | number:'1.0-0' }}</td><td class="px-3 py-2 text-right" [class]="r[3] ? 'text-brand-700' : 'text-ink-900'">{{ r[2] | number:'1.0-0' }}</td></tr>
                 }
               </tbody><thead><tr class="bg-surface-subtle text-left text-xs text-ink-500 uppercase tracking-wide"><th class="px-3 py-2 font-medium">Category (OMR)</th><th class="px-3 py-2 font-medium text-right">Previous year</th><th class="px-3 py-2 font-medium text-right">Proposed</th></tr></thead></table>
+            </div>
+
+            <div class="surface-card px-5 py-4 overflow-x-auto">
+              <h3 class="text-[13.5px] font-bold text-ink-900">Outsourcing details</h3>
+              <table class="crc-table w-full mt-2 text-sm"><thead><tr class="text-left text-xs text-ink-500 uppercase tracking-wide"><th class="py-1.5 font-medium">Vendor · resource category</th><th class="py-1.5 font-medium text-right">Head count</th><th class="py-1.5 font-medium text-right">Annual total</th></tr></thead>
+                <tbody>@for (l of c.outsourcing(); track l.id) { <tr class="border-t border-surface-border"><td class="py-1.5 text-ink-700">{{ l.vendor }} · {{ l.category }}</td><td class="py-1.5 text-right text-ink-500">{{ l.prevHC }} → {{ l.hc }}</td><td class="py-1.5 text-right font-medium">{{ c.annual(l) | number:'1.0-0' }}</td></tr> }</tbody></table>
+              <h3 class="text-[13.5px] font-bold text-ink-900 mt-5">Petty cash details</h3>
+              <table class="crc-table w-full mt-2 text-sm"><tbody>@for (l of c.petty(); track l.id) { <tr class="border-t border-surface-border"><td class="py-1.5 text-ink-700">{{ l.category }}</td><td class="py-1.5 text-right text-ink-500">{{ l.monthly ? 'month by month' : 'even over 12 months' }}</td><td class="py-1.5 text-right font-medium">{{ c.pettyFinal(l) | number:'1.0-0' }}</td></tr> }</tbody></table>
+              <h3 class="text-[13.5px] font-bold text-ink-900 mt-5">Project details</h3>
+              <table class="crc-table w-full mt-2 text-sm"><tbody>@for (p of c.projectsIncluded(); track p.id) { <tr class="border-t border-surface-border"><td class="py-1.5 text-ink-700">{{ p.name }}</td><td class="py-1.5 text-ink-500">{{ p.projectStatus }} · {{ p.priority }}</td><td class="py-1.5 text-right font-medium">{{ pt(p) | number:'1.0-0' }}</td></tr> } @empty { <tr><td class="py-2 text-ink-400 text-sm">No project is included yet.</td></tr> }</tbody></table>
+            </div>
+
+            <div class="surface-card px-5 py-4 overflow-x-auto">
+              <h3 class="text-[13.5px] font-bold text-ink-900">Head-count summary</h3>
+              <table class="crc-table w-full mt-2 text-sm"><thead><tr class="text-left text-xs text-ink-500 uppercase tracking-wide"><th class="py-1.5 font-medium">By outsourcing arrangement</th><th class="py-1.5 font-medium text-right">Previous</th><th class="py-1.5 font-medium text-right">Proposed</th></tr></thead>
+                <tbody>@for (r of c.headCount().arrangements; track r.name) { <tr class="border-t border-surface-border"><td class="py-1.5 text-ink-700">{{ r.name }}</td><td class="py-1.5 text-right text-ink-500">{{ r.prev }}</td><td class="py-1.5 text-right font-medium">{{ r.proposed }}</td></tr> }</tbody></table>
+              <table class="crc-table w-full mt-4 text-sm"><thead><tr class="text-left text-xs text-ink-500 uppercase tracking-wide"><th class="py-1.5 font-medium">By project</th><th class="py-1.5 font-medium">Team</th><th class="py-1.5 font-medium text-right">Proposed</th></tr></thead>
+                <tbody>@for (r of c.headCount().projects; track r.name) { <tr class="border-t border-surface-border"><td class="py-1.5 text-ink-700">{{ r.name }}</td><td class="py-1.5 text-ink-500">{{ r.team }}</td><td class="py-1.5 text-right font-medium">{{ r.proposed }}</td></tr> } @empty { <tr><td class="py-2 text-ink-400 text-sm" colspan="3">No included project asks for head count.</td></tr> }</tbody></table>
+              <table class="crc-table w-full mt-4 text-sm"><thead><tr class="text-left text-xs text-ink-500 uppercase tracking-wide"><th class="py-1.5 font-medium">By team (project department)</th><th class="py-1.5 font-medium text-right">Proposed</th></tr></thead>
+                <tbody>@for (r of c.headCount().teams; track r.name) { <tr class="border-t border-surface-border"><td class="py-1.5 text-ink-700">{{ r.name }}</td><td class="py-1.5 text-right font-medium">{{ r.proposed }}</td></tr> } @empty { <tr><td class="py-2 text-ink-400 text-sm" colspan="2">—</td></tr> }</tbody></table>
+              <p class="text-xs text-ink-400 mt-3">Total proposed head count: <b class="text-ink-800">{{ t().headCount }}</b> ({{ t().prevHeadCount }} last year). A project's heads are counted once, under its project.</p>
             </div>
 
             <div class="surface-card px-5 py-4">
@@ -374,7 +395,7 @@ export class BudgetPreparationComponent {
   async editLine(l: OutsourcingLine) {
     const v = await this.ui.form({
       title: 'Edit resource category', subtitle: `${l.vendor} · ${l.category} — last year ${l.prevHC} head(s) at ${l.prevSalary.toLocaleString()} OMR a month`, icon: 'edit', submitLabel: 'Save line',
-      values: { hc: l.hc, salary: l.salary, incentive: l.incentive, overtime: l.overtime, ojt: l.ojt, other: l.other, reason: l.reason },
+      values: { hc: l.hc, salary: l.salary, incentive: l.incentive, overtime: l.overtime, ojt: l.ojt, other: l.other, reason: l.reason, notes: l.notes },
       fields: [
         { key: 'hc', label: 'Proposed head count', type: 'number', min: 0, required: true },
         { key: 'salary', label: 'Monthly salary per head (OMR)', type: 'number', min: 0, required: true },
@@ -383,10 +404,11 @@ export class BudgetPreparationComponent {
         { key: 'ojt', label: 'OJT per year (OMR)', type: 'number', min: 0 },
         { key: 'other', label: 'Other cost (OMR)', type: 'number', min: 0 },
         { key: 'reason', label: 'Adjustment reason', type: 'textarea', hint: 'Required when head count changes, or the amount is below last year or above the calculated amount.' },
+        { key: 'notes', label: 'Notes or assumptions', type: 'textarea', hint: 'What the numbers assume, e.g. the hiring plan or the rate basis.' },
       ],
     });
     if (!v) return;
-    if (!this.fail(this.c.editOutsourcing(l.id, { hc: num(v['hc']), salary: num(v['salary']), incentive: num(v['incentive']), overtime: num(v['overtime']), ojt: num(v['ojt']), other: num(v['other']), reason: v['reason'] ?? '' }))) this.ui.toast('Line updated.');
+    if (!this.fail(this.c.editOutsourcing(l.id, { hc: num(v['hc']), salary: num(v['salary']), incentive: num(v['incentive']), overtime: num(v['overtime']), ojt: num(v['ojt']), other: num(v['other']), reason: v['reason'] ?? '', notes: v['notes'] ?? '' }))) this.ui.toast('Line updated.');
   }
 
   async monthly(l: OutsourcingLine) {
@@ -411,10 +433,11 @@ export class BudgetPreparationComponent {
         { key: 'hc', label: 'Head count', type: 'number', min: 0, required: true }, { key: 'salary', label: 'Monthly salary per head (OMR)', type: 'number', min: 0, required: true },
         { key: 'incentive', label: 'Incentive per year (OMR)', type: 'number', min: 0 }, { key: 'overtime', label: 'Overtime per year (OMR)', type: 'number', min: 0 }, { key: 'ojt', label: 'OJT per year (OMR)', type: 'number', min: 0 },
         { key: 'reason', label: 'Reason', type: 'textarea', required: true },
+        { key: 'notes', label: 'Notes or assumptions', type: 'textarea' },
       ],
     });
     if (!v) return;
-    if (!this.fail(this.c.addOutsourcing({ vendor: v['vendor'], contract: v['contract'] ?? '', category: v['category'], hc: num(v['hc']), salary: num(v['salary']), incentive: num(v['incentive']), overtime: num(v['overtime']), ojt: num(v['ojt']), reason: v['reason'] }))) this.ui.toast('Resource category added.');
+    if (!this.fail(this.c.addOutsourcing({ notes: v['notes'] ?? '', vendor: v['vendor'], contract: v['contract'] ?? '', category: v['category'], hc: num(v['hc']), salary: num(v['salary']), incentive: num(v['incentive']), overtime: num(v['overtime']), ojt: num(v['ojt']), reason: v['reason'] }))) this.ui.toast('Resource category added.');
   }
 
   /** BR-OUT-010: estimate the effect of hiring extra resources, then optionally add them. */
@@ -449,6 +472,18 @@ export class BudgetPreparationComponent {
     });
     if (!v) return;
     if (!this.fail(this.c.setPettyFinal(l.id, num(v['final']), v['reason'] ?? ''))) this.ui.toast('Petty cash updated.');
+  }
+
+  async editPettyMonthly(l: PettyLine) {
+    const months = this.c.pettyMonths(l);
+    const values: Record<string, any> = { reason: l.reason };
+    MONTH_NAMES.forEach((_, i) => (values['m' + i] = months[i]));
+    const v = await this.ui.form({
+      title: 'Petty cash by month', subtitle: `${l.category} — the annual amount becomes the total of the twelve months. System proposal ${this.c.pettySystem(l).toLocaleString()} OMR.`, icon: 'calendar_view_month', submitLabel: 'Save months', values,
+      fields: [...MONTH_NAMES.map((m, i) => ({ key: 'm' + i, label: m, type: 'number' as const, min: 0, required: true })), { key: 'reason', label: 'Reason for the adjustment', type: 'textarea' as const, hint: 'Required when the total differs from the system proposal.' }],
+    });
+    if (!v) return;
+    if (!this.fail(this.c.setPettyMonthly(l.id, MONTH_NAMES.map((_, i) => num(v['m' + i])), v['reason'] ?? ''))) this.ui.toast('Petty cash updated month by month.');
   }
 
   async addPetty() {
@@ -505,7 +540,7 @@ export class BudgetPreparationComponent {
 
   excel(toast = true) {
     const sh = this.c.sheet();
-    this.ui.xlsxSheets(`CRC-Budget-${this.c.settings().year}`, [{ name: 'Summary', rows: sh.summary }, { name: 'Outsourcing', rows: sh.outsourcing }, { name: 'Petty cash', rows: sh.petty }, { name: 'Projects', rows: sh.projects }], toast);
+    this.ui.xlsxSheets(`CRC-Budget-${this.c.settings().year}`, [{ name: 'Summary', rows: sh.summary }, { name: 'Outsourcing', rows: sh.outsourcing }, { name: 'Petty cash', rows: sh.petty }, { name: 'Projects', rows: sh.projects }, { name: 'Head count', rows: sh.headCount }], toast);
   }
 
   pdf() { this.ui.pdf(`CRC-Budget-${this.c.settings().year}.pdf`, `CRC proposed budget ${this.c.settings().year}`, this.c.sheetLines()); }

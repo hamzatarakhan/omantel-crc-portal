@@ -32,7 +32,6 @@ const FIELD = 'w-full px-2.5 py-2 text-xs font-semibold rounded-lg border border
   imports: [CommonModule, RouterModule, MatDialogModule, MatIconModule, BaseChartDirective, PageHeaderComponent, KpiCardComponent, ChartCardComponent, DataTableComponent],
   template: `
     <app-page-header title="Contract Management" [subtitle]="'Synced read-only from the ERP · ' + ops.historical().length + ' cancelled contract' + (ops.historical().length === 1 ? '' : 's') + ' kept for history'">
-      <a routerLink="/contracts-budget/sync" class="status-chip" [class.status-chip--normal]="syncHealthy()" [class.status-chip--red]="!syncHealthy()" title="Open the synchronization overview">{{ syncHealthy() ? 'Automated sync healthy' : 'Last automated sync failed' }}</a>
       <button (click)="filtersOpen.set(!filtersOpen())" class="inline-flex items-center gap-1.5 text-xs font-semibold text-ink-700 bg-white border border-surface-border hover:border-brand-300 rounded-lg px-3 py-2 transition-colors">
         <mat-icon class="!text-[17px] !w-[17px] !h-[17px] !leading-[17px]">filter_alt</mat-icon>Filters
         @if (activeFilters()) { <span class="bg-brand-600 text-white rounded-full px-1.5 text-[10px] leading-4">{{ activeFilters() }}</span> }
@@ -56,16 +55,30 @@ const FIELD = 'w-full px-2.5 py-2 text-xs font-semibold rounded-lg border border
       </div>
     }
 
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+      <a routerLink="/contracts-budget/sync-history" class="surface-card px-4 py-3 hover:border-brand-300 transition-colors" title="Open the run history"><div class="text-xs text-ink-400">Automated synchronization</div><div class="text-sm font-semibold mt-0.5" [class]="syncHealthy() ? 'text-status-normal' : 'text-status-red'">{{ !ops.syncConfig().enabled ? 'Switched off' : syncHealthy() ? 'Running · ' + ops.syncConfig().frequency.toLowerCase() : 'Last run failed — data retained' }}</div></a>
+      <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Last synchronization</div><div class="text-sm font-semibold text-ink-900 mt-0.5">{{ lastSync() }}</div></div>
+      <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Next scheduled synchronization</div><div class="text-sm font-semibold text-ink-900 mt-0.5">{{ nextSync() }}</div></div>
+      <a routerLink="/contracts-budget/sync-errors" class="surface-card px-4 py-3 hover:border-brand-300 transition-colors" title="Open the error log"><div class="text-xs text-ink-400">Synchronization errors</div><div class="text-sm font-semibold mt-0.5" [class]="openErrors() ? 'text-status-red' : 'text-status-normal'">{{ openErrors() }} open · {{ ops.errorLog().length }} logged</div></a>
+    </div>
+
     <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-4">
       <app-kpi-card label="Total Contracts" [value]="rows().length" icon="description"></app-kpi-card>
       <app-kpi-card label="Active" [value]="count('Active')" level="normal" icon="check_circle"></app-kpi-card>
       <app-kpi-card label="Expiring Soon" [value]="count('Expiring Soon')" level="amber" icon="schedule"></app-kpi-card>
       <app-kpi-card label="Expired" [value]="count('Expired')" level="red" icon="event_busy"></app-kpi-card>
       <app-kpi-card label="Total Contract Value" [value]="totalValue() | number:'1.0-0'" unit="OMR" icon="payments"></app-kpi-card>
-      <app-kpi-card label="Variation Orders" [value]="variationOrders()" icon="call_split"></app-kpi-card>
+      <app-kpi-card label="Total PO Value" [value]="poValue() | number:'1.0-0'" unit="OMR" icon="request_quote"></app-kpi-card>
     </div>
 
-    <p class="text-xs text-ink-500 mb-4"><b class="text-ink-900">{{ rows().length }}</b> contracts, each with one PO · <b class="text-ink-900">{{ variationOrders() }}</b> variation order lines · <b class="text-ink-900">{{ changes() }}</b> amendments and extensions · <a routerLink="/contracts-budget/needs-attention" class="text-brand-600 font-medium">{{ actionCount() }} need attention</a></p>
+    <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
+      <app-kpi-card label="Parent Contracts" [value]="rows().length" icon="account_tree"></app-kpi-card>
+      <app-kpi-card label="Variation Orders" [value]="variationOrders()" icon="call_split"></app-kpi-card>
+      <app-kpi-card label="Purchase Orders" [value]="pos().length" icon="request_quote"></app-kpi-card>
+      <a routerLink="/contracts-budget/needs-attention" class="contents"><app-kpi-card label="Requiring Action" [value]="actionCount()" [level]="actionCount() ? 'amber' : 'neutral'" icon="assignment_late"></app-kpi-card></a>
+      <a routerLink="/contracts-budget/needs-attention" class="contents"><app-kpi-card label="Unresolved" [value]="unresolved()" [level]="unresolved() ? 'orange' : 'neutral'" icon="report"></app-kpi-card></a>
+      <app-kpi-card label="Escalated" [value]="escalated()" [level]="escalated() ? 'red' : 'neutral'" icon="priority_high"></app-kpi-card>
+    </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6 lg:grid-rows-[380px]">
       <app-chart-card title="Contract Expiry Trend" subtitle="Contracts ending in the next 6 months" type="bar" [data]="expiryChart()"></app-chart-card>
@@ -136,6 +149,16 @@ export class ContractDashboardComponent {
   actionCount = computed(() => this.rows().filter((c) => this.ops.needsAction(c)).length);
   count = (s: string) => this.rows().filter((c) => c.status === s).length;
 
+  pos = computed(() => this.rows().flatMap((c) => this.ops.purchaseOrdersOf(c)));
+  poValue = computed(() => this.pos().reduce((s, p) => s + (p.amount ?? 0), 0));
+  unresolved = computed(() => this.rows().filter((c) => this.ops.isUnresolved(c)).length);
+  escalated = computed(() => this.rows().filter((c) => this.ops.isEscalated(c)).length);
+  openErrors = computed(() => this.ops.errorLog().filter((e) => e.resolution === 'Open').length);
+  lastSync = computed(() => {
+    const run = this.store.syncRuns().find((r) => r.type === 'Automated') ?? this.store.syncRuns()[0];
+    return run ? new Date(run.finishedAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }) : 'Never';
+  });
+  nextSync = computed(() => { const d = this.ops.nextRun(); return d ? d.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Muscat' }) + ' (Muscat)' : 'Not scheduled'; });
   syncHealthy = computed(() => this.store.syncRuns().find((r) => r.type === 'Automated')?.status !== 'Failed');
 
   trackerRows = computed(() => this.rows().filter((c) => c.daysRemaining <= 30 && c.renewalStatus !== 'Renewed').map((c) => ({ ...c, parentReference: '—', requiredAction: requiredActionFor(c), level: statusLevelFor(c) })));

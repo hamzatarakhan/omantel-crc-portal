@@ -27,9 +27,12 @@ export interface OutsourcingLine {
   ojt: number;
   other: number;
   reason: string;
+  /** Notes or assumptions behind the line (BR-OUT-001). */
+  notes: string;
 }
 
-export interface PettyLine { id: string; category: string; prev: number; adjustment: number; reason: string }
+/** `monthly` is set when the user typed amounts month by month; otherwise the annual amount is spread evenly. */
+export interface PettyLine { id: string; category: string; prev: number; adjustment: number; reason: string; monthly?: number[] }
 
 export interface Submission {
   version: number;
@@ -54,7 +57,7 @@ const flat = (n: number) => Array.from({ length: 12 }, () => n);
 
 const out = (id: string, category: string, hc: number, prevAnnualSalary: number, inc: number, ot: number, ojt: number): OutsourcingLine => {
   const monthly = r3(prevAnnualSalary / (hc * 12));
-  return { id, vendor: 'Infoline LLC', contract: '2025-013T-00-01', category, prevHC: hc, hc, monthlyHC: flat(hc), prevSalary: monthly, salary: monthly, prevIncentive: inc, incentive: inc, prevOvertime: ot, overtime: ot, prevOjt: ojt, ojt, other: 0, reason: '' };
+  return { id, vendor: 'Infoline LLC', contract: '2025-013T-00-01', category, prevHC: hc, hc, monthlyHC: flat(hc), prevSalary: monthly, salary: monthly, prevIncentive: inc, incentive: inc, prevOvertime: ot, overtime: ot, prevOjt: ojt, ojt, other: 0, reason: '', notes: '' };
 };
 
 @Injectable({ providedIn: 'root' })
@@ -92,6 +95,12 @@ export class BudgetCycle {
   systemAnnual = (l: OutsourcingLine) => Math.round(l.prevHC * this.sysSalary(l.prevSalary) * 12 + this.sys(l.prevIncentive) + this.sys(l.prevOvertime) + this.sys(l.prevOjt));
   pettySystem = (l: PettyLine) => this.sys(l.prev);
   pettyFinal = (l: PettyLine) => this.pettySystem(l) + l.adjustment;
+  /** The twelve monthly amounts of a petty cash line; an even spread puts any rounding remainder in December. */
+  pettyMonths = (l: PettyLine): number[] => {
+    if (l.monthly) return l.monthly;
+    const f = this.pettyFinal(l), each = Math.floor(f / 12);
+    return Array.from({ length: 12 }, (_, i) => (i === 11 ? f - each * 11 : each));
+  };
 
   /** Why a change needs a reason (BR-OUT-007), or null when none is needed. */
   reasonNeeded(l: OutsourcingLine): string | null {
@@ -129,6 +138,21 @@ export class BudgetCycle {
     const prevHeadCount = o.reduce((s, l) => s + l.prevHC, 0) + this.prevProjects().reduce((s, p) => s + p.headCount, 0);
     return { salaries: Math.round(salaries), incentives, overtime, ojt, other, outsourcing, petty, projects, total, previous, prevOut, prevPetty, prevProjects, headCount, prevHeadCount, variance: total - previous, variancePct: previous ? ((total - previous) / previous) * 100 : 0 };
   });
+
+  /** Required resources by outsourcing arrangement, by project and by team (a project's department). */
+  readonly headCount = computed(() => {
+    const arrangements = this.outsourcing().map((l) => ({ name: `${l.vendor} · ${l.category}`, prev: l.prevHC, proposed: l.hc }));
+    const projects = this.projectsIncluded().filter((p) => p.headCount > 0).map((p) => ({ name: p.name, team: p.department ?? 'No department', proposed: p.headCount }));
+    const teams = [...new Set(projects.map((p) => p.team))].map((t) => ({ name: t, proposed: projects.filter((p) => p.team === t).reduce((s, p) => s + p.proposed, 0) }));
+    return { arrangements, projects, teams };
+  });
+
+  /** After the cut-off, normal users cannot add or change project requests of the departments the cycle applies to (BR-SUB-001/003). */
+  projectsLocked(dept?: string): string {
+    if (this.daysLeft() >= 0 || this.canManage()) return '';
+    if (dept && !this.settings().departments.includes(dept)) return '';
+    return `The cut-off date (${this.settings().cutOff}) has passed${dept ? ' for ' + dept : ''}. Project requests can no longer be added or changed; a cycle manager can reopen the budget.`;
+  }
 
   // ---------- cut-off ----------
   readonly daysLeft = computed(() => Math.round((new Date(this.settings().cutOff + 'T12:00:00Z').getTime() - Date.now()) / 86400000));
@@ -209,12 +233,12 @@ export class BudgetCycle {
   }
 
   // ---------- outsourcing ----------
-  editOutsourcing(id: string, p: { hc: number; salary: number; incentive: number; overtime: number; ojt: number; other: number; reason: string }): string | null {
+  editOutsourcing(id: string, p: { hc: number; salary: number; incentive: number; overtime: number; ojt: number; other: number; reason: string; notes?: string }): string | null {
     const locked = this.lock();
     if (locked) return locked;
     const cur = this.outsourcing().find((l) => l.id === id);
     if (!cur) return 'Line not found.';
-    const next: OutsourcingLine = { ...cur, ...p, monthlyHC: p.hc !== cur.hc ? flat(p.hc) : cur.monthlyHC, reason: p.reason.trim() };
+    const next: OutsourcingLine = { ...cur, ...p, monthlyHC: p.hc !== cur.hc ? flat(p.hc) : cur.monthlyHC, reason: p.reason.trim(), notes: (p.notes ?? cur.notes).trim() };
     if (!Number.isInteger(next.hc) || next.hc < 0) return 'Head count must be a whole number, zero or more.';
     if ([next.salary, next.incentive, next.overtime, next.ojt, next.other].some((v) => !isFinite(v) || v < 0)) return 'Amounts must be numbers that are not negative.';
     const need = this.reasonNeeded(next);
@@ -238,12 +262,12 @@ export class BudgetCycle {
     return null;
   }
 
-  addOutsourcing(v: { vendor: string; contract: string; category: string; hc: number; salary: number; incentive: number; overtime: number; ojt: number; reason: string }): string | null {
+  addOutsourcing(v: { vendor: string; contract: string; category: string; hc: number; salary: number; incentive: number; overtime: number; ojt: number; reason: string; notes?: string }): string | null {
     const locked = this.lock();
     if (locked) return locked;
     if (!v.reason.trim()) return 'Add an adjustment reason: this is a new resource category.';
     if (!Number.isInteger(v.hc) || v.hc < 0) return 'Head count must be a whole number, zero or more.';
-    const line: OutsourcingLine = { id: 'OUT-' + ++this.seq + 'N', vendor: v.vendor, contract: v.contract, category: v.category, prevHC: 0, hc: v.hc, monthlyHC: flat(v.hc), prevSalary: 0, salary: v.salary, prevIncentive: 0, incentive: v.incentive, prevOvertime: 0, overtime: v.overtime, prevOjt: 0, ojt: v.ojt, other: 0, reason: v.reason.trim() };
+    const line: OutsourcingLine = { id: 'OUT-' + ++this.seq + 'N', vendor: v.vendor, contract: v.contract, category: v.category, prevHC: 0, hc: v.hc, monthlyHC: flat(v.hc), prevSalary: 0, salary: v.salary, prevIncentive: 0, incentive: v.incentive, prevOvertime: 0, overtime: v.overtime, prevOjt: 0, ojt: v.ojt, other: 0, notes: (v.notes ?? '').trim(), reason: v.reason.trim() };
     this.outsourcing.update((l) => [...l, line]);
     this.touch();
     this.log('Budget Item Added', `${v.vendor} · ${v.category}`, `New resource category: ${v.hc} head(s).`, undefined, String(this.annual(line)));
@@ -301,9 +325,25 @@ export class BudgetCycle {
     if (!isFinite(final) || final < 0) return 'The amount must be a number that is not negative.';
     const adjustment = Math.round(final) - this.pettySystem(cur);
     if (adjustment !== 0 && !reason.trim()) return 'Add a reason for the adjustment.';
-    this.petty.update((l) => l.map((x) => (x.id === id ? { ...x, adjustment, reason: adjustment === 0 ? '' : reason.trim() } : x)));
+    this.petty.update((l) => l.map((x) => (x.id === id ? { ...x, adjustment, reason: adjustment === 0 ? '' : reason.trim(), monthly: undefined } : x)));
     this.touch();
     this.log('Budget Item Modified', `Petty cash · ${cur.category}`, adjustment === 0 ? 'Back to the system-proposed amount.' : `Adjusted by ${adjustment.toLocaleString()} OMR — ${reason.trim()}`, String(this.pettyFinal(cur)), String(Math.round(final)));
+    return null;
+  }
+
+  /** BR-PC-004: the amount for each month; the annual amount becomes their total. */
+  setPettyMonthly(id: string, months: number[], reason: string): string | null {
+    const locked = this.lock();
+    if (locked) return locked;
+    const cur = this.petty().find((l) => l.id === id);
+    if (!cur) return 'Line not found.';
+    if (months.length !== 12 || months.some((v) => !isFinite(v) || v < 0)) return 'Each month needs an amount that is not negative.';
+    const total = Math.round(months.reduce((s, v) => s + v, 0));
+    const adjustment = total - this.pettySystem(cur);
+    if (adjustment !== 0 && !reason.trim()) return 'Add a reason for the adjustment.';
+    this.petty.update((l) => l.map((x) => (x.id === id ? { ...x, adjustment, reason: adjustment === 0 ? '' : reason.trim(), monthly: months.map((v) => Math.round(v)) } : x)));
+    this.touch();
+    this.log('Budget Item Modified', `Petty cash · ${cur.category}`, `Monthly amounts changed (${months.join(', ')}). Total ${total.toLocaleString()} OMR.`, String(this.pettyFinal(cur)), String(total));
     return null;
   }
 
@@ -334,7 +374,7 @@ export class BudgetCycle {
     this.outsourcing.update((list) => list.filter((l) => l.prevHC > 0 || !l.id.endsWith('N')).map((l) => ({
       ...l, hc: l.prevHC, monthlyHC: flat(l.prevHC), salary: this.sysSalary(l.prevSalary), incentive: this.sys(l.prevIncentive), overtime: this.sys(l.prevOvertime), ojt: this.sys(l.prevOjt), other: 0, reason: '',
     })));
-    this.petty.update((list) => list.filter((l) => !l.id.endsWith('N')).map((l) => ({ ...l, adjustment: 0, reason: '' })));
+    this.petty.update((list) => list.filter((l) => !l.id.endsWith('N')).map((l) => ({ ...l, adjustment: 0, reason: '', monthly: undefined })));
   }
 
   constructor() {
@@ -429,11 +469,17 @@ export class BudgetCycle {
     const outsourcing = this.outsourcing().map((l) => ({
       Vendor: l.vendor, Contract: l.contract, 'Resource category': l.category, 'Previous head count': l.prevHC, 'Proposed head count': l.hc, 'Previous monthly salary': l.prevSalary, 'Proposed monthly salary': l.salary,
       'Previous-year amount': this.prevAnnual(l), 'Increase %': s.increasePct, 'System-calculated amount': this.systemAnnual(l), 'User-adjusted amount': this.annual(l) - this.systemAnnual(l), 'Final proposed amount': this.annual(l),
-      'Variance from previous year': this.annual(l) - this.prevAnnual(l), Incentive: l.incentive, Overtime: l.overtime, OJT: l.ojt, 'Adjustment reason': l.reason,
+      'Variance from previous year': this.annual(l) - this.prevAnnual(l), Incentive: l.incentive, Overtime: l.overtime, OJT: l.ojt, 'Adjustment reason': l.reason, 'Notes / assumptions': l.notes,
     }));
-    const petty = this.petty().map((l) => ({ Category: l.category, 'Previous-year amount': l.prev, 'Increase %': s.increasePct, 'System-calculated amount': this.pettySystem(l), 'User-adjusted amount': l.adjustment, 'Final proposed amount': this.pettyFinal(l), 'Variance from previous year': this.pettyFinal(l) - l.prev, 'Monthly amount': Math.round(this.pettyFinal(l) / 12), 'Adjustment reason': l.reason }));
+    const petty = this.petty().map((l) => ({ Category: l.category, ...Object.fromEntries(MONTHS.map((m, i) => [m, this.pettyMonths(l)[i]])), 'Previous-year amount': l.prev, 'Increase %': s.increasePct, 'System-calculated amount': this.pettySystem(l), 'User-adjusted amount': l.adjustment, 'Final proposed amount': this.pettyFinal(l), 'Variance from previous year': this.pettyFinal(l) - l.prev, 'Monthly amount': Math.round(this.pettyFinal(l) / 12), 'Adjustment reason': l.reason }));
     const projects = this.projectsIncluded().map((p) => ({ Reference: p.reference ?? '', Project: p.name, Department: p.department ?? '', 'Project status': p.projectStatus, Priority: p.priority, Currency: p.currency, 'Estimated cost': p.budget, 'Resource cost': resourceCost(p), 'Total (OMR)': projectTotal(p), 'Head count': p.headCount, Justification: p.reason, 'Submission status': p.status }));
-    return { summary, outsourcing, petty, projects };
+    const hc = this.headCount();
+    const headCount = [
+      ...hc.arrangements.map((r) => ({ Group: 'Outsourcing arrangement', Name: r.name, 'Previous head count': r.prev, 'Proposed head count': r.proposed })),
+      ...hc.projects.map((r) => ({ Group: 'Project', Name: r.name, 'Previous head count': 0, 'Proposed head count': r.proposed })),
+      ...hc.teams.map((r) => ({ Group: 'Team (project department)', Name: r.name, 'Previous head count': 0, 'Proposed head count': r.proposed })),
+    ];
+    return { summary, outsourcing, petty, projects, headCount };
   }
 
   /** Text lines for the PDF version of the budget sheet. */

@@ -14,16 +14,17 @@ import { VendorDetailDialogComponent } from '../../../shared/components/vendor-d
 import { CrcStore } from '../../../core/services/crc-store.service';
 import { ContractOps } from '../../../core/services/contract-ops.service';
 import { UiService } from '../../../shared/services/ui.service';
-import { Contract, ContractAttachment, ContractRecord } from '../../../core/models/domain';
+import { Contract, ContractAttachment, ContractRecord, PurchaseOrder } from '../../../core/models/domain';
 import { daysRemainingToLevel } from '../../../core/models/status';
-import { addDays, attachmentsFor, ruleApplies, timelineFor, yearlyBudgetFor } from '../../../core/services/contract-data';
+import { addDays, attachmentsFor, purchaseOrdersFor, ruleApplies, timelineFor, yearlyBudgetFor } from '../../../core/services/contract-data';
+import { PO_LEVEL, PoDetailDialogComponent } from './po-detail-dialog.component';
 import { ACTION_STATUSES, ACTION_TYPES, ESCALATION_STATUSES, EscalationStatus, MonitoringAction, remainingLabel, statusLevelFor } from '../../../core/services/contract-monitoring';
 import { RequiresDirective } from '../../../shared/directives/requires.directive';
 import { DIALOG_SIZE } from '../../../shared/dialog-sizes';
 import { RecordDetailDialogComponent } from './record-detail-dialog.component';
 
 const kb = (n: number) => (n >= 1024 ? (n / 1024).toFixed(1) + ' MB' : n + ' KB');
-const TABS = ['summary', 'records', 'yearly-budget', 'attachments', 'alerts', 'actions', 'sync', 'audit'];
+const TABS = ['summary', 'purchase-orders', 'records', 'yearly-budget', 'attachments', 'alerts', 'actions', 'sync', 'audit'];
 const today = () => new Date().toISOString().slice(0, 10);
 
 @Component({
@@ -111,11 +112,11 @@ const today = () => new Date().toISOString().slice(0, 10);
                 <h3 class="text-[13.5px] font-bold text-ink-900">Financial summary</h3>
                 <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-3">
                   <div><div class="text-xs text-ink-400">Contract value</div><div class="text-base font-extrabold text-ink-900">{{ c.amount | number:'1.0-0' }} <span class="text-xs font-medium text-ink-400">{{ c.currency }}</span></div></div>
-                  <div><div class="text-xs text-ink-400">PO number</div><div class="text-base font-extrabold text-ink-900">{{ c.poNumber }}</div></div>
+                  <div><div class="text-xs text-ink-400">PO value · {{ pos().length }} PO{{ pos().length === 1 ? '' : 's' }}</div><div class="text-base font-extrabold text-ink-900">{{ poTotal() | number:'1.0-0' }} <span class="text-xs font-medium text-ink-400">{{ c.currency }}</span></div></div>
                   <div><div class="text-xs text-ink-400">Variation Order lines</div><div class="text-base font-extrabold text-ink-900">{{ count('Variation Order') }}</div></div>
                   <div><div class="text-xs text-ink-400">Amendments</div><div class="text-base font-extrabold text-ink-900">{{ amendmentValue() | number:'1.0-0' }} <span class="text-xs font-medium text-ink-400">{{ c.currency }}</span></div></div>
                 </div>
-                <div class="text-xs text-ink-400 mt-3">Each contract has one PO. Amounts per variation order line will be read from the ERP later and show as "—" until then.</div>
+                <div class="text-xs text-ink-400 mt-3">PO value is the main PO (contract amount plus amendments) and any other PO amounts read from the ERP. See the Purchase Orders tab. Amounts per variation order line will be read from the ERP later and show as "—" until then.</div>
               </div>
 
               <div class="surface-card px-4 pt-3.5 pb-4 sm:px-5">
@@ -139,7 +140,7 @@ const today = () => new Date().toISOString().slice(0, 10);
                   <div><dt class="text-xs text-ink-400">Source system</dt><dd class="font-medium text-ink-900">ERP · read-only in CRC</dd></div>
                   <div><dt class="text-xs text-ink-400">ERP reference</dt><dd class="font-medium text-ink-900">{{ c.erpReference }}</dd></div>
                   <div><dt class="text-xs text-ink-400">ERP vendor ID</dt><dd class="font-medium text-ink-900">{{ c.erpVendorId }}</dd></div>
-                  <div><dt class="text-xs text-ink-400">PO number (one per contract)</dt><dd class="font-medium text-ink-900">{{ c.poNumber }}</dd></div>
+                  <div><dt class="text-xs text-ink-400">Purchase orders</dt><dd class="font-medium text-ink-900">{{ poNumbers() }}</dd></div>
                   <div><dt class="text-xs text-ink-400">ERP status</dt><dd class="font-medium text-ink-900">{{ c.erpStatus }}</dd></div>
                   <div><dt class="text-xs text-ink-400">Created in ERP</dt><dd class="font-medium text-ink-900">{{ c.erpCreatedAt }}</dd></div>
                   <div><dt class="text-xs text-ink-400">Last modified in ERP</dt><dd class="font-medium text-ink-900">{{ c.erpModifiedAt }}</dd></div>
@@ -172,6 +173,14 @@ const today = () => new Date().toISOString().slice(0, 10);
         </mat-tab>
 
         <!-- ============ Variation Orders ============ -->
+        <!-- ============ Purchase Orders ============ -->
+        <mat-tab [label]="'Purchase Orders (' + pos().length + ')'">
+          <div class="pt-4">
+            <app-data-table title="Purchase orders of this contract" [columns]="poColumns" [rows]="poRows()" [pageSize]="10" [exportable]="store.can('Export Contract Data')" (rowClick)="openPo($event)" emptyTitle="No purchase orders" emptyDescription="Purchase orders linked to this contract appear here."></app-data-table>
+            <p class="text-xs text-ink-400 mt-3">Click a PO to see its details, the records under it and its documents. Everything here is read from the ERP; CRC does not create or change purchase orders. A PO amount shows "—" until the ERP provides it.</p>
+          </div>
+        </mat-tab>
+
         <mat-tab [label]="'Variation Orders (' + children().length + ')'">
           <div class="pt-4">
             <div class="surface-card px-4 py-3 mb-4 flex items-center gap-2 flex-wrap text-sm">
@@ -179,10 +188,10 @@ const today = () => new Date().toISOString().slice(0, 10);
               <mat-icon class="!text-lg text-ink-300">chevron_right</mat-icon>
               <span class="font-semibold text-ink-900">{{ c.reference }} (parent contract)</span>
               <mat-icon class="!text-lg text-ink-300">chevron_right</mat-icon>
-              <span class="text-ink-500">PO {{ c.poNumber }} · {{ count('Variation Order') }} variation order{{ count('Variation Order') === 1 ? '' : 's' }} · {{ count('Amendment') }} amendment{{ count('Amendment') === 1 ? '' : 's' }} · {{ count('Time Extension') }} time extension{{ count('Time Extension') === 1 ? '' : 's' }}</span>
+              <span class="text-ink-500">{{ pos().length }} PO{{ pos().length === 1 ? '' : 's' }} ({{ poNumbers() }}) · {{ count('Variation Order') }} variation order{{ count('Variation Order') === 1 ? '' : 's' }} · {{ count('Amendment') }} amendment{{ count('Amendment') === 1 ? '' : 's' }} · {{ count('Time Extension') }} time extension{{ count('Time Extension') === 1 ? '' : 's' }}</span>
             </div>
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-              <div class="surface-card px-4 py-3"><div class="text-[11px] font-bold text-ink-400 uppercase tracking-wide">PO number</div><div class="text-lg font-extrabold text-ink-900">{{ c.poNumber }}</div></div>
+              <div class="surface-card px-4 py-3"><div class="text-[11px] font-bold text-ink-400 uppercase tracking-wide">Purchase orders</div><div class="text-lg font-extrabold text-ink-900">{{ pos().length }}</div></div>
               <div class="surface-card px-4 py-3"><div class="text-[11px] font-bold text-ink-400 uppercase tracking-wide">Variation Orders</div><div class="text-lg font-extrabold text-ink-900">{{ count('Variation Order') }}</div></div>
               <div class="surface-card px-4 py-3"><div class="text-[11px] font-bold text-ink-400 uppercase tracking-wide">Amendments</div><div class="text-lg font-extrabold text-ink-900">{{ count('Amendment') }}</div></div>
               <div class="surface-card px-4 py-3"><div class="text-[11px] font-bold text-ink-400 uppercase tracking-wide">Time extensions</div><div class="text-lg font-extrabold text-ink-900">{{ count('Time Extension') }}</div></div>
@@ -304,6 +313,10 @@ export class ContractDetailComponent {
   contract = computed(() => this.ops.scoped().find((c) => c.id === this.id()));
   children = computed<ContractRecord[]>(() => { const c = this.contract(); return c ? this.ops.childrenOf(c) : []; });
   attachments = computed<ContractAttachment[]>(() => { const c = this.contract(); return c ? attachmentsFor(c, this.children()) : []; });
+  pos = computed<PurchaseOrder[]>(() => { const c = this.contract(); return c ? purchaseOrdersFor(c, this.children()) : []; });
+  poNumbers = computed(() => { const p = this.pos(); return p.length ? p.map((x) => x.poNumber).join(', ') : '—'; });
+  poTotal = computed(() => this.pos().reduce((s, p) => s + (p.amount ?? 0), 0));
+  poRows = computed(() => this.pos().map((p) => ({ ...p, recordCount: p.records.length })));
   attachmentRows = computed(() => this.attachments().map((a) => ({ ...a, size: kb(a.sizeKb) })));
   issues = computed(() => { const c = this.contract(); return c ? this.ops.issuesFor(c) : []; });
   info = computed(() => { const c = this.contract(); return c ? this.ops.syncInfo(c) : { lastSuccessAt: '', lastAttemptAt: '', lastStatus: '', initiatedBy: '', type: '', error: '', failed: false }; });
@@ -376,6 +389,21 @@ export class ContractDetailComponent {
   pickedYearNo = signal<number | null>(null);
   pickedYear = computed(() => this.yearlyBudget().find((y) => y.year === this.pickedYearNo()) ?? null);
   pickYear(y: { year: number }) { this.pickedYearNo.set(y.year); }
+
+  poColumns: TableColumn<any>[] = [
+    { key: 'poNumber', label: 'PO number' },
+    { key: 'poType', label: 'PO type' },
+    { key: 'category', label: 'PO category' },
+    { key: 'amount', label: 'PO amount', align: 'right', display: (r) => (r.amount === undefined ? '—' : Math.round(r.amount).toLocaleString('en-GB') + ' ' + r.currency) },
+    { key: 'poDate', label: 'PO date', type: 'date' },
+    { key: 'startDate', label: 'PO start', type: 'date' },
+    { key: 'endDate', label: 'PO end', type: 'date' },
+    { key: 'status', label: 'PO status', type: 'status', statusFn: (r) => ({ label: r.status, level: PO_LEVEL[r.status] ?? 'neutral' }) },
+    { key: 'parentReference', label: 'Parent contract' },
+    { key: 'erpReference', label: 'ERP reference' },
+    { key: 'recordCount', label: 'Records', type: 'number', align: 'right' },
+    { key: 'documents', label: 'Documents', type: 'number', align: 'right' },
+  ];
 
   childColumns: TableColumn<any>[] = [
     { key: 'reference', label: 'Change reference' },
@@ -535,6 +563,16 @@ export class ContractDetailComponent {
     this.dialog.open(VendorDetailDialogComponent, { data: { vendorName: c.vendorName, contracts: this.vendorContracts() }, panelClass: 'app-dialog-panel', autoFocus: false, ...DIALOG_SIZE.wide });
   }
 
+  openPo(row: PurchaseOrder) {
+    const c = this.contract();
+    if (!c) return;
+    const refs = new Set(row.records.map((r) => r.reference));
+    this.dialog.open(PoDetailDialogComponent, {
+      data: { po: row, parent: c, attachments: this.attachments().filter((a) => refs.has(a.linkedTo)), canViewAttachments: this.store.can('View Attachments'), openAttachment: (a: ContractAttachment, mode: 'view' | 'download') => this.openAttachment(a, mode) },
+      panelClass: 'app-dialog-panel', autoFocus: false, ...DIALOG_SIZE.wide,
+    });
+  }
+
   openRecord(r: ContractRecord) {
     const c = this.contract();
     if (!c) return;
@@ -639,7 +677,7 @@ export class ContractDetailComponent {
     this.ui.csv(`${c.reference}-summary`, [{
       Reference: c.reference, Name: c.name, Vendor: c.vendorName, Type: c.contractType, 'Contract manager': c.contractManager ?? '',
       'Start date': c.startDate, 'End date': c.endDate, 'Days remaining': c.daysRemaining, Amount: c.amount, Currency: c.currency,
-      Status: c.status, 'ERP reference': c.erpReference, 'ERP vendor ID': c.erpVendorId ?? '', 'PO number': c.poNumber ?? '', 'Last synced': c.lastSyncedAt,
+      Status: c.status, 'ERP reference': c.erpReference, 'ERP vendor ID': c.erpVendorId ?? '', 'PO number': c.poNumber ?? '', 'All PO numbers': this.pos().map((p) => p.poNumber).join(', '), 'PO value': this.poTotal(), 'Last synced': c.lastSyncedAt,
     }]);
   }
 }

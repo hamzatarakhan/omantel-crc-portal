@@ -1,7 +1,7 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
-import { Contract, ContractRecord, SyncRun } from '../models/domain';
+import { Contract, ContractRecord, PurchaseOrder, SyncRun } from '../models/domain';
 import { CURRENT_USER, CrcStore } from './crc-store.service';
-import { addDays, attachmentsFor, childRecordsFor } from './contract-data';
+import { addDays, attachmentsFor, childRecordsFor, purchaseOrdersFor } from './contract-data';
 import {
   ContractChange, DataIssue, EscalationEvent, EscalationRule, EscalationStatus, ListRow, MonitoringAction, NotificationTemplate, SEED_TEMPLATES, SyncConfig,
   SyncError, SyncState, remainingLabel, baseEscalationStatus, dataIssuesFor, escalationApplies, needsAction, nextRunAt, requiredActionFor, seedChanges, statusLevelFor,
@@ -31,6 +31,8 @@ export class ContractOps {
 
   // ---------- configuration ----------
   readonly syncConfig = signal<SyncConfig>({ enabled: true, frequency: 'Daily', time: '02:00', timezone: 'Asia/Muscat (GMT+4)', timeoutSec: 60 });
+  purchaseOrdersOf(c: Contract): PurchaseOrder[] { return purchaseOrdersFor(c, this.childrenOf(c)); }
+
   readonly nextRun = computed(() => (this.syncConfig().enabled ? nextRunAt(this.syncConfig()) : null));
   readonly escalationRule = signal<EscalationRule>({ hours: 48, appliesTo: [], recipients: 'Senior management' });
   readonly templates = signal<NotificationTemplate[]>(SEED_TEMPLATES);
@@ -138,6 +140,16 @@ export class ContractOps {
           id: k.id, parentId: c.id, reference: k.reference, name: k.description, recordType: k.recordType, parentReference: c.reference, contractType: c.contractType, vendorName: k.counterparty,
           vendorRef: c.erpVendorId ?? '', poNumber: k.poNumber, startDate: k.startDate, endDate: k.endDate, daysRemaining: k.daysRemaining, remaining: remainingLabel(k.endDate), amount: k.amount ?? null, currency: k.currency,
           status, level: c.status === 'Cancelled' ? 'neutral' : statusLevelFor({ status: status as Contract['status'], daysRemaining: k.daysRemaining, renewalStatus: undefined }), renewalStatus: '', erpReference: k.erpReference, lastSyncedAt: c.lastSyncedAt, syncStatus, department: c.department ?? '',
+        });
+      }
+      // the contract's purchase orders are records of their own too (SRS 1.14: filter by purchase orders, search by PO number)
+      for (const p of this.purchaseOrdersOf(c)) {
+        const days = Math.round((new Date(p.endDate + 'T12:00:00Z').getTime() - Date.now()) / 86400000);
+        const status = p.status === 'Closed' ? 'Expired' : p.status;
+        rows.push({
+          id: c.id + '-PO-' + p.poNumber, parentId: c.id, reference: p.poNumber, name: 'Purchase order — ' + p.category, recordType: 'Purchase Order', parentReference: c.reference, contractType: c.contractType, vendorName: c.vendorName,
+          vendorRef: c.erpVendorId ?? '', poNumber: p.poNumber, startDate: p.startDate, endDate: p.endDate, daysRemaining: days, remaining: remainingLabel(p.endDate), amount: p.amount ?? null, currency: p.currency,
+          status, level: c.status === 'Cancelled' ? 'neutral' : statusLevelFor({ status: status as Contract['status'], daysRemaining: days, renewalStatus: undefined }), renewalStatus: '', erpReference: p.erpReference, lastSyncedAt: c.lastSyncedAt, syncStatus, department: c.department ?? '',
         });
       }
     }

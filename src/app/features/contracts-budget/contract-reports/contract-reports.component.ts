@@ -76,10 +76,17 @@ export class ContractReportsComponent {
       build: () => this.live().map((p) => {
         const kids = this.ops.childrenOf(p);
         const issues = this.ops.issuesFor(p);
-        return { Contract: p.reference, Vendor: p.vendorName, 'PO number': p.poNumber ?? '', 'Variation Orders': kids.filter((k) => k.recordType === 'Variation Order').length, Amendments: kids.filter((k) => k.recordType === 'Amendment').length, 'Time extensions': kids.filter((k) => k.recordType === 'Time Extension').length, 'Contract amount': p.amount, 'Review flag': issues.map((i) => i.code).join(', ') || 'OK' };
+        return { Contract: p.reference, Vendor: p.vendorName, 'PO number': p.poNumber ?? '', 'PO numbers': this.ops.purchaseOrdersOf(p).map((x) => x.poNumber).join(', '), 'Variation Orders': kids.filter((k) => k.recordType === 'Variation Order').length, Amendments: kids.filter((k) => k.recordType === 'Amendment').length, 'Time extensions': kids.filter((k) => k.recordType === 'Time Extension').length, 'Contract amount': p.amount, 'Review flag': issues.map((i) => i.code).join(', ') || 'OK' };
       }),
     },
 
+    {
+      title: 'Purchase Orders', description: 'Every PO of every contract with its type, category, amount, dates, status and ERP reference, plus the contract amount for comparison.', icon: 'request_quote', file: 'purchase-orders',
+      build: () => this.live().flatMap((c) => this.ops.purchaseOrdersOf(c).map((p) => ({
+        Contract: c.reference, Vendor: c.vendorName, 'PO number': p.poNumber, 'PO type': p.poType, 'PO category': p.category, 'PO amount': p.amount ?? '', Currency: p.currency, 'PO date': p.poDate, 'PO start date': p.startDate, 'PO end date': p.endDate,
+        'PO status': p.status, 'Parent contract': p.parentReference, 'ERP reference': p.erpReference, Records: p.records.length, Documents: p.documents, 'Contract amount': c.amount,
+      }))),
+    },
     { title: 'Renewed & Extended Contracts', description: 'Contracts renewed or extended this period.', icon: 'autorenew', file: 'contracts-renewed', build: () => this.live().filter((c) => !!c.renewalStatus).map((c) => ({ ...this.base(c), 'Time extensions': this.ops.childrenOf(c).filter((k) => k.recordType === 'Time Extension').length })) },
     {
       title: 'Unresolved Contracts', description: 'Contracts expiring or expired with no resolution recorded, and their open monitoring actions.', icon: 'report', file: 'contracts-unresolved',

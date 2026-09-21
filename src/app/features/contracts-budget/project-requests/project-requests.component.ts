@@ -12,6 +12,7 @@ import { CrcStore } from '../../../core/services/crc-store.service';
 import { ProjectInput, ProjectRequests } from '../../../core/services/project-requests.service';
 import { UiService } from '../../../shared/services/ui.service';
 import { BudgetConfig } from '../../../core/services/budget-config.service';
+import { BudgetCycle } from '../../../core/services/budget-cycle.service';
 import { DIALOG_SIZE } from '../../../shared/dialog-sizes';
 import { CURRENCIES, CURRENT_FY, ProjectRequest, SUBMISSION_STATUSES, projectTotal } from '../../../core/services/project-data';
 import { PRIORITY_LEVEL, PROJECT_LEVEL, ProjectDetailDialogComponent } from './project-detail-dialog.component';
@@ -78,6 +79,14 @@ export class ProjectRequestsComponent {
   svc = inject(ProjectRequests);
   private ui = inject(UiService);
   cfg = inject(BudgetConfig);
+  private cycle = inject(BudgetCycle);
+
+  /** BR-SUB-003: true (with a message) when the cut-off has passed for this department. */
+  private locked(dept?: string) {
+    const msg = this.cycle.projectsLocked(dept);
+    if (msg) this.ui.toast(msg, 6500);
+    return !!msg;
+  }
   private dialog = inject(MatDialog);
 
   field = FIELD;
@@ -148,6 +157,7 @@ export class ProjectRequestsComponent {
   /** The project submission form (Screen 5). `copyOf` opens a copied draft so the requester confirms the status and cost first. */
   async form(p?: ProjectRequest, copyOf?: string) {
     if (!this.ui.requires('Submit Project Requests')) return;
+    if (this.locked(p?.department ?? this.cfg.departments()[0])) return;
     const v = await this.ui.form({
       title: copyOf ? 'Confirm the copied project' : p ? 'Edit project' : 'New project',
       subtitle: copyOf ? `Copied from ${copyOf}. Confirm the project status and the estimated cost before you submit it.` : p ? 'Change what you need, then submit it again' : 'Describe the project, what it costs, why it is needed and the resources it needs',
@@ -195,6 +205,7 @@ export class ProjectRequestsComponent {
     };
     const check = this.svc.validate(data, p?.id);
     if (check.error) { this.ui.toast(check.error, 6000); return; }
+    if (this.locked(data.department)) return;
     if (p) { this.svc.edit(p.id, data); this.ui.toast(copyOf ? 'Confirmed. Submit it when it is ready.' : 'Project updated.'); }
     else { this.svc.create(data); this.ui.toast('Project saved as a draft. Submit it when it is ready.'); }
     if (check.warnings.length) setTimeout(() => this.ui.toast(check.warnings[0], 6500), 800);
@@ -214,6 +225,7 @@ export class ProjectRequestsComponent {
     }
     if (e.id === 'submit') {
       if (!this.ui.requires('Submit Project Requests')) return;
+      if (this.locked(p.department)) return;
       const check = this.svc.validate(p, p.id);
       if (check.error) { this.ui.toast(check.error, 6000); return; }
       this.svc.submit(p.id);
@@ -246,6 +258,7 @@ export class ProjectRequestsComponent {
     }
     if (e.id === 'cancel') {
       if (!this.ui.requires('Submit Project Requests')) return;
+      if (this.locked(p.department)) return;
       const ok = await this.ui.confirm({ title: 'Cancel this project?', message: `${p.name} will be marked as Cancelled and stay in the history.`, confirmLabel: 'Cancel project', danger: true });
       if (!ok) return;
       this.svc.cancel(p.id, 'Cancelled by the requester.');

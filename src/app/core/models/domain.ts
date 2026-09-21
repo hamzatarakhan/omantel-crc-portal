@@ -321,6 +321,25 @@ export interface ContractRecord {
   attachments: number;
 }
 
+/** One purchase order of a contract as the ERP holds it (SRS 1.8). A contract can have several: its main PO and any other PO numbers on its lines. */
+export interface PurchaseOrder {
+  poNumber: string;
+  main: boolean;
+  poType: 'Standard' | 'Outsource';
+  category: string;
+  /** Not every PO amount is read from the ERP yet; those show as "—". */
+  amount?: number;
+  currency: 'OMR' | 'USD';
+  poDate: string;
+  startDate: string;
+  endDate: string;
+  status: 'Active' | 'Expiring Soon' | 'Expired' | 'Cancelled' | 'Closed';
+  parentReference: string;
+  erpReference: string;
+  documents: number;
+  records: ContractRecord[];
+}
+
 export interface ContractAttachment {
   id: string;
   name: string;
