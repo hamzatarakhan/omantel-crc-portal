@@ -14,6 +14,9 @@ import { UiService } from '../../../shared/services/ui.service';
 import { CrcStore } from '../../../core/services/crc-store.service';
 import { projectTotal, resourceCost } from '../../../core/services/project-data';
 import { MonthlyBreakdownDialogComponent } from './monthly-breakdown-dialog.component';
+import { SubmissionConfirmationDialogComponent } from './submission-confirmation-dialog.component';
+import { BudgetConfig } from '../../../core/services/budget-config.service';
+import { firstValueFrom } from 'rxjs';
 
 const FLOW: CycleStatus[] = ['Not Started', 'Draft', 'Under Review', 'Ready for Submission', 'Submitted'];
 const STATUS_CHIP: Record<CycleStatus, string> = { 'Not Started': 'neutral', Draft: 'neutral', 'Under Review': 'info', 'Ready for Submission': 'amber', Submitted: 'normal', Reopened: 'orange', Closed: 'neutral' };
@@ -68,7 +71,7 @@ const num = (v: any) => Number(v ?? 0) || 0;
             <div class="surface-card px-5 py-4">
               <h3 class="text-[13.5px] font-bold text-ink-900">Cut-off</h3>
               <div class="text-2xl font-extrabold mt-2" [class]="c.daysLeft() < 0 ? 'text-status-red' : c.daysLeft() <= 7 ? 'text-status-amber' : 'text-ink-900'">{{ c.daysLeft() < 0 ? 'Passed' : c.daysLeft() + ' days left' }}</div>
-              <div class="text-xs text-ink-400 mt-1">Cut-off date {{ c.settings().cutOff }} · after it normal users cannot submit or change the budget; a cycle manager can reopen it with a reason.</div>
+              <div class="text-xs text-ink-400 mt-1">Cut-off date {{ c.settings().cutOff }} for {{ c.settings().departments.join(', ') }} · after it normal users cannot submit or change the budget; a cycle manager can reopen it with a reason.</div>
             </div>
             <div class="surface-card px-5 py-4">
               <h3 class="text-[13.5px] font-bold text-ink-900">Annual increase</h3>
@@ -284,7 +287,7 @@ const num = (v: any) => Number(v ?? 0) || 0;
 
             <div class="surface-card px-5 py-4">
               <h3 class="text-[13.5px] font-bold text-ink-900">Submitted versions</h3>
-              @for (s of c.submissions(); track s.reference) { <div class="flex items-center justify-between gap-2 text-sm mt-2"><span class="text-ink-700">v{{ s.version }} · {{ s.reference }}</span><span class="text-xs text-ink-400">{{ s.total | number:'1.0-0' }} OMR · {{ s.at | date:'shortDate' }}</span></div> } @empty { <div class="text-xs text-ink-400 mt-2">Nothing submitted yet.</div> }
+              @for (s of c.submissions(); track s.reference) { <div class="flex items-center justify-between gap-2 text-sm mt-2"><button class="text-ink-700 font-medium hover:text-brand-700 hover:underline text-left" (click)="confirmation(s.reference)" title="Open the submission confirmation">v{{ s.version }} · {{ s.reference }}</button><span class="text-xs text-ink-400">{{ s.total | number:'1.0-0' }} OMR · {{ s.at | date:'shortDate' }}</span></div> } @empty { <div class="text-xs text-ink-400 mt-2">Nothing submitted yet.</div> }
               @for (r of c.reopenLog(); track r.at) { <div class="text-xs text-ink-500 mt-2 border-t border-surface-border pt-2">Reopened {{ r.at | date:'short' }} by {{ r.by }} — {{ r.reason }}</div> }
             </div>
           </div>
@@ -295,6 +298,7 @@ const num = (v: any) => Number(v ?? 0) || 0;
 })
 export class BudgetPreparationComponent {
   c = inject(BudgetCycle);
+  private cfg = inject(BudgetConfig);
   private ui = inject(UiService);
   private store = inject(CrcStore);
   private dialog = inject(MatDialog);
@@ -339,10 +343,12 @@ export class BudgetPreparationComponent {
     const v = await this.ui.form({
       title: 'Budget cycle settings', subtitle: `${s.year} — cut-off, annual increase and who receives the budget`, icon: 'tune', submitLabel: 'Save settings', values: { ...s },
       fields: [
+        { key: 'cycleName', label: 'Budget cycle', required: true },
+        { key: 'departments', label: 'Departments or teams this cut-off applies to', type: 'multiselect', options: this.cfg.departments(), required: true },
         { key: 'increasePct', label: 'Annual increase (%)', type: 'number', min: 0, max: 100, required: true, hint: 'The default is 5%. The original proposal said 3%.' },
         { key: 'cutOff', label: 'Cut-off date', type: 'date', required: true },
         { key: 'warnPct', label: 'Warn when the budget is above last year by (%)', type: 'number', min: 0 },
-        { key: 'to', label: 'Budget Team recipients (To)', placeholder: 'name@omantel.om, another@omantel.om' },
+        { key: 'to', label: 'Submission recipient — Budget Team (To)', placeholder: 'name@omantel.om, another@omantel.om' },
         { key: 'cc', label: 'CC' },
         { key: 'bcc', label: 'BCC', hint: 'Only if the organisation approves blind copies.' },
       ],
@@ -350,7 +356,7 @@ export class BudgetPreparationComponent {
     if (!v) return;
     const pct = num(v['increasePct']);
     const changed = pct !== s.increasePct;
-    this.c.saveSettings({ increasePct: pct, cutOff: v['cutOff'], warnPct: num(v['warnPct']), to: v['to'] ?? '', cc: v['cc'] ?? '', bcc: v['bcc'] ?? '' });
+    this.c.saveSettings({ cycleName: v['cycleName'], departments: v['departments'], increasePct: pct, cutOff: v['cutOff'], warnPct: num(v['warnPct']), to: v['to'] ?? '', cc: v['cc'] ?? '', bcc: v['bcc'] ?? '' });
     if (changed && this.c.editable()) {
       const apply = await this.ui.confirm({ title: 'Apply the new increase?', message: `Last year's values × (1 + ${pct}%) replace the current baseline. Manual adjustments and their reasons will be cleared.`, confirmLabel: 'Apply', icon: 'restart_alt' });
       if (apply) this.c.applyBaseline();
@@ -401,7 +407,7 @@ export class BudgetPreparationComponent {
     const v = await this.ui.form({
       title: 'Add a resource category', subtitle: 'A new position or outsourcing arrangement in next year\'s budget', icon: 'group_add', submitLabel: 'Add category', values: { vendor: 'Infoline LLC', contract: '2025-013T-00-01' },
       fields: [
-        { key: 'vendor', label: 'Vendor', required: true }, { key: 'contract', label: 'Contract' }, { key: 'category', label: 'Resource category or position', required: true },
+        { key: 'vendor', label: 'Vendor', required: true }, { key: 'contract', label: 'Contract' }, { key: 'category', label: 'Resource category or position', type: 'select', options: this.cfg.resourceCategories(), required: true, hint: 'The list is set in Budget Settings.' },
         { key: 'hc', label: 'Head count', type: 'number', min: 0, required: true }, { key: 'salary', label: 'Monthly salary per head (OMR)', type: 'number', min: 0, required: true },
         { key: 'incentive', label: 'Incentive per year (OMR)', type: 'number', min: 0 }, { key: 'overtime', label: 'Overtime per year (OMR)', type: 'number', min: 0 }, { key: 'ojt', label: 'OJT per year (OMR)', type: 'number', min: 0 },
         { key: 'reason', label: 'Reason', type: 'textarea', required: true },
@@ -448,7 +454,7 @@ export class BudgetPreparationComponent {
   async addPetty() {
     const v = await this.ui.form({
       title: 'Add a petty cash category', icon: 'add_card', submitLabel: 'Add category',
-      fields: [{ key: 'category', label: 'Expense category', required: true }, { key: 'prev', label: 'Last year amount (OMR)', type: 'number', min: 0 }, { key: 'final', label: 'Proposed annual amount (OMR)', type: 'number', min: 0, required: true }, { key: 'reason', label: 'Reason', type: 'textarea', required: true }],
+      fields: [{ key: 'category', label: 'Expense category', type: 'select', options: this.cfg.pettyItems().filter((i) => !this.c.petty().some((l) => l.category === i)), required: true, hint: 'The list is set in Budget Settings.' }, { key: 'prev', label: 'Last year amount (OMR)', type: 'number', min: 0 }, { key: 'final', label: 'Proposed annual amount (OMR)', type: 'number', min: 0, required: true }, { key: 'reason', label: 'Reason', type: 'textarea', required: true }],
     });
     if (!v) return;
     if (!this.fail(this.c.addPetty(v['category'], num(v['prev']), num(v['final']), v['reason']))) this.ui.toast('Petty cash category added.');
@@ -463,7 +469,18 @@ export class BudgetPreparationComponent {
     if (r.error) { this.ui.toast(r.error, 5500); return; }
     this.confirmed.set(false);
     this.excel(false);
-    this.ui.toast(r.submission!.emailStatus === 'Sent' ? `Submitted as ${r.submission!.reference} and emailed to the Budget Team.` : `Submitted as ${r.submission!.reference}, but the email failed. Fix the recipients and resend.`, 6000);
+    await this.confirmation(r.submission!.reference);
+  }
+
+  /** Screen 7: submission confirmation with the sheet download and, if permitted, resend. */
+  async confirmation(reference: string) {
+    const s = this.c.submissions().find((x) => x.reference === reference);
+    if (!s) return;
+    const canResend = this.store.can('Manage Budget Cycle') && (s.emailStatus === 'Failed' || this.c.canManage());
+    const dlg = this.dialog.open(SubmissionConfirmationDialogComponent, { data: { submission: s, year: this.c.settings().year, canResend }, panelClass: 'app-dialog-panel', autoFocus: false, ...DIALOG_SIZE.form });
+    const act = await firstValueFrom(dlg.afterClosed());
+    if (act === 'download') this.excel();
+    else if (act === 'resend') { this.resend(reference); await this.confirmation(reference); }
   }
 
   async reopen() {

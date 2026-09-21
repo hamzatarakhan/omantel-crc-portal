@@ -26,6 +26,7 @@ export const routes: Routes = [
       { path: 'contracts-budget/notifications', loadComponent: () => import('./features/contracts-budget/notification-config/notification-config.component').then((m) => m.NotificationConfigComponent) },
       { path: 'contracts-budget/reports', loadComponent: () => import('./features/contracts-budget/contract-reports/contract-reports.component').then((m) => m.ContractReportsComponent) },
       { path: 'contracts-budget/budget-dashboard', loadComponent: () => import('./features/contracts-budget/budget-dashboard/budget-dashboard.component').then((m) => m.BudgetDashboardComponent) },
+      { path: 'contracts-budget/budget-settings', loadComponent: () => import('./features/contracts-budget/budget-settings/budget-settings.component').then((m) => m.BudgetSettingsComponent) },
       { path: 'contracts-budget/budget-preparation', loadComponent: () => import('./features/contracts-budget/budget-preparation/budget-preparation.component').then((m) => m.BudgetPreparationComponent) },
       { path: 'contracts-budget/budget-breakdown', loadComponent: () => import('./features/contracts-budget/budget-breakdown/budget-breakdown.component').then((m) => m.BudgetBreakdownComponent) },
       { path: 'contracts-budget/accrual-forecast', loadComponent: () => import('./features/contracts-budget/accrual-forecast/accrual-forecast.component').then((m) => m.AccrualForecastComponent) },

@@ -10,7 +10,7 @@ import { UiService } from '../../../shared/services/ui.service';
 import { CUR_MONTH, FY_LABEL, GROUPS, MONTH_LONG, MONTH_SHORT, TEAMS, TEAM_COMPS, TEAM_COMP_LABEL, TeamComp, TeamCriteria, TeamForecast } from '../../../core/services/forecast.service';
 
 const FIELD = 'w-full px-2.5 py-2 text-xs font-semibold rounded-lg border border-surface-border bg-white text-ink-700 focus:outline-none focus:border-brand-400';
-const DEFAULTS = (): TeamCriteria => ({ year: FY_LABEL, mode: 'Full financial year', from: 0, to: CUR_MONTH, months: [CUR_MONTH], teams: [...TEAMS], comps: [...TEAM_COMPS], group: 'Team and Month', status: 'All' });
+const DEFAULTS = (): TeamCriteria => ({ year: FY_LABEL, mode: 'Full financial year', from: 0, to: CUR_MONTH, months: [CUR_MONTH], teams: [...TEAMS], comps: [...TEAM_COMPS], group: 'Team and Month', status: 'All', sheets: 'One sheet' });
 const chip = (on: boolean) => 'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer select-none ' + (on ? 'border-brand-300 bg-brand-50 text-brand-700' : 'border-surface-border text-ink-600 hover:bg-surface-subtle');
 
 /** SRS 2: the CRC team picks period, teams and cost components, checks the preview and exports the file for the Budget Team. */
@@ -26,6 +26,7 @@ const chip = (on: boolean) => 'inline-flex items-center gap-1.5 px-2.5 py-1.5 ro
     >
       <button mat-stroked-button (click)="reset()"><mat-icon class="!text-base !mr-1">restart_alt</mat-icon>Reset filters</button>
       <button mat-stroked-button (click)="export('CSV')" appRequires="Export Team Forecast">CSV</button>
+      <button mat-stroked-button (click)="export('Excel', true)" appRequires="Export Team Forecast"><mat-icon class="!text-base !mr-1">forward_to_inbox</mat-icon>Export & email</button>
       <button mat-flat-button color="primary" (click)="export('Excel')" appRequires="Export Team Forecast"><mat-icon class="!text-base !mr-1">download</mat-icon>Export to Excel</button>
     </app-page-header>
 
@@ -41,6 +42,8 @@ const chip = (on: boolean) => 'inline-flex items-center gap-1.5 px-2.5 py-1.5 ro
         }
         <label class="block"><span class="lbl">Group by</span>
           <select [class]="field" (change)="set({ group: $any($event.target).value })">@for (g of groups; track g) { <option [value]="g" [selected]="g === c().group">{{ g }}</option> }</select></label>
+        <label class="block"><span class="lbl">Worksheets</span>
+          <select [class]="field" (change)="set({ sheets: $any($event.target).value })">@for (w of sheetModes; track w) { <option [value]="w" [selected]="w === c().sheets">{{ w }}</option> }</select></label>
         <label class="block"><span class="lbl">Forecast status</span>
           <select [class]="field" (change)="set({ status: $any($event.target).value })">@for (s of statuses; track s) { <option [value]="s" [selected]="s === c().status">{{ s === 'All' ? 'All statuses' : s }}</option> }</select></label>
       </div>
@@ -55,9 +58,10 @@ const chip = (on: boolean) => 'inline-flex items-center gap-1.5 px-2.5 py-1.5 ro
 
       <div class="mt-3"><div class="flex items-center gap-3"><span class="lbl !mb-0">Teams</span>
         <button class="text-xs font-semibold text-brand-700 hover:underline" (click)="pickTeams(true)">Select all</button>
-        <button class="text-xs font-semibold text-ink-500 hover:underline" (click)="pickTeams(false)">Clear</button></div>
+        <button class="text-xs font-semibold text-ink-500 hover:underline" (click)="pickTeams(false)">Clear</button>
+        @for (g of svc.visibleGroups(); track g.name) { <button class="text-xs font-semibold text-brand-700 hover:underline" (click)="set({ teams: g.teams })" [title]="g.teams.join(', ')">Group: {{ g.name }}</button> }</div>
         <div class="flex flex-wrap gap-1.5 mt-1.5">
-          @for (t of teams; track t) { <label [class]="chip(c().teams.includes(t))"><input type="checkbox" class="hidden" [checked]="c().teams.includes(t)" (change)="toggleTeam(t)">{{ t }}</label> }
+          @for (t of svc.visibleTeams(); track t) { <label [class]="chip(c().teams.includes(t))"><input type="checkbox" class="hidden" [checked]="c().teams.includes(t)" (change)="toggleTeam(t)">{{ t }}</label> }
         </div>
       </div>
 
@@ -77,7 +81,7 @@ const chip = (on: boolean) => 'inline-flex items-center gap-1.5 px-2.5 py-1.5 ro
     }
 
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-      <app-kpi-card label="Teams selected" [value]="c().teams.length" icon="groups"></app-kpi-card>
+      <app-kpi-card label="Teams selected" [value]="selectedTeams().length" icon="groups"></app-kpi-card>
       <app-kpi-card label="Months selected" [value]="monthCount()" icon="calendar_month"></app-kpi-card>
       <app-kpi-card label="Average head count" [value]="avgHc()" icon="person"></app-kpi-card>
       <app-kpi-card label="Selected total" [value]="view().total | number:'1.0-0'" unit="OMR" icon="payments" level="normal"></app-kpi-card>
@@ -113,11 +117,11 @@ const chip = (on: boolean) => 'inline-flex items-center gap-1.5 px-2.5 py-1.5 ro
     <section class="surface-card overflow-x-auto">
       <div class="px-5 pt-4 pb-3"><h3 class="text-[13.5px] font-bold text-ink-900">Export history</h3><p class="text-xs text-ink-400 mt-0.5">Who exported what, kept for audit</p></div>
       <table class="crc-table w-full text-sm">
-        <thead><tr class="bg-surface-subtle text-left text-xs text-ink-500 uppercase tracking-wide"><th class="px-4 py-2 font-medium">When</th><th class="px-4 py-2 font-medium">By</th><th class="px-4 py-2 font-medium">Year</th><th class="px-4 py-2 font-medium">Months</th><th class="px-4 py-2 font-medium">Teams</th><th class="px-4 py-2 font-medium">Components</th><th class="px-4 py-2 font-medium">Grouped by</th><th class="px-4 py-2 font-medium">File</th><th class="px-4 py-2 font-medium">Status</th></tr></thead>
+        <thead><tr class="bg-surface-subtle text-left text-xs text-ink-500 uppercase tracking-wide"><th class="px-4 py-2 font-medium">When</th><th class="px-4 py-2 font-medium">By</th><th class="px-4 py-2 font-medium">Year</th><th class="px-4 py-2 font-medium">Months</th><th class="px-4 py-2 font-medium">Teams</th><th class="px-4 py-2 font-medium">Components</th><th class="px-4 py-2 font-medium">Grouped by</th><th class="px-4 py-2 font-medium">File</th><th class="px-4 py-2 font-medium">Emailed to</th><th class="px-4 py-2 font-medium">Status</th></tr></thead>
         <tbody>
           @for (e of svc.exports(); track e.id) {
-            <tr class="border-t border-surface-border"><td class="px-4 py-2 text-ink-600 whitespace-nowrap">{{ e.at | date:'medium' }}</td><td class="px-4 py-2">{{ e.by }}</td><td class="px-4 py-2">{{ e.year }}</td><td class="px-4 py-2">{{ e.months }}</td><td class="px-4 py-2">{{ e.teams }}</td><td class="px-4 py-2">{{ e.comps }}</td><td class="px-4 py-2">{{ e.group }}</td><td class="px-4 py-2 text-ink-600">{{ e.file }}</td><td class="px-4 py-2"><app-status-chip [label]="e.status" level="normal"></app-status-chip></td></tr>
-          } @empty { <tr><td colspan="9" class="px-4 py-8 text-center text-sm text-ink-400">Nothing has been exported yet.</td></tr> }
+            <tr class="border-t border-surface-border"><td class="px-4 py-2 text-ink-600 whitespace-nowrap">{{ e.at | date:'medium' }}</td><td class="px-4 py-2">{{ e.by }}</td><td class="px-4 py-2">{{ e.year }}</td><td class="px-4 py-2">{{ e.months }}</td><td class="px-4 py-2">{{ e.teams }}</td><td class="px-4 py-2">{{ e.comps }}</td><td class="px-4 py-2">{{ e.group }}</td><td class="px-4 py-2 text-ink-600">{{ e.file }}</td><td class="px-4 py-2 text-ink-600">{{ e.emailed || '—' }}</td><td class="px-4 py-2"><app-status-chip [label]="e.status" level="normal"></app-status-chip></td></tr>
+          } @empty { <tr><td colspan="10" class="px-4 py-8 text-center text-sm text-ink-400">Nothing has been exported yet.</td></tr> }
         </tbody>
       </table>
     </section>
@@ -138,11 +142,13 @@ export class TeamForecastComponent {
   short = MONTH_SHORT;
   modes: TeamCriteria['mode'][] = ['Full financial year', 'Date range', 'Selected months'];
   statuses = ['All', 'Approved', 'Draft'];
+  sheetModes: TeamCriteria['sheets'][] = ['One sheet', 'One sheet per team'];
 
   c = signal<TeamCriteria>(DEFAULTS());
   set(p: Partial<TeamCriteria>) { this.c.update((x) => ({ ...x, ...p })); }
   reset() { this.c.set(DEFAULTS()); }
-  pickTeams(all: boolean) { this.set({ teams: all ? [...TEAMS] : [] }); }
+  pickTeams(all: boolean) { this.set({ teams: all ? [...this.svc.visibleTeams()] : [] }); }
+  selectedTeams = computed(() => this.c().teams.filter((t) => this.svc.visibleTeams().includes(t)));
   pickComps() { this.set({ comps: [...TEAM_COMPS] }); }
   toggleTeam(t: string) { this.set({ teams: this.c().teams.includes(t) ? this.c().teams.filter((x) => x !== t) : [...this.c().teams, t] }); }
   toggleComp(k: TeamComp) { this.set({ comps: this.c().comps.includes(k) ? this.c().comps.filter((x) => x !== k) : [...this.c().comps, k] }); }
@@ -155,14 +161,15 @@ export class TeamForecastComponent {
   summaryText = computed(() => {
     const c = this.c(), m = this.svc.months(c);
     const period = c.mode === 'Full financial year' ? `full ${c.year}` : m.length ? m.map((i) => MONTH_SHORT[i]).join(', ') : 'no month';
-    return `${c.year} · ${period} · ${c.teams.length === TEAMS.length ? 'all teams' : c.teams.length + ' team(s)'} · ${c.comps.length ? c.comps.map((k) => TEAM_COMP_LABEL[k]).join(', ') : 'no component'} · grouped by ${c.group}`;
+    const n = this.selectedTeams().length;
+    return `${c.year} · ${period} · ${n === this.svc.visibleTeams().length ? 'all teams' : n + ' team(s)'} · ${c.comps.length ? c.comps.map((k) => TEAM_COMP_LABEL[k]).join(', ') : 'no component'} · grouped by ${c.group}`;
   });
 
   isNum = (col: string) => col === 'Head Count' || col === 'Amount' || Object.values(TEAM_COMP_LABEL).includes(col);
   colTotal = (col: string) => this.view().rows.reduce((s, r) => s + (Number(r[col]) || 0), 0);
 
-  export(format: 'Excel' | 'CSV') {
+  export(format: 'Excel' | 'CSV', email = false) {
     if (!this.ui.requires('Export Team Forecast')) return;
-    this.svc.export(this.c(), format); // shows the validation message itself when something is missing
+    this.svc.export(this.c(), format, email); // shows the validation message itself when something is missing
   }
 }

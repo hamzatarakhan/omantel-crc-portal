@@ -20,7 +20,7 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
     <app-page-header
       title="Payable Rule Configuration"
       subtitle="Configure the minimum call-duration threshold and other payable calculation parameters"
-      [breadcrumbs]="[{ label: 'Invoicing & Payments', link: '/invoicing/dashboard' }, { label: 'Payable Rule Configuration' }]"
+      [breadcrumbs]="[{ label: 'Invoicing & Payments', link: '/invoicing/reconciliation' }, { label: 'Payable Rule Configuration' }]"
     ></app-page-header>
 
     <div class="surface-card p-5 max-w-xl flex flex-col gap-5">

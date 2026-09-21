@@ -15,7 +15,7 @@ import { PaymentRecord } from '../../../core/models/domain';
     <app-page-header
       title="PO & Payment Tracking"
       subtitle="Purchase order and payment status synced from the ERP &middot; drag a card, or use “Move to”, to advance a payment"
-      [breadcrumbs]="[{ label: 'Invoicing & Payments', link: '/invoicing/dashboard' }, { label: 'PO & Payment Tracking' }]"
+      [breadcrumbs]="[{ label: 'Invoicing & Payments', link: '/invoicing/reconciliation' }, { label: 'PO & Payment Tracking' }]"
     ></app-page-header>
     <app-kanban-board [columns]="columns" [cards]="cards()" (move)="onMove($event)"></app-kanban-board>
     <p class="text-xs text-ink-400 mt-4">New payments appear in <strong>Pending</strong> when an invoice is approved in the <a class="text-brand-600 font-medium" routerLink="/invoicing/reconciliation">Reconciliation Workspace</a>. Completing a payment adds it to actual Outsourcing spend on the budget.</p>

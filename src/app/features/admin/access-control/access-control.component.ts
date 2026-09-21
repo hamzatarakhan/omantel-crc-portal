@@ -6,6 +6,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { PageHeaderComponent } from '../../../shared/components/page-header/page-header.component';
 import { CrcStore, PERMISSIONS, ROLES } from '../../../core/services/crc-store.service';
+import { HIDDEN_MODULES } from '../../../core/nav.config';
 import { UiService } from '../../../shared/services/ui.service';
 import { AppUser } from '../../../core/models/domain';
 import { ContractOps, DataScope } from '../../../core/services/contract-ops.service';
@@ -109,7 +110,7 @@ export class AccessControlComponent {
 
   ops = inject(ContractOps);
   roles = ROLES;
-  permissions = PERMISSIONS;
+  permissions = PERMISSIONS.filter((p) => !HIDDEN_MODULES.includes(p.module));
   scopeRoles = ROLES.filter((r) => r !== 'System Admin');
   scopeFields: Array<{ key: keyof DataScope; all: string }> = [{ key: 'vendor', all: 'All vendors' }, { key: 'contractType', all: 'All types' }, { key: 'department', all: 'All departments' }];
 

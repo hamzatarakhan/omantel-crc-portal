@@ -31,9 +31,21 @@ interface Row { line: AccrualLine; cell?: AccrualCell; applicable: boolean; stat
       [breadcrumbs]="[{ label: 'Contracts & Budget', link: '/contracts-budget/dashboard' }, { label: 'Forecast' }, { label: 'Accrual Forecast' }]"
     >
       <button mat-stroked-button (click)="generate()" appRequires="Edit Accrual Forecast"><mat-icon class="!text-base !mr-1">autorenew</mat-icon>Generate forecast</button>
+      @if (svc.settings().lockAfter === 'Finance approval') { <button mat-stroked-button (click)="approve()" appRequires="Close Forecast Period"><mat-icon class="!text-base !mr-1">verified</mat-icon>Approve period</button> }
       <button mat-stroked-button (click)="close()" appRequires="Close Forecast Period"><mat-icon class="!text-base !mr-1">lock</mat-icon>Close period</button>
       <button mat-flat-button color="primary" (click)="exportExcel()" appRequires="Export Forecast"><mat-icon class="!text-base !mr-1">download</mat-icon>Export to Excel</button>
     </app-page-header>
+
+    @if (svc.pending(); as p) {
+      <div class="surface-card px-4 py-3 mb-4 flex items-center gap-3 border-l-4 !border-l-status-amber"><mat-icon class="text-status-amber">hourglass_top</mat-icon>
+        <div class="flex-1 text-sm text-ink-700">The scheduled forecast for <b>{{ p }}</b> is waiting for a confirmation.</div>
+        <button mat-flat-button color="primary" (click)="confirmGeneration()" appRequires="Edit Accrual Forecast">Confirm generation</button></div>
+    }
+    @if (svc.closure(); as cl) {
+      <div class="surface-card px-4 py-3 mb-4 flex items-center gap-3 border-l-4 !border-l-status-amber"><mat-icon class="text-status-amber">event_busy</mat-icon>
+        <div class="flex-1 text-sm text-ink-700"><b>{{ cl.label }}</b> is not closed yet. {{ cl.days < 0 ? 'Its closing day (' + svc.settings().closeByDay + ') has passed.' : 'It should be closed by day ' + svc.settings().closeByDay + ' (' + cl.days + ' day(s) left).' }}</div>
+        <button mat-stroked-button (click)="month.set(cl.month)">Show it</button></div>
+    }
 
     <div class="surface-card px-4 py-3.5 mb-4">
       <div class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-2.5">
@@ -251,18 +263,23 @@ export class AccrualForecastComponent {
     const c = r.cell;
     const v = await this.ui.form({
       title: 'Edit current-month forecast', subtitle: `${r.line.vendor} · ${r.line.category} · ${this.monthName()} ${this.year}. The system-generated amount is kept for audit.`, icon: 'edit', submitLabel: 'Save adjustment',
-      values: { hc: c.hc, salary: c.forecast.salary, overtime: c.forecast.overtime, performance: c.forecast.performance, other: c.forecast.other },
+      values: { hc: c.hc, salary: c.forecast.salary, overtime: c.forecast.overtime, performance: c.forecast.performance, other: c.forecast.other, joiners: c.moves.find((x) => x.type === 'Joiner')?.count ?? 0, joinDay: c.moves.find((x) => x.type === 'Joiner')?.day ?? 1, leavers: c.moves.find((x) => x.type === 'Leaver')?.count ?? 0, leaveDay: c.moves.find((x) => x.type === 'Leaver')?.day ?? 1, total: this.svc.totals(c).forecast },
       fields: [
         { key: 'hc', label: 'Expected resource count', type: 'number', min: 0, required: true, hint: 'A new count re-prices the salary unless you type the salary yourself.' },
+        { key: 'joiners', label: 'Joiners this month', type: 'number', min: 0, hint: 'Paid from their first day.' },
+        { key: 'joinDay', label: 'Joiners start on day', type: 'number', min: 1, max: 31 },
+        { key: 'leavers', label: 'Leavers this month', type: 'number', min: 0, hint: 'Paid up to their last day.' },
+        { key: 'leaveDay', label: 'Leavers last day', type: 'number', min: 1, max: 31 },
         { key: 'salary', label: 'Salary (OMR)', type: 'number', min: 0, required: true },
         { key: 'overtime', label: 'Overtime (OMR)', type: 'number', min: 0, required: true },
         { key: 'performance', label: `${this.svc.settings().performanceLabel} (OMR)`, type: 'number', min: 0, required: true },
         { key: 'other', label: 'Other charges (OMR)', type: 'number', min: 0, required: true },
+        ...(this.svc.settings().allowTotalOverride ? [{ key: 'total', label: 'Total forecast (OMR)', type: 'number' as const, min: 0, hint: 'Typing a new total puts the difference into other charges.' }] : []),
         { key: 'reason', label: 'Adjustment reason', type: 'textarea', required: true, hint: 'Explain the difference between the system value and your value.' },
       ],
     });
     if (!v) return;
-    const err = this.svc.edit(r.line.id, this.month(), { hc: num(v['hc']), salary: num(v['salary']), overtime: num(v['overtime']), performance: num(v['performance']), other: num(v['other']) }, v['reason'] ?? '');
+    const err = this.svc.edit(r.line.id, this.month(), { hc: num(v['hc']), salary: num(v['salary']), overtime: num(v['overtime']), performance: num(v['performance']), other: num(v['other']), joiners: num(v['joiners']), joinDay: num(v['joinDay']), leavers: num(v['leavers']), leaveDay: num(v['leaveDay']), total: v['total'] === undefined || v['total'] === null || v['total'] === '' ? undefined : num(v['total']) }, v['reason'] ?? '');
     this.ui.toast(err ?? 'Forecast updated. The original system amount is kept in the history.', err ? 5000 : 4000);
   }
 
@@ -283,8 +300,23 @@ export class AccrualForecastComponent {
     const open = this.svc.openLines(m);
     const ok = await this.ui.confirm({ title: `Close ${MONTH_LONG[m]} ${this.year}?`, message: `Nobody except an administrator will be able to change this month.${open ? `\n\n${open} line(s) still have forecast amounts with no invoice.` : '\n\nEvery line already has its invoice amount.'}`, confirmLabel: 'Close period', danger: open > 0 });
     if (!ok) return;
-    this.svc.closePeriod(m);
-    this.ui.toast(`${MONTH_LONG[m]} closed.`);
+    const err = this.svc.closePeriod(m);
+    this.ui.toast(err ?? `${MONTH_LONG[m]} closed.`, err ? 5500 : 3000);
+  }
+
+  async approve() {
+    if (!this.ui.requires('Close Forecast Period')) return;
+    const m = this.month();
+    const ok = await this.ui.confirm({ title: `Approve ${MONTH_LONG[m]} ${this.year}?`, message: 'The period is locked for editing and can then be closed.', confirmLabel: 'Approve period', icon: 'verified' });
+    if (!ok) return;
+    const err = this.svc.approvePeriod(m);
+    this.ui.toast(err ?? `${MONTH_LONG[m]} approved.`, err ? 5500 : 3000);
+  }
+
+  confirmGeneration() {
+    if (!this.ui.requires('Edit Accrual Forecast')) return;
+    const r = this.svc.confirmPending();
+    if (r) this.ui.toast(r.result === 'Success' ? `Forecast generated. ${r.note}` : `Generation failed. ${r.note}`, 6000);
   }
 
   exportExcel() {

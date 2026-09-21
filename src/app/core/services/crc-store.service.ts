@@ -17,14 +17,14 @@ export const ROLE_SUMMARY: Record<string, string> = {
   'Contract Mgmt Team': 'Contracts, budgets and forecasts',
   'Contract Mgmt Manager': 'Contract risk, escalations and notification rules',
   'Budget Owner': 'Contracts and budget approval',
-  'CSR/Workforce Team': 'Agents, leave, recruitment and movement',
-  'Team Lead': 'Agents, leave, movement and project requests (also acts as Line Manager)',
+  'Line Manager': 'Adds and updates their own project requests and views past submissions',
   'Project Manager': 'Project budget requests and their head count',
   'Budget Team': 'Receives and reviews the submitted budget and team forecasts',
   'Finance': 'Budgets, invoices, payments and the accrual forecast',
+  'Read-Only User': 'Views authorized contracts, budgets, projects and forecasts, without changing anything',
   'System Admin': 'Everything, plus access control and audit',
 };
-export const ROLES = ['Contract Mgmt Team', 'Contract Mgmt Manager', 'Budget Owner', 'CSR/Workforce Team', 'Team Lead', 'Project Manager', 'Finance', 'Budget Team', 'System Admin'];
+export const ROLES = ['Contract Mgmt Team', 'Contract Mgmt Manager', 'Budget Owner', 'Line Manager', 'Project Manager', 'Finance', 'Budget Team', 'Read-Only User', 'System Admin'];
 
 export interface Permission { permission: string; module: string; }
 export const PERMISSIONS: Permission[] = [
@@ -64,19 +64,20 @@ export const PERMISSIONS: Permission[] = [
 
 /** Who holds the permissions whose default (the whole module) does not fit. Finance is not a Contract Tracking actor. */
 const CT_ROLES = ['Contract Mgmt Team', 'Contract Mgmt Manager', 'Budget Owner'];
+const RO = 'Read-Only User';
 const SPECIAL: Record<string, string[]> = {
-  'View Contracts': CT_ROLES, 'View Contract Details': CT_ROLES, 'View Sync History': CT_ROLES, 'View Attachments': CT_ROLES, 'View Dashboards': CT_ROLES, 'Export Contract Data': CT_ROLES,
-  'View Budget': ['Contract Mgmt Team', 'Contract Mgmt Manager', 'Budget Owner', 'Finance', 'Budget Team'],
+  'View Contracts': [...CT_ROLES, RO], 'View Contract Details': [...CT_ROLES, RO], 'View Sync History': CT_ROLES, 'View Attachments': [...CT_ROLES, RO], 'View Dashboards': [...CT_ROLES, RO], 'Export Contract Data': CT_ROLES,
+  'View Budget': ['Contract Mgmt Team', 'Contract Mgmt Manager', 'Budget Owner', 'Finance', 'Budget Team', 'Read-Only User'],
   'Prepare/Edit Draft Budget': ['Contract Mgmt Team', 'Budget Owner'],
   'Manage Budget Cycle': ['Budget Owner', 'Contract Mgmt Manager'],
-  'Submit Project Requests': ['Team Lead', 'CSR/Workforce Team', 'Project Manager'],
+  'Submit Project Requests': ['Line Manager', 'Project Manager'],
   'Approve Projects': ['Budget Owner'],
-  'View Accrual Forecast': ['Finance', 'Contract Mgmt Team', 'Contract Mgmt Manager', 'Budget Owner', 'Budget Team'],
+  'View Accrual Forecast': ['Finance', 'Contract Mgmt Team', 'Contract Mgmt Manager', 'Budget Owner', 'Budget Team', RO],
   'Edit Accrual Forecast': ['Contract Mgmt Team', 'Contract Mgmt Manager'],
   'Configure Forecast': ['Contract Mgmt Manager'],
   'Close Forecast Period': ['Finance'],
   'Export Forecast': ['Finance', 'Contract Mgmt Team', 'Contract Mgmt Manager'],
-  'View Team Forecast': ['Contract Mgmt Team', 'Contract Mgmt Manager', 'Budget Owner', 'Budget Team'],
+  'View Team Forecast': ['Contract Mgmt Team', 'Contract Mgmt Manager', 'Budget Owner', 'Budget Team', RO],
   'Export Team Forecast': ['Contract Mgmt Team', 'Contract Mgmt Manager'],
 };
 
@@ -183,15 +184,14 @@ export class CrcStore {
     { id: 'U2', name: 'Salim Al-Habsi', email: 'salim.alhabsi@omantel.om', role: 'Contract Mgmt Team', active: true },
     { id: 'U3', name: 'Mariam Al-Kindi', email: 'mariam.alkindi@omantel.om', role: 'Budget Owner', active: true },
     { id: 'U4', name: 'Khalid Al-Farsi', email: 'khalid.alfarsi@omantel.om', role: 'Finance', active: true },
-    { id: 'U5', name: 'Noor Al-Rawahi', email: 'noor.alrawahi@omantel.om', role: 'CSR/Workforce Team', active: true },
-    { id: 'U6', name: 'Talal Al-Amri', email: 'talal.alamri@omantel.om', role: 'Team Lead', active: false },
+    { id: 'U5', name: 'Noor Al-Rawahi', email: 'noor.alrawahi@omantel.om', role: 'Project Manager', active: true },
+    { id: 'U6', name: 'Talal Al-Amri', email: 'talal.alamri@omantel.om', role: 'Line Manager', active: false },
   ]);
 
   readonly audit = signal<AuditEntry[]>(this.seedAudit());
   readonly notifications = signal<AppNotification[]>([
     { id: 'N1', message: '3 contracts expiring within 15 days.', detail: 'Contracts & Budget', level: 'amber', createdAt: Date.now() - 12 * 60000, read: false, link: '/contracts-budget/contracts' },
-    { id: 'N2', message: 'Petty cash budget at 96% of allocation.', detail: 'Budget', level: 'red', createdAt: Date.now() - 60 * 60000, read: false, link: '/contracts-budget/budget-breakdown' },
-    { id: 'N3', message: 'Movement requests are pending your review.', detail: 'Internal Project Movement', level: 'info', createdAt: Date.now() - 3 * 3600000, read: false, link: '/movement/review' },
+    { id: 'N2', message: 'Petty cash budget at 96% of allocation.', detail: 'Budget', level: 'red', createdAt: Date.now() - 60 * 60000, read: false, link: '/contracts-budget/forecast' },
   ]);
 
   // ---------- derived ----------
@@ -270,8 +270,8 @@ export class CrcStore {
     const grid = this.permissionGrid();
     const allowed = (perms?: string[]) => !perms || perms.some((p) => grid[`${p}|${role}`]);
     return NAV_GROUPS
-      .filter((g) => !g.adminOnly || role === 'System Admin')
-      .map((g) => ({ ...g, items: g.items.filter((i) => allowed(i.perms)) }))
+      .filter((g) => !g.hidden && (!g.adminOnly || role === 'System Admin'))
+      .map((g) => ({ ...g, items: g.items.filter((i) => !i.hidden && allowed(i.perms)) }))
       .filter((g) => g.items.length > 0);
   });
 
@@ -663,7 +663,7 @@ export class CrcStore {
       const out = this.budgetLines().filter((l) => l.category === 'Outsourcing');
       const totalAlloc = out.reduce((s, l) => s + l.allocated, 0);
       this.budgetLines.update((lines) => lines.map((l) => (l.category === 'Outsourcing' ? { ...l, spent: l.spent + Math.round((p.invoiceAmount * l.allocated) / totalAlloc) } : l)));
-      this.notify(`Payment to ${p.vendorName} completed.`, 'Invoicing & Payments', 'green', '/invoicing/dashboard');
+      this.notify(`Payment to ${p.vendorName} completed.`, 'Invoicing & Payments', 'green', '/invoicing/tracking');
     }
   }
 
@@ -687,16 +687,13 @@ export class CrcStore {
     const granted = (p: Permission, role: string): boolean => {
       if (role === 'System Admin') return true;
       if (SPECIAL[p.permission]) return SPECIAL[p.permission].includes(role);
-      if (p.permission === 'View Employee Salary') return role === 'Finance' || role === 'CSR/Workforce Team';
-      if (p.permission === 'Submit Project Requests') return role === 'Team Lead' || role === 'CSR/Workforce Team';
+      if (p.permission === 'View Employee Salary') return role === 'Finance';
       if (p.module === 'Contracts & Budget') {
         if (p.permission === 'Manage Sync Configuration') return false;
         if (['Manage Notifications', 'Manage Escalations'].includes(p.permission)) return role === 'Contract Mgmt Manager';
         if (['Manual Contract Sync', 'Manage Monitoring Actions', 'View Audit History'].includes(p.permission)) return role === 'Contract Mgmt Team' || role === 'Contract Mgmt Manager';
         return role === 'Contract Mgmt Team' || role === 'Contract Mgmt Manager' || role === 'Budget Owner' || role === 'Finance';
       }
-      if (p.module === 'CSR Management') return role === 'CSR/Workforce Team' || role === 'Team Lead';
-      if (p.module === 'Internal Project Movement') return role === 'Team Lead' || role === 'CSR/Workforce Team';
       if (p.module === 'Invoicing & Payments') return role === 'Finance';
       return false;
     };

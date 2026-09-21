@@ -6,6 +6,8 @@ export interface NavItem {
   perms?: string[];
   /** Items that share a section are shown together under a collapsible sub-menu. */
   section?: string;
+  /** Not in the SRS: kept in the code but removed from the menu and from direct links. */
+  hidden?: boolean;
 }
 
 export interface NavGroup {
@@ -16,7 +18,12 @@ export interface NavGroup {
   adminOnly?: boolean;
   /** Icon for each sub-menu label used by `section`. */
   sections?: Record<string, string>;
+  /** Not in the SRS: kept in the code but removed from the menu and from direct links. */
+  hidden?: boolean;
 }
+
+/** Permission modules that belong to hidden screens (also hidden from the access matrix). */
+export const HIDDEN_MODULES = ['CSR Management', 'Internal Project Movement'];
 
 const VIEW_CONTRACTS = ['View Contracts'];
 const VIEW_AGENTS = ['View Agent Profiles'];
@@ -36,15 +43,16 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: 'Needs Attention', path: 'needs-attention', icon: 'assignment_late', perms: ['View Dashboards'], section: 'Monitoring' },
       { label: 'Monitoring Actions', path: 'actions', icon: 'assignment_turned_in', perms: ['Manage Monitoring Actions'], section: 'Monitoring' },
       { label: 'Alerts & Escalation', path: 'notifications', icon: 'notifications', perms: ['Manage Notifications', 'Manage Escalations'], section: 'Monitoring' },
-      { label: 'Sync Overview', path: 'sync', icon: 'monitor_heart', perms: ['View Sync History'], section: 'Synchronization' },
+      { label: 'Sync Overview', path: 'sync', icon: 'monitor_heart', perms: ['View Sync History'], section: 'Synchronization', hidden: true },
       { label: 'Run History', path: 'sync-history', icon: 'history', perms: ['View Sync History'], section: 'Synchronization' },
       { label: 'Error Log', path: 'sync-errors', icon: 'error_outline', perms: ['View Sync History'], section: 'Synchronization' },
       { label: 'Configuration', path: 'sync-config', icon: 'schedule', perms: ['Manage Sync Configuration'], section: 'Synchronization' },
       { label: 'Audit History', path: 'audit-history', icon: 'manage_search', perms: ['View Audit History'] },
-      { label: 'Budget Dashboard', path: 'budget-dashboard', icon: 'dashboard', perms: ['View Budget'], section: 'Budget' },
+      { label: 'Budget Dashboard', path: 'budget-dashboard', icon: 'dashboard', perms: ['View Budget'], section: 'Budget', hidden: true },
       { label: 'Budget Preparation', path: 'budget-preparation', icon: 'edit_note', perms: ['Prepare/Edit Draft Budget', 'Manage Budget Cycle', 'View Budget'], section: 'Budget' },
-      { label: 'Budget Breakdown', path: 'budget-breakdown', icon: 'pie_chart', perms: ['View Budget'], section: 'Budget' },
+      { label: 'Budget Breakdown', path: 'budget-breakdown', icon: 'pie_chart', perms: ['View Budget'], section: 'Budget', hidden: true },
       { label: 'Cost & Petty Cash', path: 'forecast', icon: 'trending_up', perms: ['View Budget'], section: 'Budget' },
+      { label: 'Budget Settings', path: 'budget-settings', icon: 'settings', perms: ['Manage Budget Cycle'], section: 'Budget' },
       { label: 'Project Requests', path: 'projects', icon: 'rocket_launch', perms: ['Submit Project Requests', 'Approve Projects', 'View Budget'], section: 'Budget' },
       { label: 'Accrual Forecast', path: 'accrual-forecast', icon: 'receipt_long', perms: ['View Accrual Forecast'], section: 'Forecast' },
       { label: 'Team Forecast', path: 'team-forecast', icon: 'groups', perms: ['View Team Forecast'], section: 'Forecast' },
@@ -55,6 +63,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'CSR Management',
     icon: 'groups',
     basePath: '/csr',
+    hidden: true,
     items: [
       { label: 'Team & Agent Directory', path: 'directory', icon: 'badge', perms: VIEW_AGENTS },
       { label: 'Leave Management', path: 'leave', icon: 'event_available', perms: VIEW_AGENTS },
@@ -67,6 +76,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Internal Project Movement',
     icon: 'swap_horiz',
     basePath: '/movement',
+    hidden: true,
     items: [
       { label: 'Announcements', path: 'announcements', icon: 'campaign', perms: ['Create Movement Announcement'] },
       { label: 'Apply for Movement', path: 'apply', icon: 'assignment_ind', perms: MOVEMENT_ANY },
@@ -82,7 +92,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: 'Reconciliation Workspace', path: 'reconciliation', icon: 'calculate', perms: ['Validate Invoice'] },
       { label: 'Payable Rule Config', path: 'rules', icon: 'tune', perms: ['Configure Payable Rules'] },
       { label: 'PO & Payment Tracking', path: 'tracking', icon: 'view_kanban', perms: ['Validate Invoice'] },
-      { label: 'Payment Dashboard', path: 'dashboard', icon: 'dashboard', perms: ['Validate Invoice', 'Configure Payable Rules'] },
+      { label: 'Payment Dashboard', path: 'dashboard', icon: 'dashboard', perms: ['Validate Invoice', 'Configure Payable Rules'], hidden: true },
     ],
   },
   {

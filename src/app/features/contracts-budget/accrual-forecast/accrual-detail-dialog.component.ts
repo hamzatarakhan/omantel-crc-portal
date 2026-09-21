@@ -29,6 +29,7 @@ import { ACCRUAL_LEVEL, AccrualForecast, AccrualLine, COMPS, COMP_LABEL, FY_YEAR
           <div><dt class="text-xs text-ink-400">Contract start</dt><dd class="font-medium text-ink-900">{{ line.startDate }}</dd></div>
           <div><dt class="text-xs text-ink-400">Contract expiry</dt><dd class="font-medium text-ink-900">{{ line.endDate }}</dd></div>
           <div><dt class="text-xs text-ink-400">Expected resource count</dt><dd class="font-medium text-ink-900">{{ cell?.hc ?? '—' }}</dd></div>
+          @if (cell?.moves?.length) { <div class="col-span-2"><dt class="text-xs text-ink-400">Joiners and leavers</dt><dd class="font-medium text-ink-900">@for (m of cell!.moves; track $index) { <span class="mr-3">{{ m.count }} {{ m.type.toLowerCase() }}{{ m.count === 1 ? '' : 's' }} {{ m.type === 'Joiner' ? 'from' : 'until' }} day {{ m.day }}</span> }</dd></div> }
           <div><dt class="text-xs text-ink-400">Salary rate per resource</dt><dd class="font-medium text-ink-900">{{ line.salary | number:'1.0-0' }} OMR / month</dd></div>
           <div><dt class="text-xs text-ink-400">Invoice reference</dt><dd class="font-medium text-ink-900">{{ cell?.invoice?.ref ?? '—' }}</dd></div>
           <div><dt class="text-xs text-ink-400">Invoice status</dt><dd class="font-medium text-ink-900">{{ svc.invoiceState(cell) }}{{ cell?.invoice?.issued ? ' · issued ' + cell?.invoice?.issued : '' }}</dd></div>

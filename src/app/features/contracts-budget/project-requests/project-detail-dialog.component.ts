@@ -36,17 +36,21 @@ const EVENT_ICON: Record<string, string> = { Created: 'add_circle', Edited: 'edi
             <p class="text-sm text-ink-900 mt-1">{{ p.scope }}</p>
             <div class="text-[11px] font-bold uppercase tracking-wide text-ink-400 mt-4">Justification</div>
             <p class="text-sm text-ink-700 mt-1 leading-relaxed">{{ p.reason }}</p>
+            @if (p.costBreakdown) { <div class="text-[11px] font-bold uppercase tracking-wide text-ink-400 mt-4">Cost breakdown</div><p class="text-sm text-ink-700 mt-1 whitespace-pre-line">{{ p.costBreakdown }}</p> }
             @if (p.comments) { <div class="text-[11px] font-bold uppercase tracking-wide text-ink-400 mt-4">Comments</div><p class="text-sm text-ink-700 mt-1">{{ p.comments }}</p> }
             @if (p.attachments.length) { <div class="text-[11px] font-bold uppercase tracking-wide text-ink-400 mt-4">Supporting attachments</div><div class="flex flex-wrap gap-1.5 mt-1.5">@for (a of p.attachments; track a) { <span class="status-chip status-chip--neutral">{{ a }}</span> }</div> }
           </div>
           <dl class="grid grid-cols-2 md:grid-cols-1 gap-y-3 text-sm content-start">
-            <div><dt class="text-xs text-ink-400">Estimated project cost</dt><dd class="font-extrabold text-ink-900 text-base">{{ p.budget | number:'1.0-0' }} <span class="text-xs font-medium text-ink-400">OMR</span></dd></div>
+            <div><dt class="text-xs text-ink-400">Estimated project cost</dt><dd class="font-extrabold text-ink-900 text-base">{{ p.budget | number:'1.0-0' }} <span class="text-xs font-medium text-ink-400">{{ p.currency }}</span></dd></div>
+            @if (p.annualCost !== undefined || p.monthlyCost !== undefined) { <div><dt class="text-xs text-ink-400">This financial year · per month</dt><dd class="font-medium text-ink-900">{{ p.annualCost === undefined ? '—' : (p.annualCost | number:'1.0-0') }} · {{ p.monthlyCost === undefined ? '—' : (p.monthlyCost | number:'1.0-0') }} {{ p.currency }}</dd></div> }
             <div><dt class="text-xs text-ink-400">Resource cost ({{ p.headCount }} head{{ p.headCount === 1 ? '' : 's' }})</dt><dd class="font-medium text-ink-900">{{ rc | number:'1.0-0' }} OMR</dd></div>
-            <div><dt class="text-xs text-ink-400">Total</dt><dd class="font-extrabold text-brand-700">{{ total | number:'1.0-0' }} OMR</dd></div>
+            <div><dt class="text-xs text-ink-400">Total in the budget</dt><dd class="font-extrabold text-brand-700">{{ total | number:'1.0-0' }} OMR</dd></div>
             <div><dt class="text-xs text-ink-400">Project manager · Line manager</dt><dd class="font-medium text-ink-900">{{ p.projectManager }} · {{ p.lineManager }}</dd></div>
+            <div><dt class="text-xs text-ink-400">Reference · Department</dt><dd class="font-medium text-ink-900">{{ p.reference || '—' }} · {{ p.department || '—' }}</dd></div>
+            <div><dt class="text-xs text-ink-400">Submitted</dt><dd class="font-medium text-ink-900">{{ p.submittedAt ? (p.submittedAt | date:'mediumDate') : 'Not submitted yet' }}</dd></div>
             <div><dt class="text-xs text-ink-400">Contract · PO</dt><dd class="font-medium text-ink-900">{{ p.contractRef || '—' }} · {{ p.poNumber || '—' }}</dd></div>
             <div><dt class="text-xs text-ink-400">Period</dt><dd class="font-medium text-ink-900">{{ p.from || '—' }} → {{ p.to || '—' }}</dd></div>
-            @if (p.headCount) { <div><dt class="text-xs text-ink-400">Resources</dt><dd class="font-medium text-ink-900">{{ p.headCount }} × {{ p.resourceRole }} · {{ p.costPerResource | number:'1.0-0' }} OMR × {{ p.months }} months</dd></div> }
+            @if (p.headCount) { <div><dt class="text-xs text-ink-400">Resources</dt><dd class="font-medium text-ink-900">{{ p.headCount }} × {{ p.resourceRole }} · {{ p.costPerResource | number:'1.0-0' }} {{ p.currency }} × {{ p.months }} months<br><span class="text-xs text-ink-500">{{ p.resourceType }} · {{ p.resourceSource }}{{ p.resourceStart ? ' · from ' + p.resourceStart : '' }}</span></dd></div> }
           </dl>
         </div>
 
@@ -83,7 +87,7 @@ export class ProjectDetailDialogComponent {
   constructor(@Inject(MAT_DIALOG_DATA) data: { project: ProjectRequest }, public ref: MatDialogRef<ProjectDetailDialogComponent>) {
     this.p = data.project;
     this.level = PROJECT_LEVEL[this.p.status];
-    this.priorityLevel = PRIORITY_LEVEL[this.p.priority];
+    this.priorityLevel = PRIORITY_LEVEL[this.p.priority] ?? 'neutral';
     this.history = [...this.p.history].reverse();
     this.rc = resourceCost(this.p);
     this.total = projectTotal(this.p);

@@ -43,7 +43,7 @@ export interface Submission {
   emailError?: string;
 }
 
-export interface CycleSettings { year: string; cutOff: string; increasePct: number; warnPct: number; to: string; cc: string; bcc: string }
+export interface CycleSettings { year: string; cycleName: string; departments: string[]; cutOff: string; increasePct: number; warnPct: number; to: string; cc: string; bcc: string }
 export interface Issue { level: 'error' | 'warning'; text: string }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -64,7 +64,7 @@ export class BudgetCycle {
   private seq = 0;
 
   readonly status = signal<CycleStatus>('Draft');
-  readonly settings = signal<CycleSettings>({ year: CURRENT_FY, cutOff: iso(45), increasePct: 5, warnPct: 15, to: 'budget.team@omantel.om', cc: 'finance.planning@omantel.om', bcc: '' });
+  readonly settings = signal<CycleSettings>({ year: CURRENT_FY, cycleName: `${CURRENT_FY} annual budget`, departments: ['Customer Care Unit'], cutOff: iso(45), increasePct: 5, warnPct: 15, to: 'budget.team@omantel.om', cc: 'finance.planning@omantel.om', bcc: '' });
   readonly submissions = signal<Submission[]>([]);
   readonly reopenLog = signal<Array<{ at: string; by: string; reason: string }>>([]);
 
@@ -344,7 +344,7 @@ export class BudgetCycle {
   saveSettings(s: Partial<CycleSettings>) {
     const before = this.settings();
     this.settings.update((x) => ({ ...x, ...s }));
-    this.log('Budget Cycle Settings Changed', before.year, 'Cut-off, increase percentage or recipients changed.', JSON.stringify({ cutOff: before.cutOff, pct: before.increasePct, to: before.to }), JSON.stringify({ cutOff: this.settings().cutOff, pct: this.settings().increasePct, to: this.settings().to }));
+    this.log('Budget Cycle Settings Changed', before.year, 'Cut-off, departments, increase percentage or recipients changed.', JSON.stringify({ cutOff: before.cutOff, pct: before.increasePct, to: before.to, departments: before.departments }), JSON.stringify({ cutOff: this.settings().cutOff, pct: this.settings().increasePct, to: this.settings().to, departments: this.settings().departments }));
   }
 
   // ---------- workflow ----------
@@ -421,7 +421,7 @@ export class BudgetCycle {
     const s = this.settings();
     const last = this.submissions()[0];
     const summary = [
-      ['Financial year', s.year], ['Budget cycle status', this.status()], ['Submission date', last ? last.at.slice(0, 10) : 'Not submitted yet'], ['Business unit', 'Customer Care (CRC)'],
+      ['Financial year', s.year], ['Budget cycle', s.cycleName], ['Applicable departments', s.departments.join(', ')], ['Budget cycle status', this.status()], ['Submission date', last ? last.at.slice(0, 10) : 'Not submitted yet'], ['Business unit', 'Customer Care (CRC)'],
       ['Applied increase %', s.increasePct], ['Total budget (OMR)', t.total], ['Outsourcing (OMR)', t.outsourcing], ['  Salaries (OMR)', t.salaries], ['  Incentives (OMR)', t.incentives], ['  Overtime (OMR)', t.overtime], ['  OJT (OMR)', t.ojt],
       ['  Other (OMR)', t.other], ['Petty cash (OMR)', t.petty], ['Projects (OMR)', t.projects], ['Head-count-related costs (OMR)', t.salaries], ['Previous-year budget (OMR)', t.previous], ['Variance (OMR)', t.variance],
       ['Variance %', Math.round(t.variancePct * 10) / 10], ['Total proposed head count', t.headCount], ['Submission status', this.status()],
@@ -432,7 +432,7 @@ export class BudgetCycle {
       'Variance from previous year': this.annual(l) - this.prevAnnual(l), Incentive: l.incentive, Overtime: l.overtime, OJT: l.ojt, 'Adjustment reason': l.reason,
     }));
     const petty = this.petty().map((l) => ({ Category: l.category, 'Previous-year amount': l.prev, 'Increase %': s.increasePct, 'System-calculated amount': this.pettySystem(l), 'User-adjusted amount': l.adjustment, 'Final proposed amount': this.pettyFinal(l), 'Variance from previous year': this.pettyFinal(l) - l.prev, 'Monthly amount': Math.round(this.pettyFinal(l) / 12), 'Adjustment reason': l.reason }));
-    const projects = this.projectsIncluded().map((p) => ({ Project: p.name, 'Project status': p.projectStatus, Priority: p.priority, 'Estimated cost': p.budget, 'Resource cost': resourceCost(p), Total: projectTotal(p), 'Head count': p.headCount, Justification: p.reason, 'Submission status': p.status }));
+    const projects = this.projectsIncluded().map((p) => ({ Reference: p.reference ?? '', Project: p.name, Department: p.department ?? '', 'Project status': p.projectStatus, Priority: p.priority, Currency: p.currency, 'Estimated cost': p.budget, 'Resource cost': resourceCost(p), 'Total (OMR)': projectTotal(p), 'Head count': p.headCount, Justification: p.reason, 'Submission status': p.status }));
     return { summary, outsourcing, petty, projects };
   }
 
@@ -443,7 +443,7 @@ export class BudgetCycle {
       ...sh.summary.map((r) => `${r.Item}: ${typeof r.Value === 'number' ? r.Value.toLocaleString('en-GB') : r.Value}`),
       '', 'Outsourcing', ...sh.outsourcing.map((r) => `${r['Resource category']}: HC ${r['Proposed head count']}, ${Number(r['Final proposed amount']).toLocaleString('en-GB')} OMR (was ${Number(r['Previous-year amount']).toLocaleString('en-GB')})`),
       '', 'Petty cash', ...sh.petty.map((r) => `${r.Category}: ${Number(r['Final proposed amount']).toLocaleString('en-GB')} OMR`),
-      '', 'Projects', ...sh.projects.map((r) => `${r.Project} (${r['Project status']}, ${r.Priority}): ${Number(r.Total).toLocaleString('en-GB')} OMR`),
+      '', 'Projects', ...sh.projects.map((r) => `${r.Project} (${r['Project status']}, ${r.Priority}): ${Number(r['Total (OMR)']).toLocaleString('en-GB')} OMR`),
     ];
   }
 

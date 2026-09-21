@@ -5,7 +5,7 @@ import { CURRENT_FY, ProjectEvent, ProjectRequest, SEED_PROJECTS, projectTotal }
 export type ProjectInput = Omit<ProjectRequest, 'id' | 'requestedBy' | 'status' | 'updatedAt' | 'history' | 'decisionNote' | 'decidedBy' | 'decidedAt' | 'copiedFrom' | 'submittedAt'>;
 
 /**
- * Project budget requests. Requesters (Team Lead / Line Manager / Project Manager) add, edit and cancel projects and submit them;
+ * Project budget requests. Requesters (Line Manager / Project Manager) add, edit and cancel projects and submit them;
  * the approver (Budget Owner) includes, returns or excludes each one. Included projects feed the next-year budget cycle;
  * every project stays in the history with who decided and why.
  */
@@ -51,6 +51,10 @@ export class ProjectRequests {
     const hc = Number(v.headCount ?? 0);
     if (!Number.isInteger(hc) || hc < 0) return fail('Head count must be a whole number, zero or more.');
     if (hc > 0 && (!v.resourceRole?.trim() || !(Number(v.costPerResource) >= 0) || !(Number(v.months) > 0))) return fail('Head count needs the resource role, the cost per resource and the number of months.');
+    for (const [label, val] of [['Annual cost', v.annualCost], ['Monthly cost', v.monthlyCost], ['Cost per resource', v.costPerResource]] as const) if (val !== undefined && val !== null && !(Number(val) >= 0)) return fail(`${label} must be a number that is not negative.`);
+    if (v.annualCost !== undefined && Number(v.annualCost) > cost) return fail('The annual cost cannot be higher than the total estimated cost.');
+    if (v.from && v.to && v.from > v.to) return fail('The end date cannot be before the start date.');
+    if (hc > 0 && (!v.resourceType || !v.resourceSource)) return fail('For head count, say whether the resource is new or existing, and whether it is internal or outsourced.');
     const dup = this.projects().find((p) => p.id !== editingId && p.financialYear === v.financialYear && p.name.trim().toLowerCase() === v.name!.trim().toLowerCase() && p.status !== 'Cancelled');
     if (dup) return fail(`"${dup.name}" is already submitted for ${v.financialYear}. Edit that project instead of adding a duplicate.`);
     if (v.projectStatus === 'Need Cancellation' && cost > 0) warnings.push('A project marked for cancellation has a positive cost. The justification should explain it.');

@@ -25,6 +25,9 @@ export const ACCRUAL_LEVEL: Record<string, StatusLevel> = { 'Not Generated': 'ne
 export const RULES = ['Previous-month actual', 'Previous-month forecast', 'Latest available actual', 'Contractual fixed amount', 'Manual input'] as const;
 export type Rule = (typeof RULES)[number];
 
+/** A joiner (from `day`) or leaver (last day `day`) in a month: their salary is only paid for part of the month. */
+export interface Movement { month: number; type: 'Joiner' | 'Leaver'; day: number; count: number }
+
 export interface AccrualLine {
   id: string;
   vendor: string;
@@ -39,6 +42,7 @@ export interface AccrualLine {
   /** Monthly salary per resource, OMR. */
   salary: number;
   hcPlan: number[];
+  movements?: Movement[];
   /** Contract baseline used by the "contractual fixed amount" rule and when there is no history yet. */
   base: Amounts;
 }
@@ -47,6 +51,7 @@ export interface AccrualCell {
   lineId: string;
   month: number;
   hc: number;
+  moves: Movement[];
   /** The amount the system or a user forecast; it is kept after the invoice arrives, for audit. */
   forecast: Amounts;
   /** What the system generated, before any manual change. */
@@ -75,6 +80,10 @@ export interface AccrualSettings {
   trigger: 'Invoice approved' | 'Invoice issued';
   lockAfter: 'Invoice approval' | 'Invoice issuance' | 'Month-end closure' | 'Finance approval';
   varianceThreshold: number;
+  /** AF-009: whether a user may type a new total (the difference goes to other charges). */
+  allowTotalOverride: boolean;
+  /** The day of the month by which the previous month's period should be closed. */
+  closeByDay: number;
 }
 
 export interface GenerationRun { id: string; at: string; trigger: 'Scheduled' | 'Manual'; month: string; result: 'Success' | 'Failed'; created: number; note: string }
@@ -90,14 +99,17 @@ const sum = (a: Partial<Amounts>) => COMPS.reduce((s, k) => s + (a[k] ?? 0), 0);
 const LINES: AccrualLine[] = [
   { id: 'AL-1', vendor: 'Infoline LLC', vendorCode: 'INF', contract: '2025-013T-00-01', contractName: 'Customer Care Outsourcing 2025', contractType: 'Outsourcing', contractStatus: 'Active', category: 'Bachelor tier (PO1)', startDate: '2025-01-01', endDate: '2027-06-30', salary: 542, hcPlan: plan(4), base: { salary: 0, overtime: 150, performance: 0, other: 0 } },
   { id: 'AL-2', vendor: 'Infoline LLC', vendorCode: 'INF', contract: '2025-013T-00-01', contractName: 'Customer Care Outsourcing 2025', contractType: 'Outsourcing', contractStatus: 'Active', category: 'Diploma tier (PO2)', startDate: '2025-01-01', endDate: '2027-06-30', salary: 470, hcPlan: plan(7, [4, 1]), base: { salary: 0, overtime: 260, performance: 300, other: 100 } },
-  { id: 'AL-3', vendor: 'Infoline LLC', vendorCode: 'INF', contract: '2025-013T-00-01', contractName: 'Customer Care Outsourcing 2025', contractType: 'Outsourcing', contractStatus: 'Active', category: 'Non-Diploma tier (PO3 - Outsource)', startDate: '2025-01-01', endDate: '2027-06-30', salary: 404, hcPlan: plan(8, [5, 1], [10, 1]), base: { salary: 0, overtime: 350, performance: 500, other: 0 } },
+  { id: 'AL-3', vendor: 'Infoline LLC', vendorCode: 'INF', contract: '2025-013T-00-01', contractName: 'Customer Care Outsourcing 2025', contractType: 'Outsourcing', contractStatus: 'Active', category: 'Non-Diploma tier (PO3 - Outsource)', startDate: '2025-01-01', endDate: '2027-06-30', salary: 404, hcPlan: plan(8, [5, 1], [10, 1]), movements: [{ month: 5, type: 'Joiner', day: 16, count: 1 }], base: { salary: 0, overtime: 350, performance: 500, other: 0 } },
   { id: 'AL-4', vendor: 'Green Umbrella Services', vendorCode: 'GUS', contract: '2025-021T-00-03', contractName: 'Agent Services 2025', contractType: 'Outsourcing', contractStatus: 'Expiring Soon', category: 'Bachelor tier (PO1)', startDate: '2025-03-01', endDate: `${FY_YEAR}-11-30`, salary: 560, hcPlan: plan(5), base: { salary: 0, overtime: 180, performance: 220, other: 0 } },
-  { id: 'AL-5', vendor: 'Green Umbrella Services', vendorCode: 'GUS', contract: '2025-021T-00-03', contractName: 'Agent Services 2025', contractType: 'Outsourcing', contractStatus: 'Active', category: 'Diploma tier (PO2)', startDate: '2025-03-01', endDate: `${FY_YEAR + 1}-02-28`, salary: 480, hcPlan: plan(6, [6, -1]), base: { salary: 0, overtime: 200, performance: 260, other: 0 } },
+  { id: 'AL-5', vendor: 'Green Umbrella Services', vendorCode: 'GUS', contract: '2025-021T-00-03', contractName: 'Agent Services 2025', contractType: 'Outsourcing', contractStatus: 'Active', category: 'Diploma tier (PO2)', startDate: '2025-03-01', endDate: `${FY_YEAR + 1}-02-28`, salary: 480, hcPlan: plan(6, [6, -1]), movements: [{ month: 6, type: 'Leaver', day: 20, count: 1 }], base: { salary: 0, overtime: 200, performance: 260, other: 0 } },
 ];
+
+/** The invoice total includes 5% VAT; the accrual is the cost without it. */
+const VAT = 0.05;
 
 const DEFAULT_SETTINGS: AccrualSettings = {
   frequency: 'Monthly', dayRule: 'First day of the month', day: 1, year: FY_LABEL, contractTypes: ['Outsourcing'], startMonth: 0, endMonth: 11,
-  overtimeRule: 'Previous-month actual', performanceRule: 'Previous-month actual', performanceLabel: 'Incentive', trigger: 'Invoice approved', lockAfter: 'Month-end closure', varianceThreshold: 10,
+  overtimeRule: 'Previous-month actual', performanceRule: 'Previous-month actual', performanceLabel: 'Incentive', trigger: 'Invoice approved', lockAfter: 'Month-end closure', varianceThreshold: 10, allowTotalOverride: false, closeByDay: 25,
 };
 
 @Injectable({ providedIn: 'root' })
@@ -119,6 +131,8 @@ export class AccrualForecast {
 
   constructor() {
     this.cells.set(this.seed());
+    const cl = this.closure();
+    if (cl) this.store.notify(`Forecast period ${cl.label} is ${cl.days < 0 ? 'past its closing day' : 'approaching closure'}.`, `Close it by day ${this.settings().closeByDay} once its invoices are actualized.`, 'amber', '/contracts-budget/accrual-forecast');
     // AF-013/016: an invoice reaching the configured status replaces the forecast with the actual amount
     effect(() => {
       const runs = this.store.invoiceRuns(), pays = this.store.payments(), trigger = this.settings().trigger;
@@ -128,7 +142,7 @@ export class AccrualForecast {
           const pay = pays.find((p) => p.id === run.paymentId);
           if (!pay || (trigger === 'Invoice issued' && pay.status === 'Pending')) continue;
           this.done.add(run.paymentId);
-          this.actualize(run.vendor, run.period, pay.invoiceAmount, pay.invoiceRef ?? pay.id, pay.status === 'Pending' ? 'Approved' : 'Issued');
+          this.actualize(run.vendor, run.period, pay.invoiceAmount / (1 + VAT), pay.invoiceRef ?? pay.id, pay.status === 'Pending' ? 'Approved' : 'Issued');
         }
       });
     });
@@ -162,9 +176,13 @@ export class AccrualForecast {
   shownTotal = (c: AccrualCell) => COMPS.reduce((s, k) => s + this.shown(c, k), 0);
   invoiceState = (c?: AccrualCell) => c?.invoice?.status ?? 'No invoice';
 
+  readonly approved = signal<number[]>([]);
+  readonly pending = signal<string | null>(null);
+
   locked(c: AccrualCell) {
     if (c.closed) return true;
     const l = this.settings().lockAfter;
+    if (l === 'Finance approval') return this.approved().includes(c.month);
     return (l === 'Invoice approval' || l === 'Invoice issuance') && COMPS.some((k) => c.actual[k] !== undefined);
   }
   /** AF-009: only the current month's forecast can be adjusted, and only while it is not locked. */
@@ -183,6 +201,42 @@ export class AccrualForecast {
     }
     return '—';
   });
+
+  /** AF-005: head count × salary, where a joiner is paid from their first day and a leaver up to their last day. */
+  salaryFor(line: AccrualLine, hc: number, moves: Movement[], m: number) {
+    const dim = new Date(FY_YEAR, m + 1, 0).getDate();
+    let heads = hc;
+    for (const mv of moves) heads += mv.type === 'Joiner' ? -mv.count * (1 - (dim - mv.day + 1) / dim) : mv.count * (mv.day / dim);
+    return Math.round(heads * line.salary);
+  }
+
+  /** The previous month's period while it is still open and close to (or past) its closing day. */
+  readonly closure = computed(() => {
+    const m = CUR_MONTH - 1;
+    if (m < 0 || this.cells().filter((c) => c.month === m).every((c) => c.closed)) return null;
+    const days = this.settings().closeByDay - NOW.getDate();
+    return days <= 5 ? { month: m, label: `${MONTH_LONG[m]} ${FY_YEAR}`, days } : null;
+  });
+
+  /** What the scheduler does on the generation day, so the behaviour can be tried (there is no real clock job in this prototype). */
+  runSchedule(): string {
+    const freq = this.settings().frequency, label = `${MONTH_LONG[CUR_MONTH]} ${FY_YEAR}`;
+    if (freq === 'Manual') return 'The frequency is Manual, so nothing runs by itself.';
+    if (freq === 'Monthly with manual confirmation') {
+      this.pending.set(label);
+      this.store.log('Forecast Generation Waiting', label, 'The scheduled run is waiting for a manual confirmation.');
+      this.store.notify(`Accrual forecast for ${label} is waiting for your confirmation.`, 'Open Accrual Forecast to confirm the generation.', 'amber', '/contracts-budget/accrual-forecast');
+      return `The scheduled run is waiting for a confirmation on the Accrual Forecast screen.`;
+    }
+    const r = this.generate('Scheduled');
+    return r.result === 'Success' ? `Scheduled run finished. ${r.note}` : `Scheduled run failed. ${r.note}`;
+  }
+
+  confirmPending() {
+    if (!this.pending()) return null;
+    this.pending.set(null);
+    return this.generate('Scheduled');
+  }
 
   // ---------- generation ----------
   private make(line: AccrualLine, m: number, cells: AccrualCell[]): AccrualCell {
@@ -203,8 +257,9 @@ export class AccrualForecast {
       return [line.base[k], 'Contract data'];
     };
     const [ot, otSrc] = pick('overtime'), [perf, perfSrc] = pick('performance');
-    const amt: Amounts = { salary: Math.round(hc * line.salary), overtime: Math.round(ot), performance: Math.round(perf), other: line.base.other };
-    return { lineId: line.id, month: m, hc, forecast: { ...amt }, original: { ...amt }, actual: {}, sources: { salary: 'Contract data + Workforce System', overtime: otSrc, performance: perfSrc, other: 'Contract data' }, manual: false, recalculated: false, closed: false };
+    const moves = (line.movements ?? []).filter((x) => x.month === m).map((x) => ({ ...x }));
+    const amt: Amounts = { salary: this.salaryFor(line, hc, moves, m), overtime: Math.round(ot), performance: Math.round(perf), other: line.base.other };
+    return { lineId: line.id, month: m, hc, moves, forecast: { ...amt }, original: { ...amt }, actual: {}, sources: { salary: moves.length ? 'Contract rate × head count, part month for joiners and leavers' : 'Contract rate × expected head count', overtime: otSrc, performance: perfSrc, other: 'Contract data' }, manual: false, recalculated: false, closed: false };
   }
 
   private seed(): AccrualCell[] {
@@ -259,19 +314,33 @@ export class AccrualForecast {
   }
 
   // ---------- manual adjustment ----------
-  edit(lineId: string, m: number, v: { hc: number; salary: number; overtime: number; performance: number; other: number }, reason: string): string | null {
+  edit(lineId: string, m: number, v: { hc: number; salary: number; overtime: number; performance: number; other: number; joiners?: number; joinDay?: number; leavers?: number; leaveDay?: number; total?: number }, reason: string): string | null {
     const c = this.cell(lineId, m), line = this.line(lineId);
     if (!c || !this.canEdit(c)) return 'This month cannot be edited. It is locked or is not the current month.';
-    if ([v.hc, v.salary, v.overtime, v.performance, v.other].some((n) => !isFinite(n) || n < 0)) return 'Amounts and the resource count cannot be negative.';
-    const salary = v.hc !== c.hc && v.salary === c.forecast.salary ? Math.round(v.hc * line.salary) : v.salary; // a new head count re-prices the salary unless it was typed by hand
-    const next: Amounts = { salary, overtime: v.overtime, performance: v.performance, other: v.other };
-    const changes: Array<{ field: string; from: number; to: number }> = [];
+    const joiners = v.joiners ?? 0, leavers = v.leavers ?? 0, dim = new Date(FY_YEAR, m + 1, 0).getDate();
+    if ([v.hc, v.salary, v.overtime, v.performance, v.other, joiners, leavers].some((n) => !isFinite(n) || n < 0)) return 'Amounts, the resource count, joiners and leavers cannot be negative.';
+    if (![v.hc, joiners, leavers].every(Number.isInteger)) return 'The resource count, joiners and leavers must be whole numbers.';
+    const inMonth = (d?: number) => Number.isInteger(d) && d! >= 1 && d! <= dim;
+    if ((joiners > 0 && !inMonth(v.joinDay)) || (leavers > 0 && !inMonth(v.leaveDay))) return `The day of a joiner or leaver must be between 1 and ${dim}.`;
+    const moves: Movement[] = [...(joiners > 0 ? [{ month: m, type: 'Joiner' as const, day: v.joinDay!, count: joiners }] : []), ...(leavers > 0 ? [{ month: m, type: 'Leaver' as const, day: v.leaveDay!, count: leavers }] : [])];
+    const movesChanged = JSON.stringify(moves) !== JSON.stringify(c.moves);
+    const reprice = (v.hc !== c.hc || movesChanged) && v.salary === c.forecast.salary; // a new head count or part-month movement re-prices the salary unless it was typed by hand
+    const next: Amounts = { salary: reprice ? this.salaryFor(line, v.hc, moves, m) : v.salary, overtime: v.overtime, performance: v.performance, other: v.other };
+    if (v.total !== undefined && Math.round(v.total) !== sum(c.forecast) && Math.round(v.total) !== sum(next)) {
+      if (!this.settings().allowTotalOverride) return 'The total can only be typed when Forecast Settings allow it. Change the components instead.';
+      next.other += Math.round(v.total) - sum(next); // the difference is booked as other charges
+      if (next.other < 0) return 'That total is too low: it would make the other charges negative.';
+    }
+    const changes: Array<{ field: string; from: number; to: number; comp?: Comp }> = [];
     if (v.hc !== c.hc) changes.push({ field: 'Resource count', from: c.hc, to: v.hc });
-    for (const k of COMPS) if (next[k] !== c.forecast[k]) changes.push({ field: COMP_LABEL[k], from: c.forecast[k], to: next[k] });
+    const count = (t: Movement['type'], list: Movement[]) => list.filter((x) => x.type === t).reduce((n, x) => n + x.count, 0);
+    for (const t of ['Joiner', 'Leaver'] as const) if (count(t, moves) !== count(t, c.moves)) changes.push({ field: t + 's', from: count(t, c.moves), to: count(t, moves) });
+    for (const k of COMPS) if (next[k] !== c.forecast[k]) changes.push({ field: COMP_LABEL[k], from: c.forecast[k], to: next[k], comp: k });
     if (!changes.length) return 'Nothing was changed.';
     if (!reason.trim()) return 'Enter the reason for the adjustment.'; // AF-010
     const at = new Date().toISOString();
-    this.cells.update((list) => list.map((x) => (x === c ? { ...x, hc: v.hc, forecast: next, manual: true, recalculated: false, sources: { ...x.sources, ...Object.fromEntries(changes.filter((ch) => ch.field !== 'Resource count').map((ch) => [COMPS.find((k) => COMP_LABEL[k] === ch.field)!, 'Manual update'])) } } : x)));
+    const touched = Object.fromEntries(changes.filter((ch) => ch.comp).map((ch) => [ch.comp!, 'Manual update']));
+    this.cells.update((list) => list.map((x) => (x === c ? { ...x, hc: v.hc, moves, forecast: next, manual: true, recalculated: false, sources: { ...x.sources, ...touched } } : x)));
     this.adjustments.update((a) => [...changes.map((ch) => ({ id: this.id('ADJ'), at, by: CURRENT_USER, lineId, month: m, action: 'Manual update' as const, field: ch.field, from: ch.from, to: ch.to, reason: reason.trim() })), ...a]);
     this.store.log('Forecast Updated', `${line.contract} · ${MONTH_LONG[m]}`, changes.map((ch) => `${ch.field}: ${ch.from.toLocaleString()} → ${ch.to.toLocaleString()}`).join('; ') + `. Reason: ${reason.trim()}`);
     this.store.notify('Forecast manually updated.', `${line.vendor} · ${line.category} · ${MONTH_LONG[m]}`, 'amber', '/contracts-budget/accrual-forecast');
@@ -285,16 +354,28 @@ export class AccrualForecast {
     const fresh = this.make(line, m, this.cells().filter((x) => x !== c));
     const at = new Date().toISOString();
     const diffs = COMPS.filter((k) => fresh.forecast[k] !== c.forecast[k]);
-    this.cells.update((list) => list.map((x) => (x === c ? { ...x, hc: fresh.hc, forecast: fresh.forecast, original: fresh.original, sources: fresh.sources, manual: false, recalculated: true } : x)));
+    this.cells.update((list) => list.map((x) => (x === c ? { ...x, hc: fresh.hc, moves: fresh.moves, forecast: fresh.forecast, original: fresh.original, sources: fresh.sources, manual: false, recalculated: true } : x)));
     this.adjustments.update((a) => [...diffs.map((k) => ({ id: this.id('ADJ'), at, by: CURRENT_USER, lineId, month: m, action: 'Recalculated' as const, field: COMP_LABEL[k], from: c.forecast[k], to: fresh.forecast[k], reason: 'Recalculated from the latest source data.' })), ...a]);
     this.store.log('Forecast Recalculated', `${line.contract} · ${MONTH_LONG[m]}`, diffs.length ? diffs.map((k) => `${COMP_LABEL[k]}: ${c.forecast[k].toLocaleString()} → ${fresh.forecast[k].toLocaleString()}`).join('; ') : 'No amount changed.');
   }
 
   /** AF-024 / 1.13: close a month so standard users cannot change it. */
-  closePeriod(m: number) {
+  /** AF-024: Finance signs the month off; with the "Finance approval" rule this locks it and lets it be closed. */
+  approvePeriod(m: number): string | null {
+    if (m > CUR_MONTH) return 'A future month cannot be approved yet.';
+    if (this.approved().includes(m)) return `${MONTH_LONG[m]} is already approved.`;
+    this.approved.update((a) => [...a, m]);
+    this.store.log('Forecast Period Approved', `${MONTH_LONG[m]} ${FY_YEAR}`, 'Finance approved the period.');
+    this.store.notify(`Forecast period approved by Finance: ${MONTH_LONG[m]} ${FY_YEAR}.`, 'It can now be closed.', 'green', '/contracts-budget/accrual-forecast');
+    return null;
+  }
+
+  closePeriod(m: number): string | null {
+    if (this.settings().lockAfter === 'Finance approval' && !this.approved().includes(m)) return 'Finance has to approve this period before it can be closed.';
     this.cells.update((list) => list.map((c) => (c.month === m ? { ...c, closed: true } : c)));
     this.store.log('Forecast Period Closed', `${MONTH_LONG[m]} ${FY_YEAR}`, 'The period is now read-only for standard users.');
     this.store.notify(`Forecast period closed: ${MONTH_LONG[m]} ${FY_YEAR}.`, 'It can no longer be edited.', 'green', '/contracts-budget/accrual-forecast');
+    return null;
   }
   openLines = (m: number) => this.cells().filter((c) => c.month === m && !c.closed && COMPS.some((k) => c.actual[k] === undefined)).length;
 
@@ -379,8 +460,10 @@ export type GroupBy = 'Team' | 'Month' | 'Team and Month' | 'Cost Component';
 export const GROUPS: GroupBy[] = ['Team and Month', 'Team', 'Month', 'Cost Component'];
 
 export interface TeamRow { team: string; month: number; hc: number; salary: number; overtime: number; performance: number; incentive: number; status: 'Approved' | 'Draft' }
-export interface TeamCriteria { year: string; mode: 'Full financial year' | 'Date range' | 'Selected months'; from: number; to: number; months: number[]; teams: string[]; comps: TeamComp[]; group: GroupBy; status: 'All' | 'Approved' | 'Draft' }
-export interface TeamExport { id: string; at: string; by: string; year: string; months: string; teams: string; comps: string; group: string; file: string; status: 'Generated' | 'Failed'; format: 'Excel' | 'CSV' }
+export interface TeamCriteria { year: string; mode: 'Full financial year' | 'Date range' | 'Selected months'; from: number; to: number; months: number[]; teams: string[]; comps: TeamComp[]; group: GroupBy; status: 'All' | 'Approved' | 'Draft'; sheets: 'One sheet' | 'One sheet per team' }
+export interface TeamExport { id: string; at: string; by: string; year: string; months: string; teams: string; comps: string; group: string; file: string; status: 'Generated' | 'Failed'; format: 'Excel' | 'CSV'; emailed: string }
+/** A named set of teams that can be picked in one click (TF-003 "team grouping, where configured"). */
+export interface TeamGroup { name: string; teams: string[] }
 
 const TEAM_BASE: Record<string, { hc: number; rate: number; ot: number; perf: number; inc: number }> = {
   Sales: { hc: 22, rate: 520, ot: 0.12, perf: 40, inc: 0.05 },
@@ -398,6 +481,18 @@ export class TeamForecast {
   private seq = 0;
   readonly years = [FY_LABEL, 'FY' + (FY_YEAR + 1)];
   readonly exports = signal<TeamExport[]>([]);
+  readonly groups = signal<TeamGroup[]>([{ name: 'Front line', teams: ['Sales', 'Retention', 'Complaints'] }, { name: 'Back office', teams: ['Debt Recovery', 'Billing Complaints', 'Payment Channels Support'] }]);
+  /** Who receives the exported file when the CRC team chooses to email it. */
+  readonly recipients = signal('budget.team@omantel.om');
+  /** Teams each role may see, from the user's organizational permissions. A role that is not listed sees every team. */
+  readonly scope = signal<Record<string, string[]>>({ 'Read-Only User': ['Sales', 'Retention', 'Complaints'] });
+  readonly scopeRoles = ['Contract Mgmt Team', 'Contract Mgmt Manager', 'Budget Owner', 'Budget Team', 'Read-Only User'];
+
+  readonly visibleTeams = computed(() => this.scope()[this.store.currentRole()] ?? TEAMS);
+  readonly visibleGroups = computed(() => this.groups().map((g) => ({ ...g, teams: g.teams.filter((t) => this.visibleTeams().includes(t)) })).filter((g) => g.teams.length));
+
+  /** The criteria limited to the teams this role may see. */
+  private sc(c: TeamCriteria): TeamCriteria { return { ...c, teams: c.teams.filter((t) => this.visibleTeams().includes(t)) }; }
 
   /** The latest CRC forecast per team and month. Past and current months are approved, later months are still drafts. */
   data(year: string): TeamRow[] {
@@ -419,7 +514,7 @@ export class TeamForecast {
   /** TF-010: the reasons an export cannot go ahead. */
   problems(c: TeamCriteria): string[] {
     const p: string[] = [];
-    if (!c.teams.length) p.push('Select at least one team.');
+    if (!this.sc(c).teams.length) p.push(c.teams.length ? 'None of the selected teams is open to your role.' : 'Select at least one team.');
     if (!this.months(c).length) p.push(c.mode === 'Date range' ? 'The end month is before the start month.' : 'Select at least one month or a forecast period.');
     if (!c.comps.length) p.push('Select at least one cost component.');
     if (!p.length && !this.filtered(c).length) p.push('There is no forecast data for the selected filters.');
@@ -427,23 +522,23 @@ export class TeamForecast {
   }
 
   filtered(c: TeamCriteria): TeamRow[] {
-    const months = this.months(c);
-    return this.data(c.year).filter((r) => c.teams.includes(r.team) && months.includes(r.month) && (c.status === 'All' || r.status === c.status));
+    const months = this.months(c), teams = this.sc(c).teams;
+    return this.data(c.year).filter((r) => teams.includes(r.team) && months.includes(r.month) && (c.status === 'All' || r.status === c.status));
   }
 
   /** Rows exactly as previewed and exported: only the selected components, grouped as chosen. Grouping never changes a value. */
   view(c: TeamCriteria) {
-    const rows = this.filtered(c), comps = TEAM_COMPS.filter((k) => c.comps.includes(k));
+    const rows = this.filtered(c), teams = this.sc(c).teams, comps = TEAM_COMPS.filter((k) => c.comps.includes(k));
     const total = (r: Partial<Record<TeamComp, number>>) => comps.reduce((s, k) => s + (r[k] ?? 0), 0);
-    const agg = (rs: TeamRow[]) => ({ hc: 0, ...Object.fromEntries(comps.map((k) => [k, rs.reduce((s, r) => s + r[k], 0)])) }) as { hc: number } & Record<TeamComp, number>;
+    const agg = (rs: TeamRow[]) => Object.fromEntries(comps.map((k) => [k, rs.reduce((s, r) => s + r[k], 0)])) as Record<TeamComp, number>;
     let out: Array<Record<string, any>> = [];
     if (c.group === 'Cost Component') {
       const long = comps.flatMap((k) => rows.map((r) => ({ 'Cost Component': TEAM_COMP_LABEL[k], Team: r.team, Month: MONTH_LONG[r.month], Amount: r[k] })));
       return { columns: ['Cost Component', 'Team', 'Month', 'Amount'], rows: long as Array<Record<string, any>>, comps, total: long.reduce((s, r) => s + r.Amount, 0) };
     }
-    if (c.group === 'Team') out = TEAMS.filter((t) => c.teams.includes(t)).map((t) => { const rs = rows.filter((r) => r.team === t); const a = agg(rs); return { Team: t, Month: `${rs.length} month(s)`, 'Head Count': rs.length ? Math.round(rs.reduce((s, r) => s + r.hc, 0) / rs.length) : 0, ...Object.fromEntries(comps.map((k) => [k, a[k]])) }; }).filter((r) => r['Head Count'] > 0);
-    else if (c.group === 'Month') out = this.months(c).map((m) => { const rs = rows.filter((r) => r.month === m); const a = agg(rs); return { Team: `${new Set(rs.map((r) => r.team)).size} team(s)`, Month: MONTH_LONG[m], 'Head Count': rs.reduce((s, r) => s + r.hc, 0), ...Object.fromEntries(comps.map((k) => [k, a[k]])) }; }).filter((r) => r['Head Count'] > 0);
-    else out = rows.sort((a, b) => TEAMS.indexOf(a.team) - TEAMS.indexOf(b.team) || a.month - b.month).map((r) => ({ Team: r.team, Month: MONTH_LONG[r.month], 'Head Count': r.hc, ...Object.fromEntries(comps.map((k) => [k, r[k]])) }));
+    if (c.group === 'Team') out = TEAMS.filter((t) => teams.includes(t)).map((t) => { const rs = rows.filter((r) => r.team === t); return { Team: t, Month: `${rs.length} month(s)`, 'Head Count': rs.length ? Math.round(rs.reduce((s, r) => s + r.hc, 0) / rs.length) : 0, ...agg(rs) }; }).filter((r) => r['Head Count'] > 0);
+    else if (c.group === 'Month') out = this.months(c).map((m) => { const rs = rows.filter((r) => r.month === m); return { Team: `${new Set(rs.map((r) => r.team)).size} team(s)`, Month: MONTH_LONG[m], 'Head Count': rs.reduce((s, r) => s + r.hc, 0), ...agg(rs) }; }).filter((r) => r['Head Count'] > 0);
+    else out = [...rows].sort((a, b) => TEAMS.indexOf(a.team) - TEAMS.indexOf(b.team) || a.month - b.month).map((r) => ({ Team: r.team, Month: MONTH_LONG[r.month], 'Head Count': r.hc, ...Object.fromEntries(comps.map((k) => [k, r[k]])) }));
     const columns = ['Team', 'Month', 'Head Count', ...comps.map((k) => TEAM_COMP_LABEL[k])];
     const named = out.map((r) => ({ Team: r['Team'], Month: r['Month'], 'Head Count': r['Head Count'], ...Object.fromEntries(comps.map((k) => [TEAM_COMP_LABEL[k], r[k]])) }));
     return { columns, rows: named as Array<Record<string, any>>, comps, total: out.reduce((s, r) => s + total(r), 0) };
@@ -451,18 +546,20 @@ export class TeamForecast {
 
   /** Totals for the summary sheet (TF-008): per team, per month, per component and overall. HC is not part of any money total. */
   totals(c: TeamCriteria) {
-    const rows = this.filtered(c), comps = TEAM_COMPS.filter((k) => c.comps.includes(k));
+    const rows = this.filtered(c), teams = this.sc(c).teams, comps = TEAM_COMPS.filter((k) => c.comps.includes(k));
     const t = (rs: TeamRow[]) => ({ ...Object.fromEntries(comps.map((k) => [TEAM_COMP_LABEL[k], rs.reduce((s, r) => s + r[k], 0)])), Total: rs.reduce((s, r) => s + comps.reduce((x, k) => x + r[k], 0), 0) });
     return {
-      byTeam: TEAMS.filter((x) => c.teams.includes(x) && rows.some((r) => r.team === x)).map((x) => ({ Team: x, ...t(rows.filter((r) => r.team === x)) })),
+      byTeam: TEAMS.filter((x) => teams.includes(x) && rows.some((r) => r.team === x)).map((x) => ({ Team: x, ...t(rows.filter((r) => r.team === x)) })),
       byMonth: this.months(c).filter((m) => rows.some((r) => r.month === m)).map((m) => ({ Month: MONTH_LONG[m], ...t(rows.filter((r) => r.month === m)) })),
       overall: t(rows),
     };
   }
 
-  export(c: TeamCriteria, format: 'Excel' | 'CSV'): string | undefined {
-    const problems = this.problems(c);
+  /** TF-007/008/009: the export, optionally with one worksheet per team, and optionally emailed to the Budget Team. */
+  export(criteria: TeamCriteria, format: 'Excel' | 'CSV', email = false): string | undefined {
+    const problems = this.problems(criteria);
     if (problems.length) { this.ui.toast(problems[0], 5000); return undefined; }
+    const c = this.sc(criteria);
     const stamp = new Date(), ref = `TF-${FY_YEAR}-${isoDate(stamp).replace(/-/g, '')}-${String(++this.seq).padStart(3, '0')}`;
     const v = this.view(c), tot = this.totals(c), months = this.months(c);
     const stem = `Team_Forecast_${c.year}_${ref}`;
@@ -471,19 +568,37 @@ export class TeamForecast {
     else {
       const meta = [
         ['Report name', 'Team Forecast'], ['Forecast version / reference', ref], ['Financial year', c.year], ['Forecast period', months.length === 12 ? 'Full financial year' : months.map((m) => MONTH_SHORT[m]).join(', ')], ['Selected teams', c.teams.join(', ')],
-        ['Selected cost components', c.comps.map((k) => TEAM_COMP_LABEL[k]).join(', ')], ['Grouped by', c.group], ['Exported by', CURRENT_USER], ['Export date and time', stamp.toLocaleString('en-GB')], ['Amounts', 'OMR. Head count is not part of any monetary total.'],
+        ['Selected cost components', c.comps.map((k) => TEAM_COMP_LABEL[k]).join(', ')], ['Grouped by', c.group], ['Worksheets', c.sheets], ['Exported by', CURRENT_USER], ['Export date and time', stamp.toLocaleString('en-GB')], ['Amounts', 'OMR. Head count is not part of any monetary total.'],
       ].map(([Field, Value]) => ({ Field, Value }));
       const summary = [
         ...tot.byTeam.map((r) => ({ Section: 'By team', Name: r.Team, ...pick(r) })), ...tot.byMonth.map((r) => ({ Section: 'By month', Name: r.Month, ...pick(r) })),
         { Section: 'Overall', Name: 'All selected teams and months', ...pick(tot.overall) },
       ];
-      name = this.ui.xlsxSheets(stem, [{ name: 'Team Forecast', rows: v.rows }, { name: 'Totals', rows: summary }, { name: 'Report Info', rows: meta }], false);
+      const perTeam = c.sheets === 'One sheet per team' ? tot.byTeam.map((r) => ({ name: r.Team, rows: this.view({ ...c, teams: [r.Team] }).rows })) : [];
+      name = this.ui.xlsxSheets(stem, [{ name: 'Team Forecast', rows: v.rows }, ...perTeam, { name: 'Totals', rows: summary }, { name: 'Report Info', rows: meta }], false);
     }
     if (!name) return undefined;
-    this.exports.update((l) => [{ id: ref, at: stamp.toISOString(), by: CURRENT_USER, year: c.year, months: months.length === 12 ? 'Full year' : months.map((m) => MONTH_SHORT[m]).join(', '), teams: c.teams.length === TEAMS.length ? 'All teams' : c.teams.join(', '), comps: c.comps.map((k) => TEAM_COMP_LABEL[k]).join(', '), group: c.group, file: name!, status: 'Generated', format }, ...l]);
+    const to = email ? this.recipients().trim() : '';
+    this.exports.update((l) => [{ id: ref, at: stamp.toISOString(), by: CURRENT_USER, year: c.year, months: months.length === 12 ? 'Full year' : months.map((m) => MONTH_SHORT[m]).join(', '), teams: c.teams.length === TEAMS.length ? 'All teams' : c.teams.join(', '), comps: c.comps.map((k) => TEAM_COMP_LABEL[k]).join(', '), group: c.group, file: name!, status: 'Generated', format, emailed: to }, ...l]);
     this.store.log('Team Forecast Exported', name, `${c.year} · ${months.length} month(s) · ${c.teams.length} team(s) · ${c.comps.map((k) => TEAM_COMP_LABEL[k]).join('/')} · grouped by ${c.group}. Reference ${ref}.`);
-    this.ui.toast(`Downloaded ${name}. Send it to the Budget Team.`);
+    if (email && !to) this.ui.toast(`Downloaded ${name}. It was not emailed: set the Budget Team recipients in Forecast Settings.`, 6000);
+    else if (email) { this.store.log('Team Forecast Emailed', name, `Sent to ${to}.`); this.ui.toast(`Downloaded ${name} and emailed it to ${to}.`, 5000); }
+    else this.ui.toast(`Downloaded ${name}. Send it to the Budget Team.`);
     return name;
+  }
+
+  // ---------- settings ----------
+  saveGroups(next: TeamGroup[]) {
+    this.groups.set(next);
+    this.store.log('Team Forecast Settings Changed', 'Team groups', next.map((g) => `${g.name}: ${g.teams.join(', ') || 'no teams'}`).join(' | ') || 'No groups.');
+  }
+  setScope(role: string, teams: string[]) {
+    this.scope.update((s) => { const n = { ...s }; if (teams.length === TEAMS.length) delete n[role]; else n[role] = teams; return n; });
+    this.store.log('Team Forecast Settings Changed', 'Team access', `${role} can see: ${teams.length === TEAMS.length ? 'all teams' : teams.join(', ') || 'no teams'}.`);
+  }
+  setRecipients(v: string) {
+    this.recipients.set(v);
+    this.store.log('Team Forecast Settings Changed', 'Recipients', `Budget Team recipients: ${v || 'none'}.`);
   }
 }
 

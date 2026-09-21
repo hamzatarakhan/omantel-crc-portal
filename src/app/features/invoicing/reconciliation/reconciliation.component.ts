@@ -24,7 +24,7 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
     <app-page-header
       title="Reconciliation Workspace"
       subtitle="Payable calculation from synced WFO attendance/overtime + 3 Clicks incentives, for validating the vendor invoice"
-      [breadcrumbs]="[{ label: 'Invoicing & Payments', link: '/invoicing/dashboard' }, { label: 'Reconciliation Workspace' }]"
+      [breadcrumbs]="[{ label: 'Invoicing & Payments', link: '/invoicing/reconciliation' }, { label: 'Reconciliation Workspace' }]"
     >
       <span class="status-chip status-chip--neutral">{{ store.period() }}</span>
       <app-status-chip [label]="status()" [level]="statusLevel()"></app-status-chip>

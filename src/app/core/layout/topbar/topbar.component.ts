@@ -232,15 +232,7 @@ export class TopbarComponent {
       .filter((c) => c.reference.toLowerCase().includes(q) || c.name.toLowerCase().includes(q) || c.vendorName.toLowerCase().includes(q))
       .slice(0, 4)
       .map((c) => ({ id: 'contract-' + c.id, icon: 'description', title: c.name, subtitle: `${c.reference} · ${c.vendorName}`, link: ['/contracts-budget/contracts', c.id] }));
-    const agents: SearchResult[] = this.store.agents()
-      .filter((a) => a.name.toLowerCase().includes(q) || a.employeeId.includes(q) || a.queue.toLowerCase().includes(q))
-      .slice(0, 4)
-      .map((a) => ({ id: 'agent-' + a.id, icon: 'badge', title: a.name, subtitle: `${a.queue} · ${a.vendor}`, link: ['/csr/directory', a.id] }));
-    const candidates: SearchResult[] = this.store.candidates()
-      .filter((c) => c.name.toLowerCase().includes(q) || c.department.toLowerCase().includes(q))
-      .slice(0, 2)
-      .map((c) => ({ id: 'cand-' + c.id, icon: 'person_search', title: c.name, subtitle: 'Candidate · ' + c.department + ' · ' + c.status, link: ['/csr/recruitment'] }));
-    this.results.set([...contracts, ...agents, ...candidates].slice(0, 7));
+    this.results.set(contracts.slice(0, 7));
   }
 
   onQueryChange() {
