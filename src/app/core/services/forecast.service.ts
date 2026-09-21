@@ -481,6 +481,8 @@ export class TeamForecast {
   private seq = 0;
   readonly years = [FY_LABEL, 'FY' + (FY_YEAR + 1)];
   readonly exports = signal<TeamExport[]>([]);
+  /** SRS 2.9 lists these as questions for the Budget Team (one sheet or one per team, Excel and CSV, email or download). Off until they are confirmed. */
+  readonly showUnconfirmed = false;
   readonly groups = signal<TeamGroup[]>([{ name: 'Front line', teams: ['Sales', 'Retention', 'Complaints'] }, { name: 'Back office', teams: ['Debt Recovery', 'Billing Complaints', 'Payment Channels Support'] }]);
   /** Who receives the exported file when the CRC team chooses to email it. */
   readonly recipients = signal('budget.team@omantel.om');

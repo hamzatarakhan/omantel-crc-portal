@@ -6,6 +6,11 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["start"],
       "port": 4200
+    },
+    {
+      "name": "omantel-crc-portal-running",
+      "port": 4200,
+      "url": "http://localhost:4200"
     }
   ]
 }

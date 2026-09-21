@@ -91,11 +91,13 @@ const CONTRACT_TYPES = ['Outsourcing', 'Facilities Management', 'Training Servic
       <h3 class="text-[13.5px] font-bold text-ink-900">Team Forecast</h3>
       <p class="text-xs text-ink-400 mt-0.5 mb-3">Who receives the exported file, how teams are grouped, and which teams each role can see. These apply as soon as you change them.</p>
       <div class="grid grid-cols-1 xl:grid-cols-3 gap-5">
+        @if (team.showUnconfirmed) {
         <div>
           <span class="lbl">Budget Team recipients</span>
           <input [class]="field" [value]="team.recipients()" (change)="team.setRecipients($any($event.target).value); ui.toast('Recipients saved.')" placeholder="name@omantel.om, another@omantel.om">
           <p class="text-xs text-ink-400 mt-1.5">Used by "Export &amp; email" on the Team Forecast screen.</p>
         </div>
+        }
         <div>
           <span class="lbl">Team groups</span>
           @for (g of team.groups(); track $index; let i = $index) {

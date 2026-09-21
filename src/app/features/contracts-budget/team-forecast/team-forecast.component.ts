@@ -25,8 +25,10 @@ const chip = (on: boolean) => 'inline-flex items-center gap-1.5 px-2.5 py-1.5 ro
       [breadcrumbs]="[{ label: 'Contracts & Budget', link: '/contracts-budget/dashboard' }, { label: 'Forecast' }, { label: 'Team Forecast' }]"
     >
       <button mat-stroked-button (click)="reset()"><mat-icon class="!text-base !mr-1">restart_alt</mat-icon>Reset filters</button>
-      <button mat-stroked-button (click)="export('CSV')" appRequires="Export Team Forecast">CSV</button>
-      <button mat-stroked-button (click)="export('Excel', true)" appRequires="Export Team Forecast"><mat-icon class="!text-base !mr-1">forward_to_inbox</mat-icon>Export & email</button>
+      @if (svc.showUnconfirmed) {
+        <button mat-stroked-button (click)="export('CSV')" appRequires="Export Team Forecast">CSV</button>
+        <button mat-stroked-button (click)="export('Excel', true)" appRequires="Export Team Forecast"><mat-icon class="!text-base !mr-1">forward_to_inbox</mat-icon>Export & email</button>
+      }
       <button mat-flat-button color="primary" (click)="export('Excel')" appRequires="Export Team Forecast"><mat-icon class="!text-base !mr-1">download</mat-icon>Export to Excel</button>
     </app-page-header>
 
@@ -42,8 +44,10 @@ const chip = (on: boolean) => 'inline-flex items-center gap-1.5 px-2.5 py-1.5 ro
         }
         <label class="block"><span class="lbl">Group by</span>
           <select [class]="field" (change)="set({ group: $any($event.target).value })">@for (g of groups; track g) { <option [value]="g" [selected]="g === c().group">{{ g }}</option> }</select></label>
-        <label class="block"><span class="lbl">Worksheets</span>
-          <select [class]="field" (change)="set({ sheets: $any($event.target).value })">@for (w of sheetModes; track w) { <option [value]="w" [selected]="w === c().sheets">{{ w }}</option> }</select></label>
+        @if (svc.showUnconfirmed) {
+          <label class="block"><span class="lbl">Worksheets</span>
+            <select [class]="field" (change)="set({ sheets: $any($event.target).value })">@for (w of sheetModes; track w) { <option [value]="w" [selected]="w === c().sheets">{{ w }}</option> }</select></label>
+        }
         <label class="block"><span class="lbl">Forecast status</span>
           <select [class]="field" (change)="set({ status: $any($event.target).value })">@for (s of statuses; track s) { <option [value]="s" [selected]="s === c().status">{{ s === 'All' ? 'All statuses' : s }}</option> }</select></label>
       </div>
