@@ -41,10 +41,10 @@ const ERP_USERS = ['Contracts Admin (ERP)', 'Procurement Officer (ERP)', 'Legal 
 /** The main Infoline contract: its scope-of-work lines exactly as they appear in Omantel's current sheet. */
 const INFOLINE_REF = '2025-013T-00-01';
 const INFOLINE_PO = '325100185';
-const INFOLINE_LINES: Array<[string, string?]> = [
-  ['Infoline Salary'], ['Non Voice', '325100186'], ['Voice', '325100186'], ['Manage service Incentive'], ['Performance Allowance'], ['Over time'], ['CSR leave settlement'],
-  ['Incentive Telesales'], ['Incentive EBU - Telesales'], ['Incentive Retention & Device'], ['Incentive Debt collection'],
-  ['End year Performance Telesales'], ['End year Performance Telesales EBU'], ['End year Performance Retention'], ['End year Performance Debt collection'],
+const INFOLINE_LINES: string[] = [
+  'Infoline Salary', 'Non Voice', 'Voice', 'Manage service Incentive', 'Performance Allowance', 'Over time', 'CSR leave settlement',
+  'Incentive Telesales', 'Incentive EBU - Telesales', 'Incentive Retention & Device', 'Incentive Debt collection',
+  'End year Performance Telesales', 'End year Performance Telesales EBU', 'End year Performance Retention', 'End year Performance Debt collection',
 ];
 
 interface Template { description: (vendor: string) => string; scope: string[]; terms: string; renewal: string; lines: string[] }
@@ -130,11 +130,11 @@ export function childRecordsFor(c: Contract): ContractRecord[] {
   const status = (end: string, days: number): ContractRecord['status'] => (days < 0 ? 'Closed' : days <= 30 ? 'Expiring Soon' : 'Active');
   const base = (id: string, prefix: string, key: string) => ({ id: `${c.id}-${id}`, parentId: c.id, parentReference: c.reference, erpReference: `ERP-${prefix}-${10000 + (hash(c.reference + key) % 90000)}`, currency: c.currency });
 
-  const lines: Array<[string, string?]> = c.reference === INFOLINE_REF ? INFOLINE_LINES : t.lines.map((l) => [l] as [string, string?]);
-  lines.forEach(([scope, po], i) => {
+  const lines: string[] = c.reference === INFOLINE_REF ? INFOLINE_LINES : t.lines;
+  lines.forEach((scope, i) => {
     const days = diffDays(e, now);
     out.push({
-      ...base(`L${i + 1}`, 'SC', 'L' + i), reference: `${c.reference}/L${String(i + 1).padStart(2, '0')}`, poNumber: po ?? c.poNumber ?? '', recordType: 'Variation Order', description: scope, counterparty: c.vendorName,
+      ...base(`L${i + 1}`, 'SC', 'L' + i), reference: `${c.reference}/L${String(i + 1).padStart(2, '0')}`, poNumber: c.poNumber ?? '', recordType: 'Variation Order', description: scope, counterparty: c.vendorName,
       issuedDate: s, startDate: s, endDate: e, status: status(e, days), daysRemaining: days, attachments: 0,
     });
   });

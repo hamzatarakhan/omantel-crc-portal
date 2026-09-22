@@ -141,6 +141,6 @@ export class ContractListComponent {
 
   open(row: ListRow) {
     if (!this.ui.requires('View Contract Details')) return;
-    this.router.navigate(['/contracts-budget/contracts', row.parentId], row.recordType === 'Parent Contract' ? {} : { queryParams: { tab: row.recordType === 'Purchase Order' ? 'purchase-orders' : 'records' } });
+    this.router.navigate(['/contracts-budget/contracts', row.parentId], row.recordType === 'Parent Contract' || row.recordType === 'Purchase Order' ? {} : { queryParams: { tab: 'records' } });
   }
 }
