@@ -84,7 +84,7 @@ export class ContractReportsComponent {
       title: 'Purchase Orders', description: 'Every PO of every contract with its type, category, amount, dates, status and ERP reference, plus the contract amount for comparison.', icon: 'request_quote', file: 'purchase-orders',
       build: () => this.live().flatMap((c) => this.ops.purchaseOrdersOf(c).map((p) => ({
         Contract: c.reference, Vendor: c.vendorName, 'PO number': p.poNumber, 'PO type': p.poType, 'PO category': p.category, 'PO amount': p.amount ?? '', Currency: p.currency, 'PO date': p.poDate, 'PO start date': p.startDate, 'PO end date': p.endDate,
-        'PO status': p.status, 'Parent contract': p.parentReference, 'ERP reference': p.erpReference, Records: p.records.length, Documents: p.documents, 'Contract amount': c.amount,
+        'PO status': p.status, 'ERP reference': p.erpReference, Records: p.records.length, Documents: p.documents, 'Contract amount': c.amount,
       }))),
     },
     { title: 'Renewed & Extended Contracts', description: 'Contracts renewed or extended this period.', icon: 'autorenew', file: 'contracts-renewed', build: () => this.live().filter((c) => !!c.renewalStatus).map((c) => ({ ...this.base(c), 'Time extensions': this.ops.childrenOf(c).filter((k) => k.recordType === 'Time Extension').length })) },

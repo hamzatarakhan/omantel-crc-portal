@@ -81,7 +81,7 @@ export class ContractTrendsComponent {
   selects = computed(() => [
     { key: 'vendor', label: 'Vendor', all: 'All vendors', value: this.vendor, set: (v: string) => this.vendor.set(v), options: ['All', ...new Set(this.base().map((c) => c.vendorName))].sort() },
     { key: 'type', label: 'Contract type', all: 'All types', value: this.type, set: (v: string) => this.type.set(v), options: ['All', ...new Set(this.base().map((c) => c.contractType))].sort() },
-    { key: 'parent', label: 'Parent contract', all: 'All contracts', value: this.parent, set: (v: string) => this.parent.set(v), options: ['All', ...this.base().map((c) => c.reference)] },
+    { key: 'parent', label: 'Contract', all: 'All contracts', value: this.parent, set: (v: string) => this.parent.set(v), options: ['All', ...this.base().map((c) => c.reference)] },
     { key: 'status', label: 'Status', all: 'All statuses', value: this.status, set: (v: string) => this.status.set(v), options: ['All', 'Active', 'Expiring Soon', 'Expired'] },
     { key: 'category', label: 'Record type', all: 'All records', value: this.category, set: (v: string) => this.category.set(v), options: ['All', 'Variation Order', 'Amendment', 'Time Extension'] },
   ]);

@@ -96,7 +96,6 @@ const today = () => new Date().toISOString().slice(0, 10);
                   <div><dt class="text-xs text-ink-400">Contract reference</dt><dd class="font-medium text-ink-900">{{ c.reference }}</dd></div>
                   <div><dt class="text-xs text-ink-400">Contract type</dt><dd class="font-medium text-ink-900">{{ c.contractType }}</dd></div>
                   <div><dt class="text-xs text-ink-400">Record type</dt><dd class="font-medium text-ink-900">{{ c.recordType }}</dd></div>
-                  <div><dt class="text-xs text-ink-400">Parent contract</dt><dd class="font-medium text-ink-900">{{ c.parentReference || '— (this is a parent contract)' }}</dd></div>
                   <div><dt class="text-xs text-ink-400">Owning department</dt><dd class="font-medium text-ink-900">{{ c.department }}</dd></div>
                   <div><dt class="text-xs text-ink-400">Contract manager</dt><dd class="font-medium text-ink-900">{{ c.contractManager }}</dd></div>
                   <div><dt class="text-xs text-ink-400">Payment terms</dt><dd class="font-medium text-ink-900">{{ c.paymentTerms }}</dd></div>
@@ -206,7 +205,7 @@ const today = () => new Date().toISOString().slice(0, 10);
             <div class="surface-card px-4 py-3 mb-4 flex items-center gap-2 flex-wrap text-sm">
               <button class="inline-flex items-center gap-1.5 font-semibold text-brand-700 hover:underline" (click)="openVendor(c)"><mat-icon class="!text-lg">store</mat-icon>{{ c.vendorName }}</button>
               <mat-icon class="!text-lg text-ink-300">chevron_right</mat-icon>
-              <span class="font-semibold text-ink-900">{{ c.reference }} (parent contract)</span>
+              <span class="font-semibold text-ink-900">{{ c.reference }}</span>
               <mat-icon class="!text-lg text-ink-300">chevron_right</mat-icon>
               <span class="text-ink-500">PO {{ poNumbers() }} · {{ count('Variation Order') }} variation order{{ count('Variation Order') === 1 ? '' : 's' }} · {{ count('Amendment') }} amendment{{ count('Amendment') === 1 ? '' : 's' }} · {{ count('Time Extension') }} time extension{{ count('Time Extension') === 1 ? '' : 's' }}</span>
             </div>

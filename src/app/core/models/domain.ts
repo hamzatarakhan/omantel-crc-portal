@@ -5,7 +5,7 @@ export interface Contract {
   id: string;
   reference: string;
   name: string;
-  recordType: 'Parent Contract' | 'Variation Order' | 'Amendment' | 'Time Extension';
+  recordType: 'Contract' | 'Variation Order' | 'Amendment' | 'Time Extension';
   parentReference?: string;
   contractType: string;
   vendorName: string;

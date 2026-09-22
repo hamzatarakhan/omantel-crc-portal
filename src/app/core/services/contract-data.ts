@@ -77,13 +77,13 @@ const TEMPLATES: Record<string, Template> = {
 };
 const templateFor = (c: Contract): Template => TEMPLATES[c.contractType] ?? TEMPLATES['Manpower Outsourcing'];
 
-/** Fills the ERP / commercial fields and normalises every top-level contract to a Parent Contract. */
+/** Fills the ERP / commercial fields on every top-level contract. */
 export function enrichContract(c: Contract, i: number): Contract {
   const t = templateFor(c);
   const signed = addDays(c.startDate, -(9 + (i % 8)));
   return {
     ...c,
-    recordType: 'Parent Contract',
+    recordType: 'Contract',
     parentReference: undefined,
     description: t.description(c.vendorName),
     scope: t.scope,

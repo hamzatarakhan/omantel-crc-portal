@@ -14,7 +14,7 @@ export interface RecordDetailData {
   openAttachment: (a: ContractAttachment, mode: 'view' | 'download') => void;
 }
 
-/** Read-only detail of one variation order line, amendment or time extension, with its parent contract and documents. */
+/** Read-only detail of one variation order line, amendment or time extension, with its contract and documents. */
 @Component({
   selector: 'app-record-detail-dialog',
   standalone: true,
@@ -43,8 +43,8 @@ export interface RecordDetailData {
         </dl>
 
         <div class="mt-5 rounded-lg bg-surface-subtle border border-surface-border px-4 py-3 text-sm flex items-center gap-3 flex-wrap">
-          <mat-icon class="!text-lg text-ink-400">account_tree</mat-icon>
-          <span class="text-ink-500">Parent contract</span>
+          <mat-icon class="!text-lg text-ink-400">description</mat-icon>
+          <span class="text-ink-500">Contract</span>
           <span class="font-semibold text-ink-900">{{ data.parent.reference }} — {{ data.parent.name }}</span>
           <span class="text-xs text-ink-400">({{ data.parent.vendorName }})</span>
         </div>
@@ -82,7 +82,7 @@ export class RecordDetailDialogComponent {
     this.fields = [
       ['Type', r.recordType], ['Scope of work', r.description], ['PO number', r.poNumber],
       ['Amount', r.amount === undefined ? '— (read from the ERP later)' : `${r.amount.toLocaleString('en-GB')} ${r.currency}`], ['From', r.startDate], ['To', r.endDate],
-      ['Status', r.status], ['Days remaining', String(r.daysRemaining)], ['Parent contract', r.parentReference],
+      ['Status', r.status], ['Days remaining', String(r.daysRemaining)], ['Contract', r.parentReference],
       ['Line reference', r.reference], ['ERP reference', r.erpReference], ['Supplier', r.counterparty],
     ];
   }

@@ -64,8 +64,7 @@ export class MockDataService {
         id: `CT-${1000 + i}`,
         reference: `2025-013T-00-${(i + 1).toString().padStart(2, '0')}`,
         name: `${types[i % types.length]} Agreement ${2025 + (i % 2)}`,
-        recordType: i % 4 === 0 ? 'Parent Contract' : 'Variation Order',
-        parentReference: i % 4 === 0 ? undefined : `2025-013T-00-${((i % 4) + 1).toString().padStart(2, '0')}`,
+        recordType: 'Contract',
         contractType: types[i % types.length],
         vendorName: vendors[i % vendors.length],
         startDate: '2025-01-01',
@@ -81,8 +80,8 @@ export class MockDataService {
     });
     // ERP-side edge cases the SRS calls out: a contract cancelled in the ERP (kept for history) and one that was renewed.
     const extra: Contract[] = [
-      { id: 'CT-1010', reference: '2024-009T-00-11', name: 'Security Services Agreement 2024', recordType: 'Parent Contract', contractType: 'Facilities Management', vendorName: 'Al-Waha Facilities', startDate: '2024-03-01', endDate: addDays(-95), amount: 38000, currency: 'OMR', status: 'Cancelled', erpReference: 'ERP-VEN-5010', lastSyncedAt: new Date().toISOString(), daysRemaining: -95 },
-      { id: 'CT-1011', reference: '2024-011T-00-12', name: 'Training Services Agreement 2024', recordType: 'Parent Contract', contractType: 'Training Services', vendorName: 'Tech Bridge Solutions', startDate: '2024-06-01', endDate: addDays(210), amount: 29500, currency: 'OMR', status: 'Active', renewalStatus: 'Renewed', erpReference: 'ERP-VEN-5011', lastSyncedAt: new Date().toISOString(), daysRemaining: 210 },
+      { id: 'CT-1010', reference: '2024-009T-00-11', name: 'Security Services Agreement 2024', recordType: 'Contract', contractType: 'Facilities Management', vendorName: 'Al-Waha Facilities', startDate: '2024-03-01', endDate: addDays(-95), amount: 38000, currency: 'OMR', status: 'Cancelled', erpReference: 'ERP-VEN-5010', lastSyncedAt: new Date().toISOString(), daysRemaining: -95 },
+      { id: 'CT-1011', reference: '2024-011T-00-12', name: 'Training Services Agreement 2024', recordType: 'Contract', contractType: 'Training Services', vendorName: 'Tech Bridge Solutions', startDate: '2024-06-01', endDate: addDays(210), amount: 29500, currency: 'OMR', status: 'Active', renewalStatus: 'Renewed', erpReference: 'ERP-VEN-5011', lastSyncedAt: new Date().toISOString(), daysRemaining: 210 },
     ];
     return [...seeded, ...extra];
   }

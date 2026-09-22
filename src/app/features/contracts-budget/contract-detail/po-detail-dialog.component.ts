@@ -41,7 +41,7 @@ export interface PoDetailData {
         </dl>
 
         <div class="mt-5 rounded-lg bg-surface-subtle border border-surface-border px-4 py-3 text-sm flex items-center gap-3 flex-wrap">
-          <mat-icon class="!text-lg text-ink-400">account_tree</mat-icon><span class="text-ink-500">Parent contract</span>
+          <mat-icon class="!text-lg text-ink-400">description</mat-icon><span class="text-ink-500">Contract</span>
           <span class="font-semibold text-ink-900">{{ data.parent.reference }} — {{ data.parent.name }}</span><span class="text-xs text-ink-400">({{ data.parent.vendorName }})</span>
         </div>
 
@@ -84,7 +84,7 @@ export class PoDetailDialogComponent {
     this.fields = [
       ['PO number', p.poNumber], ['PO type', p.poType], ['PO category', p.category],
       ['PO amount', p.amount === undefined ? '— (read from the ERP later)' : `${p.amount.toLocaleString('en-GB')} ${p.currency}`], ['PO date', p.poDate], ['PO status', p.status],
-      ['PO start date', p.startDate], ['PO end date', p.endDate], ['Parent contract', p.parentReference],
+      ['PO start date', p.startDate], ['PO end date', p.endDate], ['Contract', p.parentReference],
       ['ERP reference', p.erpReference], ['Documents', String(data.attachments.length)], ['Source system', 'ERP'],
     ];
   }

@@ -10,7 +10,7 @@ import { UiService } from '../../../shared/services/ui.service';
 import { ListRow } from '../../../core/services/contract-monitoring';
 
 const STATUSES = ['All', 'Active', 'Expiring Soon', 'Expired', 'Historical'] as const;
-const RECORD_TYPES: Array<[string, string]> = [['All', 'All records'], ['Parent Contract', 'Parent contracts'], ['Purchase Order', 'Purchase orders'], ['Variation Order', 'Variation Orders'], ['Amendment', 'Amendments'], ['Time Extension', 'Time extensions']];
+const RECORD_TYPES: Array<[string, string]> = [['All', 'All records'], ['Contract', 'Contracts'], ['Purchase Order', 'Purchase orders'], ['Variation Order', 'Variation Orders'], ['Amendment', 'Amendments'], ['Time Extension', 'Time extensions']];
 const FIELD = 'w-full px-2.5 py-2 text-xs font-semibold rounded-lg border border-surface-border bg-white text-ink-700 focus:outline-none focus:border-brand-400';
 
 @Component({
@@ -54,7 +54,7 @@ const FIELD = 'w-full px-2.5 py-2 text-xs font-semibold rounded-lg border border
     </div>
 
     <app-data-table title="Records" [columns]="columns" [rows]="rows()" [searchKeys]="searchKeys" [exportable]="store.can('Export Contract Data')" (rowClick)="open($event)" (rowAction)="open($event.row)" emptyTitle="No records match" emptyDescription="Clear a filter or search for a contract reference, vendor, scope of work, PO number or ERP reference."></app-data-table>
-    <p class="text-xs text-ink-400 mt-3">Search matches contract reference, name, vendor, vendor reference, contract type, status, parent contract, PO number and ERP reference. Manual synchronization is on the contract details page.</p>
+    <p class="text-xs text-ink-400 mt-3">Search matches contract reference, name, vendor, vendor reference, contract type, status, PO number and ERP reference. Manual synchronization is on the contract details page.</p>
   `,
 })
 export class ContractListComponent {
@@ -120,7 +120,6 @@ export class ContractListComponent {
     { key: 'vendorName', label: 'Vendor' },
     { key: 'contractType', label: 'Contract type' },
     { key: 'recordType', label: 'Record type' },
-    { key: 'parentReference', label: 'Parent contract' },
     { key: 'erpReference', label: 'ERP reference' },
     { key: 'startDate', label: 'Start date', type: 'date' },
     { key: 'endDate', label: 'End date', type: 'date' },
@@ -141,6 +140,6 @@ export class ContractListComponent {
 
   open(row: ListRow) {
     if (!this.ui.requires('View Contract Details')) return;
-    this.router.navigate(['/contracts-budget/contracts', row.parentId], row.recordType === 'Parent Contract' || row.recordType === 'Purchase Order' ? {} : { queryParams: { tab: 'records' } });
+    this.router.navigate(['/contracts-budget/contracts', row.parentId], row.recordType === 'Contract' || row.recordType === 'Purchase Order' ? {} : { queryParams: { tab: 'records' } });
   }
 }

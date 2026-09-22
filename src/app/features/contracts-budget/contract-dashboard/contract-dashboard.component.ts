@@ -74,7 +74,6 @@ const FIELD = 'w-full px-2.5 py-2 text-xs font-semibold rounded-lg border border
     </div>
 
     <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
-      <app-kpi-card label="Parent Contracts" [value]="rows().length" icon="account_tree"></app-kpi-card>
       <app-kpi-card label="Variation Orders" [value]="variationOrders()" icon="call_split"></app-kpi-card>
       <app-kpi-card label="Purchase Orders" [value]="pos().length" icon="request_quote"></app-kpi-card>
       <a routerLink="/contracts-budget/needs-attention" class="contents"><app-kpi-card label="Requiring Action" [value]="actionCount()" [level]="actionCount() ? 'amber' : 'neutral'" icon="assignment_late"></app-kpi-card></a>
@@ -135,7 +134,7 @@ export class ContractDashboardComponent {
     { key: 'vendor', label: 'Vendor', all: 'All vendors', value: this.vendor, set: (v: string) => this.vendor.set(v), options: ['All', ...this.vendors()] },
     { key: 'type', label: 'Contract type', all: 'All types', value: this.type, set: (v: string) => this.type.set(v), options: ['All', ...this.types()] },
     { key: 'status', label: 'Contract status', all: 'All statuses', value: this.status, set: (v: string) => this.status.set(v), options: ['All', 'Active', 'Expiring Soon', 'Expired'] },
-    { key: 'parent', label: 'Parent contract', all: 'All contracts', value: this.parent, set: (v: string) => this.parent.set(v), options: ['All', ...this.ops.active().map((c) => c.reference)] },
+    { key: 'parent', label: 'Contract', all: 'All contracts', value: this.parent, set: (v: string) => this.parent.set(v), options: ['All', ...this.ops.active().map((c) => c.reference)] },
   ]);
 
   /** Contracts after the dashboard filters (cancelled contracts are historical and never counted here). */
@@ -163,7 +162,7 @@ export class ContractDashboardComponent {
   nextSync = computed(() => { const d = this.ops.nextRun(); return d ? d.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Muscat' }) + ' (Muscat)' : 'Not scheduled'; });
   syncHealthy = computed(() => this.store.syncRuns().find((r) => r.type === 'Automated')?.status !== 'Failed');
 
-  trackerRows = computed(() => this.rows().filter((c) => c.daysRemaining <= 30 && c.renewalStatus !== 'Renewed').map((c) => ({ ...c, parentReference: '—', requiredAction: requiredActionFor(c), level: statusLevelFor(c) })));
+  trackerRows = computed(() => this.rows().filter((c) => c.daysRemaining <= 30 && c.renewalStatus !== 'Renewed').map((c) => ({ ...c, requiredAction: requiredActionFor(c), level: statusLevelFor(c) })));
 
   activeFilters = computed(() => [this.vendor(), this.type(), this.status(), this.parent()].filter((v) => v !== 'All').length + (this.from() ? 1 : 0) + (this.to() ? 1 : 0));
 
@@ -172,7 +171,6 @@ export class ContractDashboardComponent {
     { key: 'name', label: 'Contract Name' },
     { key: 'vendorName', label: 'Vendor Name' },
     { key: 'contractType', label: 'Contract Type' },
-    { key: 'parentReference', label: 'Parent Contract' },
     { key: 'startDate', label: 'Start Date', type: 'date' },
     { key: 'endDate', label: 'End Date', type: 'date' },
     { key: 'daysRemaining', label: 'Days Remaining', display: (r) => remainingLabel(r.endDate) },
