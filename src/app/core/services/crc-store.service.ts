@@ -149,9 +149,9 @@ export class CrcStore {
   ]);
   readonly notificationRules = signal<NotificationRule[]>([
     { id: '1', contractType: 'All Contracts', thresholdDays: 60, channel: 'Email', recipients: 'Contract owner, Contract Management team', active: true, templateId: 'T1', language: 'English', vendor: 'All vendors', department: 'All departments' },
-    { id: '2', contractType: 'All Contracts', thresholdDays: 30, channel: 'Email + In-App', recipients: 'Contract owner, Contract Management team', active: true, templateId: 'T1', language: 'English', vendor: 'All vendors', department: 'All departments' },
-    { id: '3', contractType: 'All Contracts', thresholdDays: 15, channel: 'Email + SMS + In-App', recipients: 'Contract Management Manager, Responsible department', active: true, templateId: 'T1', language: 'English', vendor: 'All vendors', department: 'All departments' },
-    { id: '4', contractType: 'All Contracts', thresholdDays: 5, channel: 'Email + SMS + In-App', recipients: 'Contract Management Manager, Senior management', active: true, templateId: 'T1', language: 'English', vendor: 'All vendors', department: 'All departments' },
+    { id: '2', contractType: 'All Contracts', thresholdDays: 30, channel: 'Email', recipients: 'Contract owner, Contract Management team', active: true, templateId: 'T1', language: 'English', vendor: 'All vendors', department: 'All departments' },
+    { id: '3', contractType: 'All Contracts', thresholdDays: 15, channel: 'Email + SMS', recipients: 'Contract Management Manager, Responsible department', active: true, templateId: 'T1', language: 'English', vendor: 'All vendors', department: 'All departments' },
+    { id: '4', contractType: 'All Contracts', thresholdDays: 5, channel: 'Email + SMS', recipients: 'Contract Management Manager, Senior management', active: true, templateId: 'T1', language: 'English', vendor: 'All vendors', department: 'All departments' },
     { id: '5', contractType: 'IT Support', thresholdDays: 45, channel: 'Email', recipients: 'Procurement team, Finance team', active: false, templateId: 'T1', language: 'English', vendor: 'All vendors', department: 'All departments' },
   ]);
 

@@ -106,26 +106,18 @@ export function enrichContract(c: Contract, i: number): Contract {
  * time extensions. Line amounts are not read from the ERP yet, so they stay empty and show as "—".
  */
 /**
- * The purchase orders of a contract: its main PO (whose value is the contract amount plus any amendments) and every other PO number
- * found on its lines. Amounts of the other POs are not read from the ERP yet.
+ * The purchase order of a contract: one PO per contract (agreed with the Budget Team), whose value is the contract amount
+ * plus any amendments and which carries every record — variation orders, amendments, time extensions — made under it.
  */
 export function purchaseOrdersFor(c: Contract, children: ContractRecord[]): PurchaseOrder[] {
-  const numbers = [...new Set([c.poNumber ?? '', ...children.map((k) => k.poNumber)].filter(Boolean))];
-  return numbers.map((po): PurchaseOrder => {
-    const main = po === c.poNumber;
-    const recs = children.filter((k) => k.poNumber === po);
-    const known = recs.filter((k) => k.amount !== undefined);
-    const extra = known.reduce((s, k) => s + (k.amount ?? 0), 0);
-    const status: PurchaseOrder['status'] = main ? c.status : recs.every((k) => k.status === 'Closed') ? 'Closed' : recs.some((k) => k.status === 'Expiring Soon') ? 'Expiring Soon' : 'Active';
-    const cats = [...new Set(recs.map((k) => k.recordType))];
-    return {
-      poNumber: po, main, poType: c.contractType === 'Manpower Outsourcing' ? 'Outsource' : 'Standard', category: main ? 'Original PO' : cats.join(' + ') || 'Variation Order',
-      amount: main ? c.amount + extra : known.length ? extra : undefined, currency: c.currency,
-      poDate: main ? c.signedDate ?? c.startDate : recs.map((k) => k.issuedDate).sort()[0] ?? c.startDate,
-      startDate: main ? c.startDate : recs.map((k) => k.startDate).sort()[0] ?? c.startDate, endDate: main ? c.endDate : recs.map((k) => k.endDate).sort().reverse()[0] ?? c.endDate,
-      status, parentReference: c.reference, erpReference: 'ERP-PO-' + po, documents: recs.reduce((s, k) => s + k.attachments, 0), records: recs,
-    };
-  });
+  const known = children.filter((k) => k.amount !== undefined);
+  const extra = known.reduce((s, k) => s + (k.amount ?? 0), 0);
+  return [{
+    poNumber: c.poNumber ?? '', main: true, poType: c.contractType === 'Manpower Outsourcing' ? 'Outsource' : 'Standard', category: 'Original PO',
+    amount: c.amount + extra, currency: c.currency,
+    poDate: c.signedDate ?? c.startDate, startDate: c.startDate, endDate: c.endDate,
+    status: c.status, parentReference: c.reference, erpReference: 'ERP-PO-' + (c.poNumber ?? ''), documents: children.reduce((s, k) => s + k.attachments, 0), records: children,
+  }];
 }
 
 export function childRecordsFor(c: Contract): ContractRecord[] {
@@ -218,7 +210,7 @@ export function timelineFor(c: Contract, children: ContractRecord[], attachments
   const created = addDays(c.signedDate ?? c.startDate, 1);
   push({ at: at(created, '02:04:00'), kind: 'created', title: 'Record created from ERP', details: `${c.erpReference} imported for ${c.vendorName} (${c.contractType}).`, actor: 'System (Scheduled Sync)' });
   push({ at: at(created, '02:05:00'), kind: 'attachments', title: `${attachments.length} attachments synced`, details: 'Signed agreement and supporting documents pulled from the ERP document store.', actor: 'System (Scheduled Sync)' });
-  push({ at: at(created, '02:10:00'), kind: 'notice', title: 'New contract registered', details: `${c.contractManager} was notified that ${c.reference} is now tracked in CRC.`, actor: 'System (Notification Engine)', channel: 'Email + In-App', recipients: 'Contract Management Team' });
+  push({ at: at(created, '02:10:00'), kind: 'notice', title: 'New contract registered', details: `${c.contractManager} was notified that ${c.reference} is now tracked in CRC.`, actor: 'System (Notification Engine)', channel: 'Email', recipients: 'Contract Management Team' });
   const lineCount = children.filter((k) => k.recordType === 'Variation Order').length;
   if (lineCount) push({ at: at(c.startDate, '02:06:00'), kind: 'linked', title: `${lineCount} variation order lines linked`, details: `PO ${c.poNumber}: ${children.filter((k) => k.recordType === 'Variation Order').slice(0, 4).map((k) => k.description).join(', ')}${lineCount > 4 ? ` and ${lineCount - 4} more` : ''}.`, actor: 'System (Scheduled Sync)' });
   for (const ch of children.filter((k) => k.recordType !== 'Variation Order')) push({ at: at(ch.issuedDate, '02:06:00'), kind: 'linked', title: `${ch.recordType} linked`, details: `${ch.reference} (${ch.erpReference})${ch.amount ? ' · ' + ch.amount.toLocaleString() + ' ' + ch.currency : ''} · ${ch.description}.`, actor: 'System (Scheduled Sync)' });
@@ -236,7 +228,7 @@ export function timelineFor(c: Contract, children: ContractRecord[], attachments
   }
   if (!cancelled && esc.applies && c.renewalStatus !== 'Renewed') push({
     at: at(addDays(c.endDate, -Math.ceil(esc.hours / 24)), '08:00:00'), kind: 'escalation', title: `Escalated to Senior Management (${esc.hours} hours before expiry)`,
-    details: c.renewalStatus ? `Renewal status: ${c.renewalStatus}.` : 'No renewal on record — action required.', actor: 'System (Notification Engine)', channel: 'Email + SMS + In-App', recipients: 'Senior Management (Escalation)',
+    details: c.renewalStatus ? `Renewal status: ${c.renewalStatus}.` : 'No renewal on record — action required.', actor: 'System (Notification Engine)', channel: 'Email + SMS', recipients: 'Senior Management (Escalation)',
   });
 
   const d = today();

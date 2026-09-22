@@ -14,7 +14,7 @@ import { Contract, NotificationRule } from '../../../core/models/domain';
 import { ruleApplies, DEPARTMENT_BY_TYPE } from '../../../core/services/contract-data';
 import { NotificationTemplate, PLACEHOLDERS, renderTemplate } from '../../../core/services/contract-monitoring';
 
-const CHANNELS = ['Email', 'SMS', 'In-App'];
+const CHANNELS = ['Email', 'SMS'];
 const RECIPIENTS = ['Contract owner', 'Contract Management team', 'Contract Management Manager', 'Responsible department', 'Procurement team', 'Finance team', 'Senior management', 'Configured user groups'];
 const join = (v: string[] | string, sep: string, order?: string[]) => (Array.isArray(v) ? (order ? order.filter((o) => v.includes(o)) : v).join(sep) : v);
 
@@ -145,7 +145,7 @@ export class NotificationConfigComponent {
     const tpl = this.ops.templates().filter((t) => t.purpose === 'Expiry alert').map((t) => ({ value: t.id, label: `${t.name} (${t.language})` }));
     const v = await this.ui.form({
       title: rule ? 'Edit notification rule' : 'New notification rule', subtitle: 'Alerts are sent before a contract reaches its end date', icon: 'notifications_active', submitLabel: rule ? 'Save rule' : 'Create rule',
-      values: rule ? { ...rule, channel: rule.channel.split(' + '), recipients: rule.recipients } : { contractType: 'All Contracts', channel: ['Email', 'In-App'], recipients: ['Contract owner', 'Contract Management team'], templateId: 'T1', vendor: 'All vendors', department: 'All departments' },
+      values: rule ? { ...rule, channel: rule.channel.split(' + '), recipients: rule.recipients } : { contractType: 'All Contracts', channel: ['Email'], recipients: ['Contract owner', 'Contract Management team'], templateId: 'T1', vendor: 'All vendors', department: 'All departments' },
       fields: [
         { key: 'contractType', label: 'Contract type', type: 'select', options: ['All Contracts', ...this.types()], required: true },
         { key: 'thresholdDays', label: 'Days before expiry', type: 'number', min: 1, required: true, placeholder: 'e.g. 30' },

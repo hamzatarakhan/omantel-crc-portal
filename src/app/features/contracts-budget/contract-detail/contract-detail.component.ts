@@ -24,7 +24,7 @@ import { DIALOG_SIZE } from '../../../shared/dialog-sizes';
 import { RecordDetailDialogComponent } from './record-detail-dialog.component';
 
 const kb = (n: number) => (n >= 1024 ? (n / 1024).toFixed(1) + ' MB' : n + ' KB');
-const TABS = ['summary', 'purchase-orders', 'records', 'yearly-budget', 'attachments', 'alerts', 'actions', 'sync', 'audit'];
+const TABS = ['summary', 'yearly-budget', 'purchase-orders', 'records', 'attachments', 'alerts', 'actions', 'sync', 'audit'];
 const today = () => new Date().toISOString().slice(0, 10);
 
 @Component({
@@ -43,7 +43,6 @@ const today = () => new Date().toISOString().slice(0, 10);
       >
         <app-status-chip [label]="c.status" [level]="level(c)"></app-status-chip>
         @if (c.renewalStatus === 'Renewed') { <app-status-chip label="Renewed" level="info"></app-status-chip> }
-        <button mat-stroked-button (click)="download(c)" appRequires="Export Contract Data"><mat-icon class="!text-base !mr-1">download</mat-icon>Download summary</button>
         <button mat-flat-button color="primary" (click)="sync(c)" appRequires="Manual Contract Sync" [disabled]="phase() === 'initiated' || phase() === 'progress'">
           <mat-icon class="!text-base !mr-1" [class.animate-spin]="phase() === 'initiated' || phase() === 'progress'">sync</mat-icon>
           {{ phase() === 'initiated' || phase() === 'progress' ? 'Syncing…' : 'Sync from ERP' }}
@@ -172,6 +171,19 @@ const today = () => new Date().toISOString().slice(0, 10);
           </div>
         </mat-tab>
 
+        <!-- ============ Yearly Budget ============ -->
+        <mat-tab [label]="'Yearly Budget (' + yearlyBudget().length + ')'">
+          <div class="pt-4 flex flex-col gap-4">
+            <app-data-table title="Yearly budgets" [columns]="yearlyColumns()" [rows]="yearlyBudget()" [pageSize]="10" [exportable]="store.can('Export Contract Data')" [selectedRow]="pickedYear()" (rowClick)="pickYear($event)" emptyTitle="No yearly budgets"></app-data-table>
+            @if (pickedYear(); as y) {
+              <app-data-table [title]="'Lines of ' + y.description" [columns]="lineColumns()" [rows]="y.lines" [pageSize]="20" [exportable]="store.can('Export Contract Data')" emptyTitle="No budget lines"></app-data-table>
+            } @else {
+              <div class="surface-card px-4 py-6 text-center text-sm text-ink-500">Select a yearly budget above to see its lines.</div>
+            }
+            <p class="text-xs text-ink-400">One row per contract year, adding up to the contract amount of {{ c.amount | number:'1.0-2' }} {{ c.currency }}. A contract of one year or less has a single row with the contract's own start and end date. Each year's lines are the lines of the contract's PO. Allocations are not read from the ERP yet: years are split by days and lines evenly.</p>
+          </div>
+        </mat-tab>
+
         <!-- ============ Variation Orders ============ -->
         <!-- ============ Purchase Orders ============ -->
         <mat-tab [label]="'Purchase Orders (' + pos().length + ')'">
@@ -198,19 +210,6 @@ const today = () => new Date().toISOString().slice(0, 10);
             </div>
             <app-data-table title="Changes made to this contract" [columns]="childColumns" [rows]="children()" [pageSize]="10" [exportable]="store.can('Export Contract Data')" (rowClick)="openRecord($event)" emptyTitle="No changes yet" emptyDescription="Variation orders, amendments and time extensions made to this contract appear here."></app-data-table>
             <p class="text-xs text-ink-400 mt-3">Click a row to see the change, the contract it applies to and its documents. Everything here is read from the ERP; CRC does not change it or perform actions on other systems.</p>
-          </div>
-        </mat-tab>
-
-        <!-- ============ Yearly Budget ============ -->
-        <mat-tab [label]="'Yearly Budget (' + yearlyBudget().length + ')'">
-          <div class="pt-4 flex flex-col gap-4">
-            <app-data-table title="Yearly budgets" [columns]="yearlyColumns()" [rows]="yearlyBudget()" [pageSize]="10" [exportable]="store.can('Export Contract Data')" [selectedRow]="pickedYear()" (rowClick)="pickYear($event)" emptyTitle="No yearly budgets"></app-data-table>
-            @if (pickedYear(); as y) {
-              <app-data-table [title]="'Lines of ' + y.description" [columns]="lineColumns()" [rows]="y.lines" [pageSize]="20" [exportable]="store.can('Export Contract Data')" emptyTitle="No budget lines"></app-data-table>
-            } @else {
-              <div class="surface-card px-4 py-6 text-center text-sm text-ink-500">Select a yearly budget above to see its lines.</div>
-            }
-            <p class="text-xs text-ink-400">One row per contract year, adding up to the contract amount of {{ c.amount | number:'1.0-2' }} {{ c.currency }}. A contract of one year or less has a single row with the contract's own start and end date. Each year's lines are the lines of the contract's PO. Allocations are not read from the ERP yet: years are split by days and lines evenly.</p>
           </div>
         </mat-tab>
 
