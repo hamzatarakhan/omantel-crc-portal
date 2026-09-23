@@ -11,12 +11,11 @@ import { CrcStore, PayableLineItem } from '../../../core/services/crc-store.serv
 import { UiService } from '../../../shared/services/ui.service';
 import { InvoiceLineDetail, VendorQuery } from '../../../core/models/domain';
 import { StatusLevel } from '../../../core/models/status';
-import { statusLevelFor } from '../../../core/services/contract-monitoring';
 import { AnnexureComponent } from './annexure.component';
 
 const VENDORS = ['Infoline LLC', 'Green Umbrella Services'];
 const VENDOR_CONTACT: Record<string, string> = { 'Infoline LLC': 'accounts@infoline.om', 'Green Umbrella Services': 'billing@greenumbrella.om' };
-const FIELD = 'w-full h-9 px-2.5 text-xs font-semibold rounded-lg border border-surface-border bg-white text-ink-700 focus:outline-none focus:border-brand-400';
+const FIELD = 'w-full px-2.5 py-2 text-xs font-semibold rounded-lg border border-surface-border bg-white text-ink-700 focus:outline-none focus:border-brand-400';
 
 /** Where a line is in its journey: validate it, then approve it if it matches — or email the vendor if it does not. */
 type LineStatus = 'Not validated' | 'Matches' | 'Does not match' | 'Queried with vendor' | 'Approved for payment';
@@ -36,44 +35,33 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Not validated': 'neutra
       <app-status-chip [label]="status()" [level]="statusLevel()"></app-status-chip>
     </app-page-header>
 
-    <!-- 1. Pick the vendor and one of its contracts -->
+    <!-- 1. Filters — same pattern as the Contract List: a view switch on top, then labelled dropdowns -->
     <div class="surface-card px-4 py-3.5 mb-4">
-      <div class="grid gap-3 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-end">
-        <div>
-          <div [class]="label">Vendor</div>
-          <div class="inline-flex items-center gap-1 bg-surface-subtle border border-surface-border rounded-lg p-0.5">
-            @for (v of vendors; track v) {
-              <button type="button" (click)="vendor.set(v)" class="h-8 px-3 text-xs font-semibold rounded-md transition-colors" [class]="vendor() === v ? 'bg-white text-brand-700 shadow-sm' : 'text-ink-500 hover:text-ink-900'">{{ v }}</button>
-            }
-          </div>
+      <div class="flex items-center gap-2 flex-wrap">
+        <div class="flex items-center gap-1 bg-surface-subtle border border-surface-border rounded-lg p-0.5">
+          @for (v of views; track v.key) {
+            <button type="button" (click)="view.set(v.key)" class="px-2.5 py-1 text-xs font-semibold rounded-md transition-colors" [class]="view() === v.key ? 'bg-white text-brand-700 border border-surface-border' : 'text-ink-500 hover:text-ink-900 border border-transparent'">{{ v.label }}</button>
+          }
         </div>
-        <label class="block min-w-0">
-          <span [class]="label">Contract</span>
-          <select [class]="field" (change)="pickContract($any($event.target).value)" [disabled]="!contracts().length">
+        @if (contract(); as c) {
+          <span class="text-[11px] text-ink-400">{{ c.status }}{{ c.billing ? " · agents' attendance billed here" : '' }} · PO {{ c.poNumber || '—' }} · {{ c.startDate }} &rarr; {{ c.endDate }} · {{ c.amount | number:'1.0-0' }} OMR · queries to {{ vendorContact() }}</span>
+          <a class="ml-auto text-xs font-semibold text-brand-700 hover:underline" [routerLink]="['/contracts-budget/contracts', c.id]">Open contract</a>
+        }
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mt-3">
+        <label class="block"><span class="text-[10.5px] font-bold text-ink-400 uppercase tracking-wide">Vendor</span>
+          <select [class]="field + ' mt-1'" (change)="vendor.set($any($event.target).value)">
+            @for (v of vendors; track v) { <option [value]="v" [selected]="v === vendor()">{{ v }}</option> }
+          </select>
+        </label>
+        <label class="block sm:col-span-2"><span class="text-[10.5px] font-bold text-ink-400 uppercase tracking-wide">Contract</span>
+          <select [class]="field + ' mt-1'" (change)="pickContract($any($event.target).value)" [disabled]="!contracts().length">
             @for (c of contracts(); track c.reference) {
-              <option [value]="c.reference" [selected]="c.reference === contract()?.reference">{{ c.reference }} · {{ c.name }}{{ c.billing ? ' — agents billed here' : '' }}</option>
+              <option [value]="c.reference" [selected]="c.reference === contract()?.reference">{{ c.reference }} · {{ c.name }}</option>
             } @empty { <option>No contract runs in {{ store.period() }}</option> }
           </select>
         </label>
-        <div>
-          <div [class]="label">View</div>
-          <div class="inline-flex items-center gap-1 bg-surface-subtle border border-surface-border rounded-lg p-0.5">
-            <button type="button" (click)="view.set('calc')" class="h-8 inline-flex items-center gap-1.5 px-3 text-xs font-semibold rounded-md transition-colors" [class]="view() === 'calc' ? 'bg-white text-brand-700 shadow-sm' : 'text-ink-500 hover:text-ink-900'"><mat-icon class="!text-base !w-4 !h-4">calculate</mat-icon>Lines</button>
-            <button type="button" (click)="view.set('annexure')" class="h-8 inline-flex items-center gap-1.5 px-3 text-xs font-semibold rounded-md transition-colors" [class]="view() === 'annexure' ? 'bg-white text-brand-700 shadow-sm' : 'text-ink-500 hover:text-ink-900'"><mat-icon class="!text-base !w-4 !h-4">table_view</mat-icon>Annexure</button>
-          </div>
-        </div>
       </div>
-      @if (contract(); as c) {
-        <div class="flex items-center gap-x-4 gap-y-1.5 flex-wrap mt-3 pt-3 border-t border-surface-border text-xs text-ink-500">
-          <app-status-chip [label]="c.status" [level]="contractLevel(c)"></app-status-chip>
-          @if (c.billing) { <span class="inline-flex items-center gap-1 font-semibold text-brand-700"><mat-icon class="!text-sm !w-3.5 !h-3.5">groups</mat-icon>Agents' attendance is billed on this contract</span> }
-          <span>PO <b class="text-ink-700">{{ c.poNumber || '—' }}</b></span>
-          <span>{{ c.startDate }} &rarr; {{ c.endDate }}</span>
-          <span>Value <b class="text-ink-700">{{ c.amount | number:'1.0-0' }} OMR</b></span>
-          <span>Queries to <b class="text-ink-700">{{ vendorContact() }}</b></span>
-          <a class="ml-auto inline-flex items-center gap-1 font-semibold text-brand-700 hover:underline" [routerLink]="['/contracts-budget/contracts', c.id]">Open contract<mat-icon class="!text-sm !w-3.5 !h-3.5">open_in_new</mat-icon></a>
-        </div>
-      }
     </div>
 
     @if (view() === 'annexure') {
@@ -213,9 +201,9 @@ export class ReconciliationComponent {
   private ui = inject(UiService);
 
   readonly vendors = VENDORS;
+  readonly views = [{ key: 'calc' as const, label: 'Payable lines' }, { key: 'annexure' as const, label: 'Annexure' }];
   readonly field = FIELD;
   readonly statusLevels = STATUS_LEVEL;
-  readonly label = 'block text-[10.5px] font-bold text-ink-400 uppercase tracking-wide mb-1';
   readonly ico = '!text-[17px] !w-[17px] !h-[17px]';
   readonly icoSm = '!text-base !w-4 !h-4';
   readonly pill = 'bg-brand-600 text-white rounded-full px-1.5 text-[10px] leading-4';
@@ -266,10 +254,6 @@ export class ReconciliationComponent {
     return this.lines().some((l) => this.lineStatus(l.key) !== 'Not validated') ? 'In validation' : 'Not started';
   });
   statusLevel = computed<StatusLevel>(() => (this.status() === 'Approved for payment' ? 'info' : this.status() === 'Not started' || this.status() === 'Nothing to reconcile' ? 'neutral' : 'amber'));
-
-  contractLevel(c: { endDate: string; status: string; daysRemaining: number }) {
-    return statusLevelFor(c as any);
-  }
 
   pickContract(ref: string) {
     this.contractByVendor.update((m) => ({ ...m, [this.vendor()]: ref }));
