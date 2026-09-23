@@ -15,6 +15,8 @@ import { AnnexureComponent } from './annexure.component';
 const VENDORS = ['Infoline LLC', 'Green Umbrella Services'];
 const VENDOR_CONTACT: Record<string, string> = { 'Infoline LLC': 'accounts@infoline.om', 'Green Umbrella Services': 'billing@greenumbrella.om' };
 type LineState = 'match' | 'over' | 'under';
+type LineStatus = 'Not validated' | 'Validated' | 'Flagged for review' | 'Approved for payment';
+const LINE_STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Not validated': 'neutral', Validated: 'normal', 'Flagged for review': 'red', 'Approved for payment': 'info' };
 const STATE_META: Record<LineState, { label: string; level: StatusLevel }> = {
   match: { label: 'Matches', level: 'normal' },
   over: { label: 'Higher than ours', level: 'red' },
@@ -65,25 +67,31 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
         <table class="crc-table w-full text-sm">
           <thead>
             <tr class="bg-surface-subtle text-left text-xs text-ink-500 uppercase tracking-wide">
-              <th class="px-4 py-2 w-10"><input type="checkbox" class="w-4 h-4 accent-brand-600 align-middle" [checked]="allSelected()" (change)="allSelected() ? selectNone() : selectAll()" [disabled]="locked()" title="Select all lines" /></th>
+              <th class="px-4 py-2 w-10"><input type="checkbox" class="w-4 h-4 accent-brand-600 align-middle" [checked]="allSelected()" (change)="allSelected() ? selectNone() : selectAll()" [disabled]="!openLines().length" title="Select all lines" /></th>
               <th class="px-4 py-2 font-medium">Line</th>
               <th class="px-4 py-2 font-medium text-right">Calculated (OMR)</th>
               <th class="px-4 py-2 font-medium text-right">Vendor invoice (OMR)</th>
               <th class="px-4 py-2 font-medium text-right">Difference</th>
-              <th class="px-4 py-2 font-medium">Status</th>
+              <th class="px-4 py-2 font-medium">Match</th>
+              <th class="px-4 py-2 font-medium">Approval</th>
               <th class="px-4 py-2"></th>
             </tr>
           </thead>
           <tbody>
             @for (l of lines(); track l.key) {
               <tr class="border-t border-surface-border">
-                <td class="px-4 py-2.5"><input type="checkbox" class="w-4 h-4 accent-brand-600 align-middle" [checked]="isSelected(l.key)" (change)="toggle(l.key)" [disabled]="locked()" /></td>
+                <td class="px-4 py-2.5"><input type="checkbox" class="w-4 h-4 accent-brand-600 align-middle" [checked]="isSelected(l.key)" (change)="toggle(l.key)" [disabled]="isApproved(l.key)" /></td>
                 <td class="px-4 py-2.5"><div class="font-semibold text-ink-900">{{ l.label }}</div>@if (l.note) { <div class="text-[11px] text-ink-400">{{ l.note }}</div> }</td>
                 <td class="px-4 py-2.5 text-right font-medium text-ink-900">{{ l.calculated | number:'1.2-2' }}</td>
-                <td class="px-4 py-2.5 text-right"><input type="number" step="0.01" class="w-32 text-right font-medium border border-surface-border rounded-lg px-2 py-1 focus:outline-none focus:border-brand-400 disabled:bg-surface-subtle disabled:text-ink-500" [ngModel]="vendorAmount(l.key)" (ngModelChange)="setVendorAmount(l.key, +$event)" [disabled]="locked()" /></td>
+                <td class="px-4 py-2.5 text-right"><input type="number" step="0.01" class="w-32 text-right font-medium border border-surface-border rounded-lg px-2 py-1 focus:outline-none focus:border-brand-400 disabled:bg-surface-subtle disabled:text-ink-500" [ngModel]="vendorAmount(l.key)" (ngModelChange)="setVendorAmount(l.key, +$event)" [disabled]="isApproved(l.key)" /></td>
                 <td class="px-4 py-2.5 text-right font-semibold whitespace-nowrap" [class]="lineState(l) === 'match' ? 'text-ink-400' : lineWithinTolerance(l) ? 'text-status-amber' : 'text-status-red'">{{ lineDiff(l) >= 0 ? '+' : '' }}{{ lineDiff(l) | number:'1.2-2' }}</td>
                 <td class="px-4 py-2.5"><app-status-chip [label]="stateMeta[lineState(l)].label" [level]="stateMeta[lineState(l)].level"></app-status-chip></td>
+                <td class="px-4 py-2.5 whitespace-nowrap"><app-status-chip [label]="lineStatus(l.key)" [level]="statusLevels[lineStatus(l.key)]"></app-status-chip>
+                  @if (isApproved(l.key)) { <a class="ml-1.5 text-[11px] font-semibold text-brand-700 hover:underline" routerLink="/invoicing/tracking">{{ store.lineRun(vendor(), l.key)?.paymentId }}</a> }
+                </td>
                 <td class="px-4 py-2.5 text-right whitespace-nowrap">
+                  @if (lineStatus(l.key) === 'Not validated') { <button class="h-7 px-2.5 mr-1 text-xs font-semibold rounded-md border border-brand-300 text-brand-700 hover:bg-brand-50" (click)="validate([l.key])" appRequires="Validate Invoice">Validate</button> }
+                  @else if (!isApproved(l.key)) { <button class="h-7 px-2.5 mr-1 text-xs font-semibold rounded-md bg-brand-600 text-white hover:bg-brand-700" (click)="approve([l.key])" appRequires="Validate Invoice">Approve</button> }
                   @if (lineState(l) !== 'match') { <button class="w-8 h-8 inline-flex items-center justify-center rounded-lg text-ink-400 hover:bg-surface-subtle hover:text-brand-700" (click)="emailVendor(l.key)" title="Email the vendor about this line"><mat-icon class="!text-lg">mail_outline</mat-icon></button> }
                   <button class="w-8 h-8 inline-flex items-center justify-center rounded-lg text-ink-400 hover:bg-surface-subtle hover:text-ink-700" (click)="toggleExpand(l.key)" [title]="isExpanded(l.key) ? 'Hide calculation' : 'Show calculation'"><mat-icon class="!text-lg">{{ isExpanded(l.key) ? 'expand_less' : 'expand_more' }}</mat-icon></button>
                 </td>
@@ -91,7 +99,7 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
               @if (isExpanded(l.key)) {
                 <tr class="bg-surface-subtle">
                   <td></td>
-                  <td colspan="6" class="px-4 pb-3 pt-1">
+                  <td colspan="7" class="px-4 pb-3 pt-1">
                     <div class="max-w-xl text-xs text-ink-500">
                       @for (b of breakdown(l.key); track b.label) {
                         <div class="flex justify-between gap-4 py-1.5 border-b border-surface-border last:border-0"><span>{{ b.label }}</span><span class="font-medium text-ink-800">{{ b.amount | number:'1.2-2' }}</span></div>
@@ -116,7 +124,7 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
               <td class="px-4 py-2.5 text-right">{{ calculatedTotal() | number:'1.2-2' }}</td>
               <td class="px-4 py-2.5 text-right">{{ vendorTotal() | number:'1.2-2' }}</td>
               <td class="px-4 py-2.5 text-right whitespace-nowrap" [class]="withinTolerance() ? 'text-status-normal' : 'text-status-red'">{{ diff() >= 0 ? '+' : '' }}{{ diff() | number:'1.2-2' }} <span class="text-xs font-medium">({{ variance() >= 0 ? '+' : '' }}{{ variance() | number:'1.1-1' }}%)</span></td>
-              <td colspan="2"></td>
+              <td colspan="3"></td>
             </tr>
           </tfoot>
         </table>
@@ -131,31 +139,11 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
       }
     </div>
 
-    <div class="surface-card p-4 mb-4">
-      <div class="flex items-center gap-2 flex-wrap">
-        <button mat-flat-button color="primary" (click)="validate()" appRequires="Validate Invoice" [disabled]="locked() || !selected().size"><mat-icon class="!text-base !mr-1">fact_check</mat-icon>Validate selected lines</button>
-        @if (runMatchesSelection() && (run()?.status === 'Validated' || run()?.status === 'Flagged for review')) {
-          <button mat-flat-button color="primary" (click)="approve()" appRequires="Validate Invoice"><mat-icon class="!text-base !mr-1">payments</mat-icon>Approve for payment</button>
-        }
-        @if (runMatchesSelection() && run()?.status === 'Approved for payment') {
-          <a mat-stroked-button routerLink="/invoicing/tracking"><mat-icon class="!text-base !mr-1">view_kanban</mat-icon>Open in PO & Payment Tracking</a>
-        }
-      </div>
-      @if (runMatchesSelection() && run(); as r) {
-        <p class="text-xs mt-3" [class]="r.status === 'Flagged for review' ? 'text-status-red font-medium' : 'text-status-normal font-medium'">
-          {{ r.status }} ({{ r.lines.length }} line{{ r.lines.length === 1 ? '' : 's' }}) — vendor invoice {{ r.vendorInvoiceAmount | number:'1.2-2' }} vs calculated {{ r.calculatedTotal | number:'1.2-2' }} OMR ({{ r.variancePct >= 0 ? '+' : '' }}{{ r.variancePct | number:'1.2-2' }}%).
-        </p>
-      } @else if (!selected().size) {
-        <p class="text-xs text-ink-400 mt-3">Select at least one line above to validate and pay it.</p>
-      }
-      @if (pastRuns().length) {
-        <div class="text-xs text-ink-400 mt-3 pt-3 border-t border-surface-border">
-          <div class="font-semibold text-ink-500 mb-1">Earlier this period</div>
-          @for (r of pastRuns(); track $index) {
-            <div>{{ r.lines.length }} line{{ r.lines.length === 1 ? '' : 's' }} ({{ r.lines[0].label }}{{ r.lines.length > 1 ? ' + ' + (r.lines.length - 1) + ' more' : '' }}) — {{ r.status }}, {{ r.vendorInvoiceAmount | number:'1.2-2' }} OMR</div>
-          }
-        </div>
-      }
+    <div class="surface-card px-4 py-3.5 mb-4 flex items-center gap-2 flex-wrap">
+      <span class="text-sm text-ink-600 mr-auto">{{ !openLines().length ? 'All lines are approved for payment' : validatable().length ? validatable().length + ' line' + (validatable().length === 1 ? '' : 's') + ' selected' : 'Tick lines above to validate or approve several at once' }}</span>
+      <button mat-stroked-button (click)="validate(validatable())" appRequires="Validate Invoice" [disabled]="!validatable().length"><mat-icon class="!text-base !mr-1">fact_check</mat-icon>Validate selected ({{ validatable().length }})</button>
+      <button mat-flat-button color="primary" (click)="approve(approvable())" appRequires="Validate Invoice" [disabled]="!approvable().length"><mat-icon class="!text-base !mr-1">payments</mat-icon>Approve selected ({{ approvable().length }})</button>
+      @if (approvedCount()) { <a mat-stroked-button routerLink="/invoicing/tracking"><mat-icon class="!text-base !mr-1">view_kanban</mat-icon>PO & Payment Tracking</a> }
     </div>
 
     }
@@ -175,30 +163,44 @@ export class ReconciliationComponent {
   calc = computed(() => this.store.calculateInvoice(this.vendor()));
   lines = computed(() => this.store.payableLines(this.vendor()));
   selected = computed(() => this.selectedByVendor()[this.vendor()] ?? new Set(this.lines().map((l) => l.key)));
-  allSelected = computed(() => this.lines().every((l) => this.selected().has(l.key)));
+  allSelected = computed(() => this.openLines().length > 0 && this.openLines().every((l) => this.selected().has(l.key)));
   mismatched = computed(() => this.lines().filter((l) => this.lineState(l) !== 'match'));
   queries = computed(() => this.store.vendorQueries().filter((q) => q.vendor === this.vendor() && q.period === this.store.period()));
 
-  runs = computed(() => this.store.invoiceRuns()[this.vendor()] ?? []);
-  run = computed(() => this.runs()[this.runs().length - 1]);
-  pastRuns = computed(() => this.runs().slice(0, -1));
-  runMatchesSelection = computed(() => {
-    const r = this.run();
-    if (!r) return false;
-    const a = r.lines.map((l) => l.key).sort().join(',');
-    const b = [...this.selected()].sort().join(',');
-    return a === b;
+  statusLevels = LINE_STATUS_LEVEL;
+  /** Lines not yet approved — the only ones that can still be ticked, edited or validated. */
+  openLines = computed(() => this.lines().filter((l) => !this.isApproved(l.key)));
+  validatable = computed(() => this.openLines().filter((l) => this.isSelected(l.key)).map((l) => l.key));
+  approvable = computed(() => this.validatable().filter((k) => this.lineStatus(k) === 'Validated' || this.lineStatus(k) === 'Flagged for review'));
+  approvedCount = computed(() => this.lines().length - this.openLines().length);
+  status = computed(() => {
+    const n = this.lines().length, done = this.approvedCount();
+    if (done === n) return 'Approved for payment';
+    if (done) return `${done} of ${n} approved`;
+    return this.lines().some((l) => this.lineStatus(l.key) !== 'Not validated') ? 'In validation' : 'Not started';
   });
-  status = computed(() => (this.runMatchesSelection() ? this.run()?.status ?? 'Not started' : 'Not started'));
-  statusLevel = computed<StatusLevel>(() => ({ 'Not started': 'neutral', Validated: 'normal', 'Flagged for review': 'red', 'Approved for payment': 'info' } as Record<string, StatusLevel>)[this.status()]);
-  locked = computed(() => this.runMatchesSelection() && this.run()?.status === 'Approved for payment');
+  statusLevel = computed<StatusLevel>(() => (this.status() === 'Approved for payment' ? 'info' : this.status() === 'Not started' ? 'neutral' : 'amber'));
+
+  isApproved(key: string) {
+    return this.store.lineRun(this.vendor(), key)?.status === 'Approved for payment';
+  }
+
+  /** A validation only counts while the amounts it checked are still the ones on screen. */
+  lineStatus(key: string): LineStatus {
+    const run = this.store.lineRun(this.vendor(), key);
+    if (!run) return 'Not validated';
+    if (run.status === 'Approved for payment') return run.status;
+    const l = run.lines[0], now = this.lines().find((x) => x.key === key);
+    const same = !!now && Math.abs(l.vendorAmount - this.vendorAmount(key)) < 0.005 && Math.abs(l.calculated - now.calculated) < 0.005;
+    return same ? (run.status as LineStatus) : 'Not validated';
+  }
 
   isSelected(key: string) {
     return this.selected().has(key);
   }
 
   toggle(key: string) {
-    if (this.locked()) return;
+    if (this.isApproved(key)) return;
     const next = new Set(this.selected());
     if (next.has(key)) next.delete(key);
     else next.add(key);
@@ -210,12 +212,10 @@ export class ReconciliationComponent {
   }
 
   selectAll() {
-    if (this.locked()) return;
-    this.selectedByVendor.update((m) => ({ ...m, [this.vendor()]: new Set(this.lines().map((l) => l.key)) }));
+    this.selectedByVendor.update((m) => ({ ...m, [this.vendor()]: new Set(this.openLines().map((l) => l.key)) }));
   }
 
   selectNone() {
-    if (this.locked()) return;
     this.selectedByVendor.update((m) => ({ ...m, [this.vendor()]: new Set<string>() }));
   }
 
@@ -231,6 +231,8 @@ export class ReconciliationComponent {
   }
 
   vendorAmount(key: string): number {
+    const run = this.store.lineRun(this.vendor(), key);
+    if (run?.status === 'Approved for payment') return run.lines[0].vendorAmount;
     const typedVal = this.typed()[this.vendor()]?.[key];
     if (typedVal !== undefined) return typedVal;
     return Math.round((this.lines().find((l) => l.key === key)?.calculated ?? 0) * 100) / 100;
@@ -314,29 +316,31 @@ export class ReconciliationComponent {
   variance = computed(() => (this.calculatedTotal() ? (this.diff() / this.calculatedTotal()) * 100 : 0));
   withinTolerance = computed(() => Math.abs(this.variance()) <= this.store.payableRules().deviationPct);
 
-  validate() {
+  validate(keys: string[]) {
     if (!this.ui.requires('Validate Invoice')) return;
-    const details = this.selectedDetails();
-    if (!details.length) return;
-    const run = this.store.validateInvoice(this.vendor(), details);
-    this.ui.toast(run.status === 'Validated' ? 'Selected lines validated — within tolerance.' : `Flagged: ${run.variancePct.toFixed(2)}% deviation exceeds the ${this.store.payableRules().deviationPct}% limit.`, 5000);
+    const details = this.lines().filter((l) => keys.includes(l.key)).map((l) => ({ key: l.key, label: l.label, calculated: l.calculated, vendorAmount: this.vendorAmount(l.key) }));
+    const runs = this.store.validateLines(this.vendor(), details);
+    if (!runs.length) return;
+    const flagged = runs.filter((r) => r.status === 'Flagged for review').map((r) => r.lines[0].label);
+    const what = runs.length === 1 ? runs[0].lines[0].label : `${runs.length} lines`;
+    this.ui.toast(flagged.length ? `${what} validated — ${flagged.join(', ')} flagged: more than ${this.store.payableRules().deviationPct}% off our calculation.` : `${what} validated — within tolerance.`, 5000);
   }
 
-  async approve() {
+  async approve(keys: string[]) {
     if (!this.ui.requires('Validate Invoice')) return;
-    const r = this.run();
-    if (!r) return;
-    const flagged = r.status === 'Flagged for review';
-    const names = r.lines.map((l) => l.label).join(', ');
+    const runs = keys.map((k) => this.store.lineRun(this.vendor(), k)!).filter((r) => r && (r.status === 'Validated' || r.status === 'Flagged for review'));
+    if (!runs.length) return;
+    const flagged = runs.filter((r) => r.status === 'Flagged for review').map((r) => r.lines[0].label);
+    const names = runs.map((r) => r.lines[0].label).join(', ');
+    const total = Math.round(runs.reduce((s, r) => s + r.vendorInvoiceAmount, 0)).toLocaleString();
     const ok = await this.ui.confirm({
-      title: flagged ? 'Approve a flagged invoice?' : 'Approve for payment?',
-      message: flagged
-        ? `${names} deviates ${r.variancePct.toFixed(2)}% from the calculation. Approving creates a payment of ${Math.round(r.vendorInvoiceAmount).toLocaleString()} OMR anyway.`
-        : `A payment of ${Math.round(r.vendorInvoiceAmount).toLocaleString()} OMR for ${names} is created and tracked from Pending.`,
-      confirmLabel: 'Approve', danger: flagged, icon: 'payments',
+      title: runs.length === 1 ? `Approve ${names} for payment?` : `Approve ${runs.length} lines for payment?`,
+      message: `One payment of ${total} OMR for ${names} is created and tracked from Pending.` + (flagged.length ? ` ${flagged.join(', ')} ${flagged.length === 1 ? 'is' : 'are'} flagged — more than ${this.store.payableRules().deviationPct}% off our calculation.` : ''),
+      confirmLabel: 'Approve', danger: flagged.length > 0, icon: 'payments',
     });
     if (!ok) return;
-    const p = this.store.approveInvoice(this.vendor());
+    const p = this.store.approveLines(this.vendor(), runs.map((r) => r.lines[0].key));
     this.ui.toast(`Approved — ${p?.id} added to PO & Payment Tracking.`);
   }
+
 }

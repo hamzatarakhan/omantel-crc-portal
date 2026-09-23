@@ -660,31 +660,42 @@ export class CrcStore {
     this.notify(`Annexure loaded: ${agents.length} employees for ${this.period()}.`, 'Invoicing & Payments', 'green', '/invoicing/reconciliation');
   }
 
-  /** Validates whichever lines the user picked (one or several) against what the vendor is claiming for each. */
-  validateInvoice(vendorName: string, lines: InvoiceLineDetail[]) {
-    const calculatedTotal = lines.reduce((s, l) => s + l.calculated, 0);
-    const vendorInvoiceAmount = lines.reduce((s, l) => s + l.vendorAmount, 0);
-    const variancePct = calculatedTotal ? ((vendorInvoiceAmount - calculatedTotal) / calculatedTotal) * 100 : 0;
-    const flagged = Math.abs(variancePct) > this.payableRules().deviationPct;
-    const run: InvoiceRun = { vendor: vendorName, period: this.period(), lines, calculatedTotal, vendorInvoiceAmount, variancePct, status: flagged ? 'Flagged for review' : 'Validated' };
-    this.invoiceRuns.update((m) => ({ ...m, [vendorName]: [...(m[vendorName] ?? []), run] }));
-    const names = lines.map((l) => l.label).join(', ');
-    this.log(flagged ? 'Invoice Flagged' : 'Invoice Validated', vendorName, `${names}: vendor invoice ${vendorInvoiceAmount.toFixed(2)} vs calculated ${calculatedTotal.toFixed(2)} OMR (${variancePct >= 0 ? '+' : ''}${variancePct.toFixed(2)}%).`);
-    if (flagged) this.notify(`${vendorName} invoice (${names}) deviates ${variancePct.toFixed(1)}% from the calculation.`, 'Invoicing & Payments', 'amber', '/invoicing/reconciliation');
-    return run;
+  /** The latest validation of one payable line this period, if any (each run covers exactly one line). */
+  lineRun(vendorName: string, key: string): InvoiceRun | undefined {
+    const runs = (this.invoiceRuns()[vendorName] ?? []).filter((r) => r.period === this.period() && r.lines[0]?.key === key);
+    return runs[runs.length - 1];
   }
 
-  /** Approves the vendor's most recent validated run — the exact subset of lines last validated — for payment. */
-  approveInvoice(vendorName: string) {
-    const runs = this.invoiceRuns()[vendorName] ?? [];
-    const run = runs[runs.length - 1];
-    if (!run || (run.status !== 'Validated' && run.status !== 'Flagged for review')) return;
-    const names = run.lines.map((l) => l.label).join(', ');
-    const payment: PaymentRecord = { id: 'PAY-' + this.next(), vendorName, lines: names, invoiceAmount: Math.round(run.vendorInvoiceAmount), status: 'Pending', slaAtRisk: false, invoiceRef: 'INV-' + this.next(), period: run.period };
+  /** Validates one line or several at once; each line is checked against the tolerance on its own. Approved lines are skipped. */
+  validateLines(vendorName: string, lines: InvoiceLineDetail[]) {
+    const tol = this.payableRules().deviationPct;
+    const todo = lines.filter((l) => this.lineRun(vendorName, l.key)?.status !== 'Approved for payment');
+    const runs: InvoiceRun[] = todo.map((l) => {
+      const variancePct = l.calculated ? ((l.vendorAmount - l.calculated) / l.calculated) * 100 : 0;
+      return { vendor: vendorName, period: this.period(), lines: [l], calculatedTotal: l.calculated, vendorInvoiceAmount: l.vendorAmount, variancePct, status: Math.abs(variancePct) > tol ? 'Flagged for review' : 'Validated' };
+    });
+    if (!runs.length) return runs;
+    this.invoiceRuns.update((m) => ({ ...m, [vendorName]: [...(m[vendorName] ?? []), ...runs] }));
+    for (const r of runs) {
+      const l = r.lines[0];
+      this.log(r.status === 'Validated' ? 'Invoice Validated' : 'Invoice Flagged', vendorName, `${l.label}: vendor invoice ${l.vendorAmount.toFixed(2)} vs calculated ${l.calculated.toFixed(2)} OMR (${r.variancePct >= 0 ? '+' : ''}${r.variancePct.toFixed(2)}%).`);
+    }
+    const flagged = runs.filter((r) => r.status === 'Flagged for review').map((r) => r.lines[0].label);
+    if (flagged.length) this.notify(`${vendorName}: ${flagged.join(', ')} deviate${flagged.length === 1 ? 's' : ''} more than ${tol}% from the calculation.`, 'Invoicing & Payments', 'amber', '/invoicing/reconciliation');
+    return runs;
+  }
+
+  /** Approves one validated line or several at once; together they become one payment in PO & Payment Tracking. */
+  approveLines(vendorName: string, keys: string[]) {
+    const runs = keys.map((k) => this.lineRun(vendorName, k)).filter((r): r is InvoiceRun => !!r && (r.status === 'Validated' || r.status === 'Flagged for review'));
+    if (!runs.length) return;
+    const names = runs.map((r) => r.lines[0].label).join(', ');
+    const amount = runs.reduce((sum, r) => sum + r.vendorInvoiceAmount, 0);
+    const payment: PaymentRecord = { id: 'PAY-' + this.next(), vendorName, lines: names, invoiceAmount: Math.round(amount), status: 'Pending', slaAtRisk: false, invoiceRef: 'INV-' + this.next(), period: this.period() };
     this.payments.update((list) => [payment, ...list]);
-    this.invoiceRuns.update((m) => ({ ...m, [vendorName]: runs.map((r, i) => (i === runs.length - 1 ? { ...r, status: 'Approved for payment', paymentId: payment.id } : r)) }));
+    this.invoiceRuns.update((m) => ({ ...m, [vendorName]: (m[vendorName] ?? []).map((r) => (runs.includes(r) ? { ...r, status: 'Approved for payment', paymentId: payment.id } : r)) }));
     this.log('Invoice Approved', vendorName, `${names}: approved for payment, ${payment.invoiceAmount.toLocaleString()} OMR (${payment.id}).`);
-    this.notify(`${vendorName} invoice (${names}) approved for payment.`, 'Invoicing & Payments', 'green', '/invoicing/tracking');
+    this.notify(`${vendorName} (${names}) approved for payment.`, 'Invoicing & Payments', 'green', '/invoicing/tracking');
     return payment;
   }
 
