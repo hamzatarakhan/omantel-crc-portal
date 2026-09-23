@@ -236,6 +236,7 @@ export interface PayableRules {
 export interface VendorQuery {
   id: string;
   vendor: string;
+  contract: string;
   period: string;
   lines: InvoiceLineDetail[];
   to: string;

@@ -7,10 +7,24 @@ import {
 import { StatusLevel, daysRemainingToLevel } from '../models/status';
 import { MockDataService } from './mock-data.service';
 import { NAV_GROUPS, NavGroup } from '../nav.config';
-import { attachmentsFor, childRecordsFor, enrichContract, timelineFor } from './contract-data';
+import { attachmentsFor, childRecordsFor, enrichContract, timelineFor, yearlyBudgetFor } from './contract-data';
 import { seedChanges } from './contract-monitoring';
 
 export const CURRENT_USER = 'Hamza Tarkan';
+
+export type WfoComponent = 'salary' | 'overtime' | 'performance' | 'fee';
+/** One line the vendor can invoice on a contract: calculated from WFO attendance, or the contract's monthly share. */
+export interface PayableLineItem {
+  key: string;
+  label: string;
+  calculated: number;
+  source: 'wfo' | 'contract';
+  component?: WfoComponent;
+  /** How a contract-share line was worked out. */
+  basis?: string;
+  note?: string;
+}
+const addMonthsIso = (iso: string, n: number) => { const [y, m] = iso.split('-').map(Number); const d = new Date(Date.UTC(y, m - 1 + n, 1)); return d.toISOString().slice(0, 10); };
 /** The contract's flat management fee per employee per month (OMR). */
 export const FLAT_MANAGEMENT_FEE = 116;
 export const ROLE_SUMMARY: Record<string, string> = {
@@ -601,18 +615,52 @@ export class CrcStore {
     return { vendorName, existing, tiers, gross, base, salaryBase, overtimeBase, absenceDeduction, absentDays, absentees, newJoiners, newJoining, resignationRecords, resignation, sampleCalls, excludedCalls, eligibleCalls, incentive, incentiveIncluded, subtotal, vat, total: subtotal + vat, threshold };
   }
 
+  /** The vendor's contracts that run in the billing month, the one its agents are billed on (the active contract ending last) first. */
+  payableContracts(vendorName: string): Array<Contract & { billing: boolean }> {
+    const start = this.periodStart(), end = addMonthsIso(start, 1);
+    const list = this.contracts()
+      .filter((c) => c.vendorName === vendorName && c.status !== 'Cancelled' && c.startDate < end && c.endDate >= start)
+      .sort((a, b) => b.endDate.localeCompare(a.endDate));
+    return list.map((c, i) => ({ ...c, billing: i === 0 }));
+  }
+
   /**
-   * The vendor's payable amount broken into the lines it is actually invoiced on: Salary (base pay, including new
-   * joiners and resignation settlements), Overtime (the additions on top of base pay) and the Performance Incentive
-   * (3 Clicks). A user can validate and pay any subset of these, not just the whole invoice at once.
+   * What the vendor can invoice on one contract this month: one line per line of the contract's PO. On the billing contract,
+   * lines that match what WFO calculates (salary, overtime, the 3 Clicks incentive, management fee) take the calculated figure,
+   * and any calculated component with no matching PO line is added as its own line so nothing billed is lost. Every other line
+   * is the contract's monthly share of its yearly budget.
+   * ponytail: lines are matched to WFO components by name; map them explicitly once the ERP gives a line type.
    */
-  payableLines(vendorName: string): Array<{ key: string; label: string; calculated: number; note?: string }> {
-    const c = this.calculateInvoice(vendorName);
-    return [
-      { key: 'salary', label: 'Salary', calculated: c.salaryBase + c.newJoining.amount + c.resignation.amount },
-      { key: 'overtime', label: 'Overtime', calculated: c.overtimeBase },
-      { key: 'performance', label: 'Performance Incentive', calculated: c.incentive, note: c.incentiveIncluded ? undefined : 'Not on the vendor invoice by the current payable rule' },
+  payableLines(vendorName: string, contractRef: string): PayableLineItem[] {
+    const c = this.contracts().find((x) => x.reference === contractRef && x.vendorName === vendorName);
+    if (!c) return [];
+    const billing = this.payableContracts(vendorName)[0]?.reference === contractRef;
+    const kids = childRecordsFor(c);
+    const period = this.periodStart();
+    const year = yearlyBudgetFor(c, kids).find((y) => y.startDate <= period && y.endDate >= period) ?? yearlyBudgetFor(c, kids).slice(-1)[0];
+    const months = year ? Math.max(1, Math.round((new Date(year.endDate).getTime() - new Date(year.startDate).getTime()) / 2629800000)) : 1;
+    const lines: PayableLineItem[] = (year?.lines ?? []).map((l) => ({
+      key: `${c.reference}|L${l.line}`, label: l.description, calculated: Math.round((l.allocated / months) * 1000) / 1000, source: 'contract' as const,
+      basis: `${year!.description.split(' — ')[0]} allocation ${l.allocated.toLocaleString('en-GB')} OMR ÷ ${months} month${months === 1 ? '' : 's'}`,
+    }));
+    if (!billing) return lines;
+
+    const calc = this.calculateInvoice(vendorName);
+    const fee = calc.tiers.reduce((sum, t) => sum + t.fee, 0);
+    const hasFeeLine = lines.some((l) => /management fee/i.test(l.label));
+    const wfo: Array<{ component: WfoComponent; label: string; match: RegExp; amount: number; note?: string }> = [
+      { component: 'salary', label: 'Salary', match: /salary/i, amount: calc.salaryBase + calc.newJoining.amount + calc.resignation.amount - (hasFeeLine ? fee : 0) },
+      { component: 'overtime', label: 'Overtime', match: /over ?time/i, amount: calc.overtimeBase },
+      { component: 'performance', label: 'Performance Incentive', match: /incentive/i, amount: calc.incentive, note: calc.incentiveIncluded ? undefined : 'Not on the vendor invoice by the current payable rule' },
+      ...(hasFeeLine ? [{ component: 'fee' as WfoComponent, label: 'Management fee', match: /management fee/i, amount: fee }] : []),
     ];
+    for (const w of wfo) {
+      const hit = lines.find((l) => l.source === 'contract' && w.match.test(l.label));
+      const patch = { calculated: Math.round(w.amount * 1000) / 1000, source: 'wfo' as const, component: w.component, note: w.note, basis: undefined };
+      if (hit) Object.assign(hit, patch);
+      else lines.push({ key: `${c.reference}|${w.component}`, label: w.label, ...patch });
+    }
+    return lines;
   }
 
   /** Records a resignation: the agent leaves the active list and is billed pro-rata plus leave encashment. */
@@ -685,16 +733,16 @@ export class CrcStore {
     return runs;
   }
 
-  /** Approves one validated line or several at once; together they become one payment in PO & Payment Tracking. */
-  approveLines(vendorName: string, keys: string[]) {
-    const runs = keys.map((k) => this.lineRun(vendorName, k)).filter((r): r is InvoiceRun => !!r && (r.status === 'Validated' || r.status === 'Flagged for review'));
+  /** Approves one matching line or several at once; together they become one payment. A line that does not match is queried with the vendor instead. */
+  approveLines(vendorName: string, keys: string[], contractRef: string) {
+    const runs = keys.map((k) => this.lineRun(vendorName, k)).filter((r): r is InvoiceRun => r?.status === 'Validated');
     if (!runs.length) return;
     const names = runs.map((r) => r.lines[0].label).join(', ');
     const amount = runs.reduce((sum, r) => sum + r.vendorInvoiceAmount, 0);
-    const payment: PaymentRecord = { id: 'PAY-' + this.next(), vendorName, lines: names, invoiceAmount: Math.round(amount), status: 'Pending', slaAtRisk: false, invoiceRef: 'INV-' + this.next(), period: this.period() };
+    const payment: PaymentRecord = { id: 'PAY-' + this.next(), vendorName, lines: `${contractRef} · ${names}`, invoiceAmount: Math.round(amount), status: 'Pending', slaAtRisk: false, invoiceRef: 'INV-' + this.next(), period: this.period() };
     this.payments.update((list) => [payment, ...list]);
     this.invoiceRuns.update((m) => ({ ...m, [vendorName]: (m[vendorName] ?? []).map((r) => (runs.includes(r) ? { ...r, status: 'Approved for payment', paymentId: payment.id } : r)) }));
-    this.log('Invoice Approved', vendorName, `${names}: approved for payment, ${payment.invoiceAmount.toLocaleString()} OMR (${payment.id}).`);
+    this.log('Invoice Approved', vendorName, `${contractRef} · ${names}: approved for payment, ${payment.invoiceAmount.toLocaleString()} OMR (${payment.id}).`);
     this.notify(`${vendorName} (${names}) approved for payment.`, 'Invoicing & Payments', 'green', '/invoicing/tracking');
     return payment;
   }
