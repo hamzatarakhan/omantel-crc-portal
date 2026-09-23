@@ -35,14 +35,9 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Not validated': 'neutra
       <app-status-chip [label]="status()" [level]="statusLevel()"></app-status-chip>
     </app-page-header>
 
-    <!-- 1. Filters — same pattern as the Contract List: a view switch on top, then labelled dropdowns -->
+    <!-- 1. Filters — same pattern as the Contract List: contract details on top, then labelled dropdowns -->
     <div class="surface-card px-4 py-3.5 mb-4">
       <div class="flex items-center gap-2 flex-wrap">
-        <div class="flex items-center gap-1 bg-surface-subtle border border-surface-border rounded-lg p-0.5">
-          @for (v of views; track v.key) {
-            <button type="button" (click)="view.set(v.key)" class="px-2.5 py-1 text-xs font-semibold rounded-md transition-colors" [class]="view() === v.key ? 'bg-white text-brand-700 border border-surface-border' : 'text-ink-500 hover:text-ink-900 border border-transparent'">{{ v.label }}</button>
-          }
-        </div>
         @if (contract(); as c) {
           <span class="text-[11px] text-ink-400">{{ c.status }}{{ c.billing ? " · agents' attendance billed here" : '' }} · PO {{ c.poNumber || '—' }} · {{ c.startDate }} &rarr; {{ c.endDate }} · {{ c.amount | number:'1.0-0' }} OMR · queries to {{ vendorContact() }}</span>
           <a class="ml-auto text-xs font-semibold text-brand-700 hover:underline" [routerLink]="['/contracts-budget/contracts', c.id]">Open contract</a>
@@ -65,6 +60,7 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Not validated': 'neutra
     </div>
 
     @if (view() === 'annexure') {
+      <button type="button" class="inline-flex items-center gap-1 mb-3 text-xs font-semibold text-brand-700 hover:underline" (click)="view.set('calc')"><mat-icon class="!text-base !w-4 !h-4">arrow_back</mat-icon>Back to payable lines</button>
       <app-annexure [vendor]="vendor()"></app-annexure>
     } @else if (!contract()) {
       <div class="surface-card p-8 text-center text-sm text-ink-500">{{ vendor() }} has no contract running in {{ store.period() }}, so there is nothing to reconcile.</div>
@@ -203,7 +199,6 @@ export class ReconciliationComponent {
   private ui = inject(UiService);
 
   readonly vendors = VENDORS;
-  readonly views = [{ key: 'calc' as const, label: 'Payable lines' }, { key: 'annexure' as const, label: 'Annexure' }];
   readonly field = FIELD;
   readonly statusLevels = STATUS_LEVEL;
   readonly ico = '!text-[17px] !w-[17px] !h-[17px]';
