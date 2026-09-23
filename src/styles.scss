@@ -85,7 +85,8 @@ button:disabled {
   cursor: not-allowed;
 }
 
-input,
+// Checkboxes and radios keep the browser's own drawing — with appearance: none they render as nothing.
+input:not([type='checkbox']):not([type='radio']),
 textarea,
 select {
   font-family: inherit;

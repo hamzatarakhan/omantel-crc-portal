@@ -137,7 +137,7 @@ export class AccrualForecast {
     effect(() => {
       const runs = this.store.invoiceRuns(), pays = this.store.payments(), trigger = this.settings().trigger;
       untracked(() => {
-        for (const run of Object.values(runs)) {
+        for (const run of Object.values(runs).flat()) {
           if (run.status !== 'Approved for payment' || !run.paymentId || this.done.has(run.paymentId)) continue;
           const pay = pays.find((p) => p.id === run.paymentId);
           if (!pay || (trigger === 'Invoice issued' && pay.status === 'Pending')) continue;

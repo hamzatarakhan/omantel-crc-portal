@@ -161,6 +161,8 @@ export interface PayableLine {
 export interface PaymentRecord {
   id: string;
   vendorName: string;
+  /** Which payable lines this payment covers, e.g. "Salary, Overtime" — a vendor invoice can be paid one line, or several, at a time. */
+  lines?: string;
   invoiceAmount: number;
   status: 'Pending' | 'Approved' | 'Completed';
   paymentDate?: string;
@@ -230,14 +232,37 @@ export interface PayableRules {
   includeIncentive: boolean;
 }
 
+/** An email to a vendor about the payable lines where their invoice does not match our calculation. */
+export interface VendorQuery {
+  id: string;
+  vendor: string;
+  period: string;
+  lines: InvoiceLineDetail[];
+  to: string;
+  subject: string;
+  comment: string;
+  sentAt: string;
+  sentBy: string;
+}
+
 export type InvoiceRunStatus = 'Not started' | 'Validated' | 'Flagged for review' | 'Approved for payment';
 
+/** One payable line (Salary, Overtime, Performance Incentive, ...) as validated: the system's own figure next to what the vendor is claiming. */
+export interface InvoiceLineDetail {
+  key: string;
+  label: string;
+  calculated: number;
+  vendorAmount: number;
+}
+
+/** A validate/approve pass over a chosen subset of a vendor's payable lines — a vendor can be paid one line, or several, at a time. */
 export interface InvoiceRun {
   vendor: string;
   period: string;
+  lines: InvoiceLineDetail[];
   calculatedTotal: number;
-  vendorInvoiceAmount?: number;
-  variancePct?: number;
+  vendorInvoiceAmount: number;
+  variancePct: number;
   status: InvoiceRunStatus;
   paymentId?: string;
 }

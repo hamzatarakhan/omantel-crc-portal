@@ -30,7 +30,7 @@ export class TrackingComponent {
     this.store.payments().map((p) => ({
       id: p.id,
       title: p.vendorName,
-      subtitle: [p.id, p.invoiceRef, p.period].filter(Boolean).join(' · ') + (p.paymentDate ? ' · Paid ' + p.paymentDate : ''),
+      subtitle: [p.id, p.lines, p.invoiceRef, p.period].filter(Boolean).join(' · ') + (p.paymentDate ? ' · Paid ' + p.paymentDate : ''),
       amountLabel: p.invoiceAmount.toLocaleString() + ' OMR',
       column: p.status,
       badge: p.slaAtRisk ? { label: 'SLA at risk', level: 'red' as const } : undefined,

@@ -1,8 +1,8 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import {
   Agent, AnnexureImport, AppNotification, AppUser, AuditEntry, BudgetLine, Candidate, CandidateStatus, Contract, IdDocument,
-  InterviewQuestion, InvoiceRun, MovementAnnouncement, MovementRequest, NotificationRule, PayableLine,
-  PayableRules, PaymentRecord, PayrollLine, PerformanceRecord, ResignationRecord, SyncRun, WorkforceSnapshot,
+  InterviewQuestion, InvoiceLineDetail, InvoiceRun, MovementAnnouncement, MovementRequest, NotificationRule, PayableLine,
+  PayableRules, PaymentRecord, PayrollLine, PerformanceRecord, ResignationRecord, SyncRun, VendorQuery, WorkforceSnapshot,
 } from '../models/domain';
 import { StatusLevel, daysRemainingToLevel } from '../models/status';
 import { MockDataService } from './mock-data.service';
@@ -178,8 +178,11 @@ export class CrcStore {
   readonly resignations = signal<ResignationRecord[]>(this.seedResignations());
   readonly importInfo = signal<{ fileName: string; employees: number; days: number; resignations: number; period: string } | null>(null);
   readonly payableRules = signal<PayableRules>({ thresholdSeconds: 10, deviationPct: 2, perVendor: false, includeIncentive: false });
-  readonly invoiceRuns = signal<Record<string, InvoiceRun>>({});
+  /** Every validate/approve pass, per vendor, oldest first — a vendor can have several, one per subset of lines paid over time. */
+  readonly invoiceRuns = signal<Record<string, InvoiceRun[]>>({});
   readonly payments = signal<PaymentRecord[]>(this.mock.getPaymentRecords());
+  /** Emails sent to a vendor querying a line where they invoiced more than the calculation — simulated, not a real mailbox. */
+  readonly vendorQueries = signal<VendorQuery[]>([]);
 
   readonly users = signal<AppUser[]>([
     { id: 'U1', name: 'Hamza Tarkan', email: 'hamza.tarkan@omantel.om', role: 'System Admin', active: true },
@@ -553,7 +556,7 @@ export class CrcStore {
     let absentDays = 0;
     const tiers = (['Bachelor', 'Diploma', 'Non-Diploma'] as const).map((degree) => {
       const group = existing.filter((a) => a.degree === degree);
-      let gross = 0, amount = 0, factorSum = 0, payroll = 0, fee = 0;
+      let gross = 0, amount = 0, factorSum = 0, payroll = 0, fee = 0, overtime = 0;
       for (const a of group) {
         const pay = this.payrollFor(a);
         const codes = att[a.id] ?? [];
@@ -562,16 +565,18 @@ export class CrcStore {
         const absent = codes.filter((c) => c === 'A').length;
         const factor = expected ? billable / expected : 0;
         const flatFee = Math.min(pay.managementFee, FLAT_MANAGEMENT_FEE);
-        gross += pay.billingRate; amount += pay.billingRate * factor; factorSum += factor; fee += flatFee; payroll += pay.billingRate - flatFee;
+        gross += pay.billingRate; amount += pay.billingRate * factor; overtime += pay.additional * factor; factorSum += factor; fee += flatFee; payroll += pay.billingRate - flatFee;
         if (absent) {
           absentDays += absent;
           absentees.push({ agent: a, absentDays: absent, rate: pay.billingRate, deduction: expected ? (pay.billingRate * absent) / expected : 0 });
         }
       }
-      return { degree, headcount: group.length, rate: group.length ? gross / group.length : 0, gross, payroll, fee, billableFte: factorSum, amount };
+      return { degree, headcount: group.length, rate: group.length ? gross / group.length : 0, gross, payroll, fee, billableFte: factorSum, amount, overtime, salaryAmount: amount - overtime };
     });
     const gross = tiers.reduce((s, t) => s + t.gross, 0);
     const base = tiers.reduce((s, t) => s + t.amount, 0);
+    const overtimeBase = tiers.reduce((s, t) => s + t.overtime, 0);
+    const salaryBase = base - overtimeBase;
     const absenceDeduction = gross - base;
 
     const newJoiners = joiners.map((a) => {
@@ -593,7 +598,21 @@ export class CrcStore {
     const incentiveIncluded = this.payableRules().includeIncentive;
     const subtotal = base + newJoining.amount + resignation.amount + (incentiveIncluded ? incentive : 0);
     const vat = subtotal * 0.05;
-    return { vendorName, existing, tiers, gross, base, absenceDeduction, absentDays, absentees, newJoiners, newJoining, resignationRecords, resignation, sampleCalls, excludedCalls, eligibleCalls, incentive, incentiveIncluded, subtotal, vat, total: subtotal + vat, threshold };
+    return { vendorName, existing, tiers, gross, base, salaryBase, overtimeBase, absenceDeduction, absentDays, absentees, newJoiners, newJoining, resignationRecords, resignation, sampleCalls, excludedCalls, eligibleCalls, incentive, incentiveIncluded, subtotal, vat, total: subtotal + vat, threshold };
+  }
+
+  /**
+   * The vendor's payable amount broken into the lines it is actually invoiced on: Salary (base pay, including new
+   * joiners and resignation settlements), Overtime (the additions on top of base pay) and the Performance Incentive
+   * (3 Clicks). A user can validate and pay any subset of these, not just the whole invoice at once.
+   */
+  payableLines(vendorName: string): Array<{ key: string; label: string; calculated: number; note?: string }> {
+    const c = this.calculateInvoice(vendorName);
+    return [
+      { key: 'salary', label: 'Salary', calculated: c.salaryBase + c.newJoining.amount + c.resignation.amount },
+      { key: 'overtime', label: 'Overtime', calculated: c.overtimeBase },
+      { key: 'performance', label: 'Performance Incentive', calculated: c.incentive, note: c.incentiveIncluded ? undefined : 'Not on the vendor invoice by the current payable rule' },
+    ];
   }
 
   /** Records a resignation: the agent leaves the active list and is billed pro-rata plus leave encashment. */
@@ -641,26 +660,42 @@ export class CrcStore {
     this.notify(`Annexure loaded: ${agents.length} employees for ${this.period()}.`, 'Invoicing & Payments', 'green', '/invoicing/reconciliation');
   }
 
-  validateInvoice(vendorName: string, vendorAmount: number) {
-    const calc = this.calculateInvoice(vendorName);
-    const variancePct = calc.total ? ((vendorAmount - calc.total) / calc.total) * 100 : 0;
+  /** Validates whichever lines the user picked (one or several) against what the vendor is claiming for each. */
+  validateInvoice(vendorName: string, lines: InvoiceLineDetail[]) {
+    const calculatedTotal = lines.reduce((s, l) => s + l.calculated, 0);
+    const vendorInvoiceAmount = lines.reduce((s, l) => s + l.vendorAmount, 0);
+    const variancePct = calculatedTotal ? ((vendorInvoiceAmount - calculatedTotal) / calculatedTotal) * 100 : 0;
     const flagged = Math.abs(variancePct) > this.payableRules().deviationPct;
-    const run: InvoiceRun = { vendor: vendorName, period: this.period(), calculatedTotal: calc.total, vendorInvoiceAmount: vendorAmount, variancePct, status: flagged ? 'Flagged for review' : 'Validated' };
-    this.invoiceRuns.update((m) => ({ ...m, [vendorName]: run }));
-    this.log(flagged ? 'Invoice Flagged' : 'Invoice Validated', vendorName, `Vendor invoice ${vendorAmount.toFixed(2)} vs calculated ${calc.total.toFixed(2)} OMR (${variancePct >= 0 ? '+' : ''}${variancePct.toFixed(2)}%).`);
-    if (flagged) this.notify(`${vendorName} invoice deviates ${variancePct.toFixed(1)}% from the calculation.`, 'Invoicing & Payments', 'amber', '/invoicing/reconciliation');
+    const run: InvoiceRun = { vendor: vendorName, period: this.period(), lines, calculatedTotal, vendorInvoiceAmount, variancePct, status: flagged ? 'Flagged for review' : 'Validated' };
+    this.invoiceRuns.update((m) => ({ ...m, [vendorName]: [...(m[vendorName] ?? []), run] }));
+    const names = lines.map((l) => l.label).join(', ');
+    this.log(flagged ? 'Invoice Flagged' : 'Invoice Validated', vendorName, `${names}: vendor invoice ${vendorInvoiceAmount.toFixed(2)} vs calculated ${calculatedTotal.toFixed(2)} OMR (${variancePct >= 0 ? '+' : ''}${variancePct.toFixed(2)}%).`);
+    if (flagged) this.notify(`${vendorName} invoice (${names}) deviates ${variancePct.toFixed(1)}% from the calculation.`, 'Invoicing & Payments', 'amber', '/invoicing/reconciliation');
     return run;
   }
 
+  /** Approves the vendor's most recent validated run — the exact subset of lines last validated — for payment. */
   approveInvoice(vendorName: string) {
-    const run = this.invoiceRuns()[vendorName];
-    if (!run || !run.vendorInvoiceAmount) return;
-    const payment: PaymentRecord = { id: 'PAY-' + this.next(), vendorName, invoiceAmount: Math.round(run.vendorInvoiceAmount), status: 'Pending', slaAtRisk: false, invoiceRef: 'INV-' + this.next(), period: run.period };
+    const runs = this.invoiceRuns()[vendorName] ?? [];
+    const run = runs[runs.length - 1];
+    if (!run || (run.status !== 'Validated' && run.status !== 'Flagged for review')) return;
+    const names = run.lines.map((l) => l.label).join(', ');
+    const payment: PaymentRecord = { id: 'PAY-' + this.next(), vendorName, lines: names, invoiceAmount: Math.round(run.vendorInvoiceAmount), status: 'Pending', slaAtRisk: false, invoiceRef: 'INV-' + this.next(), period: run.period };
     this.payments.update((list) => [payment, ...list]);
-    this.invoiceRuns.update((m) => ({ ...m, [vendorName]: { ...run, status: 'Approved for payment', paymentId: payment.id } }));
-    this.log('Invoice Approved', vendorName, `Approved for payment: ${payment.invoiceAmount.toLocaleString()} OMR (${payment.id}).`);
-    this.notify(`${vendorName} invoice approved for payment.`, 'Invoicing & Payments', 'green', '/invoicing/tracking');
+    this.invoiceRuns.update((m) => ({ ...m, [vendorName]: runs.map((r, i) => (i === runs.length - 1 ? { ...r, status: 'Approved for payment', paymentId: payment.id } : r)) }));
+    this.log('Invoice Approved', vendorName, `${names}: approved for payment, ${payment.invoiceAmount.toLocaleString()} OMR (${payment.id}).`);
+    this.notify(`${vendorName} invoice (${names}) approved for payment.`, 'Invoicing & Payments', 'green', '/invoicing/tracking');
     return payment;
+  }
+
+  /** Simulated send — logged and notified like the rest of the demo's "email" actions, no real mailbox behind it. */
+  queryVendor(q: Omit<VendorQuery, 'id' | 'sentAt' | 'sentBy'>) {
+    const query: VendorQuery = { ...q, id: 'VQ-' + this.next(), sentAt: new Date().toISOString(), sentBy: CURRENT_USER };
+    this.vendorQueries.update((list) => [query, ...list]);
+    const detail = q.lines.map((l) => `${l.label} invoiced ${l.vendorAmount.toFixed(2)} vs calculated ${l.calculated.toFixed(2)}`).join('; ');
+    this.log('Vendor Query Sent', q.vendor, `Emailed ${q.to} (${q.period}): ${detail} OMR. Comment: ${q.comment}`);
+    this.notify(`Emailed ${q.vendor} about ${q.lines.map((l) => l.label).join(', ')}.`, 'Invoicing & Payments', 'info', '/invoicing/reconciliation');
+    return query;
   }
 
   movePayment(id: string, status: PaymentRecord['status']) {
@@ -742,7 +777,8 @@ export class CrcStore {
     const conveyance = h % 5 === 0 ? 0 : 40;
     const special = Math.round(t.specialAllowance * (0.7 + ((h >> 3) % 60) / 100) * 100) / 100;
     const gross = r3(basic + hra + conveyance + special);
-    return { residentId: String(5_000_000 + (h % 20_000_000)), basic, hra, conveyance, special, other: 0, gross, managementFee: 116, additional: 0, deduction: 0, billingRate: r3(gross + 116) };
+    const additional = r3(t.additions * (0.8 + ((h >> 5) % 40) / 100));
+    return { residentId: String(5_000_000 + (h % 20_000_000)), basic, hra, conveyance, special, other: 0, gross, managementFee: 116, additional, deduction: 0, billingRate: r3(gross + 116) };
   }
 
   private seedPayroll(): Record<string, PayrollLine> {
