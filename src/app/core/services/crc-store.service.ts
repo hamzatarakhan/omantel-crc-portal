@@ -15,6 +15,9 @@ export const CURRENT_USER = 'Hamza Tarkan';
 export type WfoComponent = 'salary' | 'overtime' | 'performance' | 'incentive' | 'fee';
 
 /** Admin-configured rules for the per-agent Performance and Overtime lines. */
+/** An overtime rate formula for a vendor, a contract, a line (queue) or any mix of them; 'All' means any. */
+export interface OvertimeRule { id: string; vendor: string; contract: string; line: string; days: number; hoursPerDay: number; premium: number }
+
 export interface PayrollRules {
   /** An Omani agent can be given a performance amount only with a performance score above this percentage. */
   omaniMinScore: number;
@@ -210,6 +213,8 @@ export class CrcStore {
   readonly performanceRates = signal<Record<string, number>>({});
   /** Overtime rates (OMR / hour) set for individual agents on Overtime Settings; everyone else follows the formula. */
   readonly overtimeRates = signal<Record<string, number>>({});
+  /** Overtime formulas scoped to a vendor / contract / line; agents no rule covers use the default in payrollRules. */
+  readonly overtimeRules = signal<OvertimeRule[]>([]);
   readonly payableRules = signal<PayableRules>({ thresholdSeconds: 10, deviationPct: 2, perVendor: false, includeIncentive: false });
   /** Every validate/approve pass, per vendor, oldest first — a vendor can have several, one per subset of lines paid over time. */
   readonly invoiceRuns = signal<Record<string, InvoiceRun[]>>({});
@@ -612,9 +617,44 @@ export class CrcStore {
     return { hours, rate, amount: Math.round(hours * rate * 1000) / 1000 };
   }
 
-  /** The formula rate: basic ÷ days ÷ hours per day × premium. */
-  formulaOvertimeRate(a: Agent, r = this.payrollRules()): number {
-    return (this.payrollFor(a).basic / r.overtimeDays / r.overtimeHoursPerDay) * r.overtimePremium;
+  /** The contract an agent is billed on: their vendor's current billing contract ('—' for OJT, which has none). */
+  contractOfAgent(a: Agent): string {
+    const vendorName = this.contracts().find((c) => c.vendorName.startsWith(a.vendor))?.vendorName;
+    return (vendorName && this.payableContracts(vendorName)[0]?.reference) || '—';
+  }
+
+  /** The most specific overtime rule that covers the agent (vendor, contract and line each count once); the latest wins a tie. */
+  overtimeRuleFor(a: Agent, rules = this.overtimeRules()): OvertimeRule | undefined {
+    const contract = this.contractOfAgent(a);
+    let best: OvertimeRule | undefined, score = -1;
+    for (const r of rules) {
+      if ((r.vendor !== 'All' && r.vendor !== a.vendor) || (r.contract !== 'All' && r.contract !== contract) || (r.line !== 'All' && r.line !== a.queue)) continue;
+      const s = [r.vendor, r.contract, r.line].filter((x) => x !== 'All').length;
+      if (s >= score) { best = r; score = s; }
+    }
+    return best;
+  }
+
+  /** The formula rate: basic ÷ days ÷ hours per day × premium, from the rule that covers the agent or else the default. */
+  formulaOvertimeRate(a: Agent, def = this.payrollRules()): number {
+    const rule = this.overtimeRuleFor(a);
+    const [days, hours, premium] = rule ? [rule.days, rule.hoursPerDay, rule.premium] : [def.overtimeDays, def.overtimeHoursPerDay, def.overtimePremium];
+    return (this.payrollFor(a).basic / days / hours) * premium;
+  }
+
+  saveOvertimeRule(rule: Omit<OvertimeRule, 'id'> & { id?: string }) {
+    const scope = [rule.vendor, rule.contract, rule.line].map((x) => (x === 'All' ? 'any' : x)).join(' / ');
+    const same = this.overtimeRules().find((r) => r.id !== rule.id && r.vendor === rule.vendor && r.contract === rule.contract && r.line === rule.line);
+    const id = rule.id ?? same?.id ?? 'OTR-' + this.next();
+    this.overtimeRules.update((list) => [...list.filter((r) => r.id !== id), { ...rule, id }]);
+    this.log('Overtime Rule Saved', id, 'Vendor / contract / line ' + scope + ': basic ÷ ' + rule.days + ' ÷ ' + rule.hoursPerDay + ' × ' + rule.premium + '.');
+  }
+
+  deleteOvertimeRule(id: string) {
+    const r = this.overtimeRules().find((x) => x.id === id);
+    if (!r) return;
+    this.overtimeRules.update((list) => list.filter((x) => x.id !== id));
+    this.log('Overtime Rule Deleted', id, 'Vendor / contract / line ' + [r.vendor, r.contract, r.line].map((x) => (x === 'All' ? 'any' : x)).join(' / ') + ' removed; those agents follow the default again.');
   }
 
   /** The agent's own overtime rate if one was set, otherwise the formula rate. */

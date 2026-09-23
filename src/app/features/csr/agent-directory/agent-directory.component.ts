@@ -64,12 +64,6 @@ export class AgentDirectoryComponent {
   contract = signal('All');
   private months = [...this.store.payrollMonths()].reverse();
 
-  /** The contract an agent is billed on: their vendor's current billing contract (OJT has none). */
-  private contractOf(a: Agent): string {
-    const vendorName = this.store.contracts().find((c) => c.vendorName.startsWith(a.vendor))?.vendorName;
-    return (vendorName && this.store.payableContracts(vendorName)[0]?.reference) || '—';
-  }
-
   private days = computed(() => (this.period() === 'All' ? this.months : [this.period()]).flatMap((m) => {
     const [y, mo] = m.split('-').map(Number);
     return Array.from({ length: new Date(y, mo, 0).getDate() }, (_, i) => `${m}-${String(i + 1).padStart(2, '0')}`);
@@ -79,7 +73,7 @@ export class AgentDirectoryComponent {
     const n = { P: 0, leave: 0, A: 0 };
     for (const d of this.days()) { const c = this.store.attendanceOn(a, d); if (c === 'P' || c === 'A') n[c]++; else if (c && c !== 'OFF') n.leave++; }
     const months = this.period() === 'All' ? this.months : [this.period()];
-    return { ...a, contract: this.contractOf(a), present: n.P, leaveDays: n.leave, absent: n.A, otHours: months.reduce((s, m) => s + this.store.overtimeFor(a, m).hours, 0) };
+    return { ...a, contract: this.store.contractOfAgent(a), present: n.P, leaveDays: n.leave, absent: n.A, otHours: months.reduce((s, m) => s + this.store.overtimeFor(a, m).hours, 0) };
   }));
 
   rows = computed(() => this.all().filter((a) => (this.status() === 'All' || a.status === this.status()) && (this.vendor() === 'All' || a.vendor === this.vendor()) && (this.contract() === 'All' || a.contract === this.contract())));
