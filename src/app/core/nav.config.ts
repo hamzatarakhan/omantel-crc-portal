@@ -69,6 +69,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: 'Workforce Analytics', path: 'analytics', icon: 'insights', perms: VIEW_AGENTS },
       { label: 'Recruitment & Interview', path: 'recruitment', icon: 'person_search', perms: ['Manage Recruitment'] },
       { label: 'Performance Monitoring', path: 'performance', icon: 'speed', perms: VIEW_AGENTS },
+      { label: 'Performance & Overtime', path: 'performance-overtime', icon: 'query_stats', perms: VIEW_AGENTS },
     ],
   },
   {
@@ -99,11 +100,11 @@ export const NAV_GROUPS: NavGroup[] = [
     icon: 'admin_panel_settings',
     basePath: '/admin',
     adminOnly: true,
+    sections: { 'Payroll Settings': 'tune' },
     items: [
       { label: 'Access Control', path: 'access-control', icon: 'lock_person' },
-      { label: 'Performance & Overtime', path: 'performance-overtime', icon: 'query_stats' },
-      { label: 'Performance Settings', path: 'performance-settings', icon: 'workspace_premium' },
-      { label: 'Overtime Settings', path: 'overtime-settings', icon: 'more_time' },
+      { label: 'Performance Settings', path: 'performance-settings', icon: 'workspace_premium', section: 'Payroll Settings' },
+      { label: 'Overtime Settings', path: 'overtime-settings', icon: 'more_time', section: 'Payroll Settings' },
       { label: 'Audit Log', path: 'audit-log', icon: 'history' },
     ],
   },

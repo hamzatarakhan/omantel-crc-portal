@@ -18,7 +18,7 @@ const FIELD = 'w-full px-2.5 py-2 text-xs font-semibold rounded-lg border border
     <app-page-header
       title="Performance & Overtime"
       subtitle="Each agent's score, performance and overtime, month by month"
-      [breadcrumbs]="[{ label: 'Administration', link: '/admin/access-control' }, { label: 'Performance & Overtime' }]"
+      [breadcrumbs]="[{ label: 'CSR Management', link: '/csr/directory' }, { label: 'Performance & Overtime' }]"
     ></app-page-header>
 
     <div class="surface-card overflow-hidden mb-4">

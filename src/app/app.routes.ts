@@ -56,7 +56,7 @@ export const routes: Routes = [
 
       // Administration
       { path: 'admin/access-control', loadComponent: () => import('./features/admin/access-control/access-control.component').then((m) => m.AccessControlComponent) },
-      { path: 'admin/performance-overtime', loadComponent: () => import('./features/admin/performance-overtime/performance-overtime.component').then((m) => m.PerformanceOvertimeComponent) },
+      { path: 'csr/performance-overtime', loadComponent: () => import('./features/admin/performance-overtime/performance-overtime.component').then((m) => m.PerformanceOvertimeComponent) },
       { path: 'admin/performance-settings', loadComponent: () => import('./features/admin/performance-settings/performance-settings.component').then((m) => m.PerformanceSettingsComponent) },
       { path: 'admin/overtime-settings', loadComponent: () => import('./features/admin/overtime-settings/overtime-settings.component').then((m) => m.OvertimeSettingsComponent) },
       { path: 'admin/audit-log', loadComponent: () => import('./features/admin/audit-log/audit-log.component').then((m) => m.AuditLogComponent) },

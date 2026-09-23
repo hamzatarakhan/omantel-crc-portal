@@ -17,7 +17,7 @@ import { AGENT_VENDORS, SETTINGS_UI } from '../settings-ui';
     <app-page-header
       title="Overtime Settings"
       subtitle="How one overtime hour is priced for each agent"
-      [breadcrumbs]="[{ label: 'Administration', link: '/admin/access-control' }, { label: 'Overtime Settings' }]"
+      [breadcrumbs]="[{ label: 'Administration', link: '/admin/access-control' }, { label: 'Payroll Settings' }, { label: 'Overtime Settings' }]"
     >
       @if (dirty()) { <span class="status-chip status-chip--amber">Unsaved changes</span> }
       <button type="button" [class]="ui.discard" (click)="reset()" [disabled]="!dirty()">Discard</button>
@@ -83,7 +83,7 @@ import { AGENT_VENDORS, SETTINGS_UI } from '../settings-ui';
         </table>
       </div>
     </div>
-    <p class="text-xs text-ink-400">Each agent's overtime hours and pay month by month are on <a class="text-brand-600 font-medium" routerLink="/admin/performance-overtime">Performance &amp; Overtime</a>.</p>
+    <p class="text-xs text-ink-400">Each agent's overtime hours and pay month by month are on <a class="text-brand-600 font-medium" routerLink="/csr/performance-overtime">Performance &amp; Overtime</a>.</p>
   `,
 })
 export class OvertimeSettingsComponent {
