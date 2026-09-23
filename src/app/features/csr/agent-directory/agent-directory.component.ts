@@ -68,6 +68,7 @@ export class AgentDirectoryComponent {
     { key: 'vendor', label: 'Vendor' },
     { key: 'degree', label: 'Degree' },
     { key: 'joinDate', label: 'Join Date', type: 'date' },
+    { key: 'otHours', label: 'Overtime (h)', align: 'right', display: (r) => this.store.overtimeFor(r).hours.toLocaleString('en-GB') },
     {
       key: 'status', label: 'Status', type: 'status',
       statusFn: (r) => ({ label: r.leaveType || r.status, level: this.statusLevel(r.status) }),

@@ -550,6 +550,17 @@ export class CrcStore {
   }
 
   /**
+   * An employee's overtime this month: the overtime amount on their pay line and the hours it stands for, at the overtime
+   * hourly rate — basic ÷ 26 working days ÷ 8 hours × 1.25 (the day-overtime premium in Oman's labour law).
+   * ponytail: hours are worked back from the amount; read them straight from WFO once it sends them.
+   */
+  overtimeFor(a: Agent): { hours: number; rate: number; amount: number } {
+    const pay = this.payrollFor(a);
+    const rate = (pay.basic / 26 / 8) * 1.25;
+    return { hours: rate ? Math.round((pay.additional / rate) * 2) / 2 : 0, rate, amount: pay.additional };
+  }
+
+  /**
    * Payable calculation for a vendor, from each employee's own billing rate:
    *  - existing staff: billing rate x billable-day ratio (absence "A" is deducted, approved leave stays billable)
    *  - joined this month: billed pro-rata from the joining date on their own line
@@ -570,7 +581,7 @@ export class CrcStore {
     let absentDays = 0;
     const tiers = (['Bachelor', 'Diploma', 'Non-Diploma'] as const).map((degree) => {
       const group = existing.filter((a) => a.degree === degree);
-      let gross = 0, amount = 0, factorSum = 0, payroll = 0, fee = 0, overtime = 0;
+      let gross = 0, amount = 0, factorSum = 0, payroll = 0, fee = 0, overtime = 0, overtimeHours = 0;
       for (const a of group) {
         const pay = this.payrollFor(a);
         const codes = att[a.id] ?? [];
@@ -579,13 +590,13 @@ export class CrcStore {
         const absent = codes.filter((c) => c === 'A').length;
         const factor = expected ? billable / expected : 0;
         const flatFee = Math.min(pay.managementFee, FLAT_MANAGEMENT_FEE);
-        gross += pay.billingRate; amount += pay.billingRate * factor; overtime += pay.additional * factor; factorSum += factor; fee += flatFee; payroll += pay.billingRate - flatFee;
+        gross += pay.billingRate; amount += pay.billingRate * factor; overtime += pay.additional * factor; overtimeHours += this.overtimeFor(a).hours; factorSum += factor; fee += flatFee; payroll += pay.billingRate - flatFee;
         if (absent) {
           absentDays += absent;
           absentees.push({ agent: a, absentDays: absent, rate: pay.billingRate, deduction: expected ? (pay.billingRate * absent) / expected : 0 });
         }
       }
-      return { degree, headcount: group.length, rate: group.length ? gross / group.length : 0, gross, payroll, fee, billableFte: factorSum, amount, overtime, salaryAmount: amount - overtime };
+      return { degree, headcount: group.length, rate: group.length ? gross / group.length : 0, gross, payroll, fee, billableFte: factorSum, amount, overtime, overtimeHours, salaryAmount: amount - overtime };
     });
     const gross = tiers.reduce((s, t) => s + t.gross, 0);
     const base = tiers.reduce((s, t) => s + t.amount, 0);

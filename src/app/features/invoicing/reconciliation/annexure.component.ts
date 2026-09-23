@@ -94,7 +94,7 @@ export class AnnexureComponent {
 
   private line(a: { name: string; queue: string; employeeId: string; degree: string; nationality?: string; joinDate: string; id: string }) {
     const pay = this.store.payroll()[a.id] ?? this.store.payrollFor(a as any);
-    return { name: a.name, queue: a.queue, employeeId: a.employeeId, residentId: pay.residentId, degree: a.degree, nationality: a.nationality ?? 'Oman', joinDate: a.joinDate, basic: pay.basic, hra: pay.hra, conveyance: pay.conveyance, special: pay.special, other: pay.other, gross: pay.gross, fee: pay.managementFee, additional: pay.additional ?? 0, deduction: pay.deduction ?? 0, billingRate: pay.billingRate };
+    return { name: a.name, queue: a.queue, employeeId: a.employeeId, residentId: pay.residentId, degree: a.degree, nationality: a.nationality ?? 'Oman', joinDate: a.joinDate, basic: pay.basic, hra: pay.hra, conveyance: pay.conveyance, special: pay.special, other: pay.other, gross: pay.gross, fee: pay.managementFee, otHours: this.store.overtimeFor(a as any).hours, additional: pay.additional ?? 0, deduction: pay.deduction ?? 0, billingRate: pay.billingRate };
   }
 
   employeeRows = computed(() => this.calc().existing.map((a, i) => ({ no: i + 1, ...this.line(a) })));
@@ -110,7 +110,7 @@ export class AnnexureComponent {
     { key: 'conveyance', label: 'Conveyance', type: 'money', align: 'right', decimals: 2 }, { key: 'special', label: 'Special', type: 'money', align: 'right', decimals: 2 },
     { key: 'other', label: 'Other', type: 'money', align: 'right', decimals: 2 }, { key: 'gross', label: 'Gross', type: 'money', align: 'right' },
     { key: 'fee', label: 'Mgmt fee', type: 'money', align: 'right', decimals: 2 },
-    { key: 'additional', label: 'Additional', type: 'money', align: 'right', decimals: 2 }, { key: 'deduction', label: 'Deduction', type: 'money', align: 'right', decimals: 2 },
+    { key: 'otHours', label: 'OT hours', type: 'number', align: 'right' }, { key: 'additional', label: 'Overtime', type: 'money', align: 'right', decimals: 2 }, { key: 'deduction', label: 'Deduction', type: 'money', align: 'right', decimals: 2 },
   ];
 
   employeeColumns: TableColumn<any>[] = [

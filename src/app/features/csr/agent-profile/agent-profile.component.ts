@@ -36,10 +36,11 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
         <button mat-stroked-button color="warn" (click)="resign()" appRequires="Manage Leave & Attendance"><mat-icon class="!text-base !mr-1">logout</mat-icon>Record resignation</button>
       </app-page-header>
 
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
         <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Degree</div><div class="text-sm font-medium mt-0.5">{{ a.degree }}</div></div>
         <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Nationality</div><div class="text-sm font-medium mt-0.5">{{ a.nationality }}</div></div>
         <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Join Date</div><div class="text-sm font-medium mt-0.5">{{ a.joinDate }}</div></div>
+        <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Overtime this month</div><div class="text-sm font-medium mt-0.5">{{ ot().hours | number:'1.0-1' }} <span class="text-xs font-medium text-ink-400">hours</span></div></div>
         @if (canSeePay() && pay(); as p) {
           <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Basic salary</div><div class="text-sm font-extrabold mt-0.5 text-brand-700">{{ p.basic | number:'1.3-3' }} <span class="text-xs font-medium text-ink-400">OMR</span></div></div>
         } @else {
@@ -100,7 +101,7 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
                       <tr class="border-t border-surface-border"><td class="px-3 py-2 text-ink-700">Other allowance</td><td class="px-3 py-2 text-right">{{ p.other | number:'1.3-3' }}</td></tr>
                       <tr class="border-t-2 border-surface-border font-semibold"><td class="px-3 py-2 text-ink-900">Gross salary</td><td class="px-3 py-2 text-right text-ink-900">{{ p.gross | number:'1.3-3' }}</td></tr>
                       <tr class="border-t border-surface-border"><td class="px-3 py-2 text-ink-700">Management fee</td><td class="px-3 py-2 text-right">{{ p.managementFee | number:'1.3-3' }}</td></tr>
-                      <tr class="border-t border-surface-border"><td class="px-3 py-2 text-ink-700">Additional</td><td class="px-3 py-2 text-right">{{ p.additional | number:'1.3-3' }}</td></tr>
+                      <tr class="border-t border-surface-border"><td class="px-3 py-2 text-ink-700">Overtime <span class="text-xs text-ink-400">&middot; {{ ot().hours | number:'1.0-1' }} h &times; {{ ot().rate | number:'1.3-3' }} OMR/h</span></td><td class="px-3 py-2 text-right">{{ p.additional | number:'1.3-3' }}</td></tr>
                       <tr class="border-t border-surface-border"><td class="px-3 py-2 text-ink-700">Deduction</td><td class="px-3 py-2 text-right">{{ p.deduction | number:'1.3-3' }}</td></tr>
                       <tr class="border-t-2 border-surface-border font-semibold"><td class="px-3 py-2 text-ink-900">Billing rate (what the vendor bills per month)</td><td class="px-3 py-2 text-right text-brand-700">{{ p.billingRate | number:'1.3-3' }}</td></tr>
                     </tbody>
@@ -172,6 +173,7 @@ export class AgentProfileComponent {
   doc = computed(() => this.store.idDocs()[this.id() ?? '']);
   canSeePay = computed(() => this.store.can('View Employee Salary'));
   pay = computed(() => { const a = this.agent(); return a && this.canSeePay() ? this.store.payrollFor(a) : null; });
+  ot = computed(() => { const a = this.agent(); return a ? this.store.overtimeFor(a) : { hours: 0, rate: 0, amount: 0 }; });
   codes = computed(() => this.store.attendance()[this.id() ?? ''] ?? []);
   perf = computed(() => this.store.performance().find((p) => p.agentId === this.id()));
   moves = computed(() => this.store.movementRequests().filter((m) => m.agentId === this.id() && (m.status === 'Active' || m.status === 'Ending Soon' || m.status === 'Expired')));

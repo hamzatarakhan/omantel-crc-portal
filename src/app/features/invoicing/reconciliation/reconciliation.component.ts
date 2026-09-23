@@ -358,7 +358,7 @@ export class ReconciliationComponent {
         { label: `Resignations · ${c.resignation.units} · pro-rata + leave encashment`, amount: c.resignation.amount },
         ...(this.lines().some((x) => x.component === 'fee') ? [{ label: 'Less the management fee, billed on its own line', amount: -fee }] : []),
       ];
-      case 'overtime': return c.tiers.map((t) => ({ label: `${t.degree} tier · ${t.headcount} agents`, amount: t.overtime }));
+      case 'overtime': return c.tiers.map((t) => ({ label: `${t.degree} tier · ${t.headcount} agents · ${t.overtimeHours.toLocaleString('en-GB')} h`, amount: t.overtime }));
       case 'fee': return c.tiers.map((t) => ({ label: `${t.degree} tier · ${t.headcount} agents`, amount: t.fee }));
       default: return [{ label: `${c.eligibleCalls.toLocaleString()} eligible calls (of ${c.sampleCalls.toLocaleString()}) × 0.05 OMR`, amount: c.incentive }];
     }
