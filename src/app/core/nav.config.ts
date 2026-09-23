@@ -101,6 +101,7 @@ export const NAV_GROUPS: NavGroup[] = [
     adminOnly: true,
     items: [
       { label: 'Access Control', path: 'access-control', icon: 'lock_person' },
+      { label: 'Performance & Overtime', path: 'performance-overtime', icon: 'workspace_premium' },
       { label: 'Audit Log', path: 'audit-log', icon: 'history' },
     ],
   },

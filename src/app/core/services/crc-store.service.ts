@@ -12,7 +12,21 @@ import { seedChanges } from './contract-monitoring';
 
 export const CURRENT_USER = 'Hamza Tarkan';
 
-export type WfoComponent = 'salary' | 'overtime' | 'performance' | 'fee';
+export type WfoComponent = 'salary' | 'overtime' | 'performance' | 'incentive' | 'fee';
+
+/** Admin-configured rules for the per-agent Performance and Overtime lines. */
+export interface PayrollRules {
+  /** An Omani agent earns their performance rate only with a monthly score above this percentage. */
+  omaniMinScore: number;
+  /** The same for a non-Omani agent. */
+  nonOmaniMinScore: number;
+  /** Overtime pay = basic ÷ days ÷ hours per day × premium × overtime hours (June 2026 overtime sheet). */
+  overtimePremium: number;
+  overtimeDays: number;
+  overtimeHoursPerDay: number;
+}
+/** Per agent: the configured performance rate, and this month's score and overtime hours (WFO / performance system). */
+export interface AgentPay { performanceRate: number; performanceScore: number; overtimeHours: number }
 /** One line the vendor can invoice on a contract: calculated from WFO attendance, or the contract's monthly share. */
 export interface PayableLineItem {
   key: string;
@@ -191,6 +205,9 @@ export class CrcStore {
   readonly payroll = signal<Record<string, PayrollLine>>(this.seedPayroll());
   readonly resignations = signal<ResignationRecord[]>(this.seedResignations());
   readonly importInfo = signal<{ fileName: string; employees: number; days: number; resignations: number; period: string } | null>(null);
+  readonly payrollRules = signal<PayrollRules>({ omaniMinScore: 90, nonOmaniMinScore: 95, overtimePremium: 1.25, overtimeDays: 30, overtimeHoursPerDay: 8 });
+  /** Overrides of the seeded per-agent pay inputs (an admin changing a performance rate). */
+  readonly agentPay = signal<Record<string, AgentPay>>({});
   readonly payableRules = signal<PayableRules>({ thresholdSeconds: 10, deviationPct: 2, perVendor: false, includeIncentive: false });
   /** Every validate/approve pass, per vendor, oldest first — a vendor can have several, one per subset of lines paid over time. */
   readonly invoiceRuns = signal<Record<string, InvoiceRun[]>>({});
@@ -549,15 +566,48 @@ export class CrcStore {
     return this.payroll()[a.id] ?? this.makePayroll(a.id, a.degree);
   }
 
-  /**
-   * An employee's overtime this month: the overtime amount on their pay line and the hours it stands for, at the overtime
-   * hourly rate — basic ÷ 26 working days ÷ 8 hours × 1.25 (the day-overtime premium in Oman's labour law).
-   * ponytail: hours are worked back from the amount; read them straight from WFO once it sends them.
-   */
+  agentPayFor(a: Agent): AgentPay {
+    return this.agentPay()[a.id] ?? this.seedAgentPay(a.id);
+  }
+
+  /** Overtime pay from the hours worked: basic ÷ days ÷ hours per day × premium × hours — the formula of the June 2026 overtime sheet. */
   overtimeFor(a: Agent): { hours: number; rate: number; amount: number } {
-    const pay = this.payrollFor(a);
-    const rate = (pay.basic / 26 / 8) * 1.25;
-    return { hours: rate ? Math.round((pay.additional / rate) * 2) / 2 : 0, rate, amount: pay.additional };
+    const r = this.payrollRules();
+    const hours = this.agentPayFor(a).overtimeHours;
+    const rate = (this.payrollFor(a).basic / r.overtimeDays / r.overtimeHoursPerDay) * r.overtimePremium;
+    return { hours, rate, amount: Math.round(hours * rate * 1000) / 1000 };
+  }
+
+  /** The agent earns their configured performance rate only when this month's score is above the threshold for their nationality. */
+  performanceFor(a: Agent): { rate: number; score: number; threshold: number; omani: boolean; eligible: boolean; amount: number } {
+    const p = this.agentPayFor(a), r = this.payrollRules();
+    const omani = /^oman/i.test(a.nationality ?? 'Oman');
+    const threshold = omani ? r.omaniMinScore : r.nonOmaniMinScore;
+    const eligible = p.performanceScore > threshold;
+    return { rate: p.performanceRate, score: p.performanceScore, threshold, omani, eligible, amount: eligible ? p.performanceRate : 0 };
+  }
+
+  setPerformanceRate(agentId: string, rate: number) {
+    const a = this.agents().find((x) => x.id === agentId);
+    if (!a) return;
+    const before = this.agentPayFor(a).performanceRate;
+    if (before === rate) return;
+    this.agentPay.update((m) => ({ ...m, [agentId]: { ...this.agentPayFor(a), performanceRate: rate } }));
+    this.log('Performance Rate Changed', a.employeeId, `${a.name}: performance rate ${before} → ${rate} OMR.`, 'Success', undefined, { previousValue: String(before), newValue: String(rate) });
+  }
+
+  savePayrollRules(rules: PayrollRules) {
+    const r = this.payrollRules();
+    this.payrollRules.set(rules);
+    this.log('Payroll Rules Saved', 'PAYROLL-RULES', `Performance: Omani above ${rules.omaniMinScore}%, non-Omani above ${rules.nonOmaniMinScore}% (was ${r.omaniMinScore}% / ${r.nonOmaniMinScore}%). Overtime: basic ÷ ${rules.overtimeDays} ÷ ${rules.overtimeHoursPerDay} × ${rules.overtimePremium}.`);
+  }
+
+  /** ponytail: demo inputs — rates follow the spread in the June 2026 performance sheet; scores and hours stand in for WFO until it is connected. */
+  private seedAgentPay(id: string): AgentPay {
+    const h = hash(id + '|pay');
+    const rates = [100, 100, 100, 100, 50, 50, 50, 20, 20, 40, 0];
+    const hours = [0, 0, 0, 0, 0, 0, 0, 8.5, 12, 25.5, 34, 16];
+    return { performanceRate: rates[h % rates.length], performanceScore: 84 + ((h >> 5) % 17), overtimeHours: hours[(h >> 11) % hours.length] };
   }
 
   /**
@@ -581,7 +631,7 @@ export class CrcStore {
     let absentDays = 0;
     const tiers = (['Bachelor', 'Diploma', 'Non-Diploma'] as const).map((degree) => {
       const group = existing.filter((a) => a.degree === degree);
-      let gross = 0, amount = 0, factorSum = 0, payroll = 0, fee = 0, overtime = 0, overtimeHours = 0;
+      let gross = 0, amount = 0, factorSum = 0, payroll = 0, fee = 0, overtime = 0, overtimeHours = 0, performance = 0, qualified = 0;
       for (const a of group) {
         const pay = this.payrollFor(a);
         const codes = att[a.id] ?? [];
@@ -590,18 +640,21 @@ export class CrcStore {
         const absent = codes.filter((c) => c === 'A').length;
         const factor = expected ? billable / expected : 0;
         const flatFee = Math.min(pay.managementFee, FLAT_MANAGEMENT_FEE);
-        gross += pay.billingRate; amount += pay.billingRate * factor; overtime += pay.additional * factor; overtimeHours += this.overtimeFor(a).hours; factorSum += factor; fee += flatFee; payroll += pay.billingRate - flatFee;
+        gross += pay.billingRate; amount += pay.billingRate * factor; factorSum += factor;
+        const ot = this.overtimeFor(a), perf = this.performanceFor(a);
+        overtime += ot.amount; overtimeHours += ot.hours; performance += perf.amount; if (perf.eligible) qualified++; fee += flatFee; payroll += pay.billingRate - flatFee;
         if (absent) {
           absentDays += absent;
           absentees.push({ agent: a, absentDays: absent, rate: pay.billingRate, deduction: expected ? (pay.billingRate * absent) / expected : 0 });
         }
       }
-      return { degree, headcount: group.length, rate: group.length ? gross / group.length : 0, gross, payroll, fee, billableFte: factorSum, amount, overtime, overtimeHours, salaryAmount: amount - overtime };
+      return { degree, headcount: group.length, rate: group.length ? gross / group.length : 0, gross, payroll, fee, billableFte: factorSum, amount, overtime, overtimeHours, performance, qualified, salaryAmount: amount };
     });
     const gross = tiers.reduce((s, t) => s + t.gross, 0);
     const base = tiers.reduce((s, t) => s + t.amount, 0);
     const overtimeBase = tiers.reduce((s, t) => s + t.overtime, 0);
-    const salaryBase = base - overtimeBase;
+    const performanceBase = tiers.reduce((s, t) => s + t.performance, 0);
+    const salaryBase = base;
     const absenceDeduction = gross - base;
 
     const newJoiners = joiners.map((a) => {
@@ -621,9 +674,9 @@ export class CrcStore {
     const eligibleCalls = sampleCalls - excludedCalls;
     const incentive = Math.round(eligibleCalls * 0.05 * 100) / 100;
     const incentiveIncluded = this.payableRules().includeIncentive;
-    const subtotal = base + newJoining.amount + resignation.amount + (incentiveIncluded ? incentive : 0);
+    const subtotal = base + overtimeBase + performanceBase + newJoining.amount + resignation.amount + (incentiveIncluded ? incentive : 0);
     const vat = subtotal * 0.05;
-    return { vendorName, existing, tiers, gross, base, salaryBase, overtimeBase, absenceDeduction, absentDays, absentees, newJoiners, newJoining, resignationRecords, resignation, sampleCalls, excludedCalls, eligibleCalls, incentive, incentiveIncluded, subtotal, vat, total: subtotal + vat, threshold };
+    return { vendorName, existing, tiers, gross, base, salaryBase, overtimeBase, performanceBase, absenceDeduction, absentDays, absentees, newJoiners, newJoining, resignationRecords, resignation, sampleCalls, excludedCalls, eligibleCalls, incentive, incentiveIncluded, subtotal, vat, total: subtotal + vat, threshold };
   }
 
   /** The vendor's contracts that run in the billing month, the one its agents are billed on (the active contract ending last) first. */
@@ -637,7 +690,7 @@ export class CrcStore {
 
   /**
    * What the vendor can invoice on one contract this month: one line per line of the contract's PO. On the billing contract,
-   * the Salary, Overtime and Performance (3 Clicks) lines — and a management fee line, if any — take the calculated figure,
+   * the Salary, Overtime, Performance and Incentive (3 Clicks) lines — and a management fee line, if any — take the calculated figure,
    * and any calculated component with no matching PO line is added as its own line so nothing billed is lost. Every other line
    * is the contract's monthly share of its yearly budget.
    * ponytail: lines are matched to WFO components by name; map them explicitly once the ERP gives a line type.
@@ -662,7 +715,8 @@ export class CrcStore {
     const wfo: Array<{ component: WfoComponent; label: string; match: RegExp; amount: number; note?: string }> = [
       { component: 'salary', label: 'Salary', match: /^salary$/i, amount: calc.salaryBase + calc.newJoining.amount + calc.resignation.amount - (hasFeeLine ? fee : 0) },
       { component: 'overtime', label: 'Overtime', match: /^over ?time$/i, amount: calc.overtimeBase },
-      { component: 'performance', label: 'Performance', match: /^performance( incentive)?$/i, amount: calc.incentive, note: calc.incentiveIncluded ? undefined : 'Not on the vendor invoice by the current payable rule' },
+      { component: 'performance', label: 'Performance', match: /^performance$/i, amount: calc.performanceBase },
+      { component: 'incentive', label: 'Incentive', match: /^incentive$/i, amount: calc.incentive, note: calc.incentiveIncluded ? undefined : 'Not on the vendor invoice by the current payable rule' },
       ...(hasFeeLine ? [{ component: 'fee' as WfoComponent, label: 'Management fee', match: /management fee/i, amount: fee }] : []),
     ];
     for (const w of wfo) {

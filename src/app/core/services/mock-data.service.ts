@@ -114,7 +114,7 @@ export class MockDataService {
         queue: QUEUES[Math.floor(this.rand() * QUEUES.length)],
         vendor: vendors[Math.floor(this.rand() * vendors.length)],
         degree: degrees[Math.floor(this.rand() * degrees.length)],
-        nationality: 'Oman',
+        nationality: i % 5 === 3 ? ['India', 'Egypt', 'Pakistan', 'Philippines'][i % 4] : 'Oman',
         joinDate: `20${18 + Math.floor(this.rand() * 7)}-0${1 + Math.floor(this.rand() * 8)}-1${Math.floor(this.rand() * 9)}`,
         status,
         leaveType: status === 'On Leave' ? leaveTypes[Math.floor(this.rand() * leaveTypes.length)] : undefined,

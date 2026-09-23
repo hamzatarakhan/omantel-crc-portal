@@ -155,7 +155,9 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Not validated': 'neutra
                       </div>
                       <p class="text-[11px] text-ink-400 mt-2">
                         @switch (l.component) {
-                          @case ('performance') { Calls shorter than {{ calc().threshold }}s don't count — <a class="text-brand-600 font-medium" routerLink="/invoicing/rules">change the rule</a>. }
+                          @case ('performance') { Each agent earns their own performance rate when this month's score is above {{ store.payrollRules().omaniMinScore }}% (Omani) or {{ store.payrollRules().nonOmaniMinScore }}% (non-Omani) — rates and thresholds are set in <a class="text-brand-600 font-medium" routerLink="/admin/performance-overtime">Performance &amp; Overtime</a>. }
+                          @case ('overtime') { Overtime hours &times; basic &divide; {{ store.payrollRules().overtimeDays }} days &divide; {{ store.payrollRules().overtimeHoursPerDay }} hours &times; {{ store.payrollRules().overtimePremium }}, per agent — set in <a class="text-brand-600 font-medium" routerLink="/admin/performance-overtime">Performance &amp; Overtime</a>. }
+                          @case ('incentive') { Calls shorter than {{ calc().threshold }}s don't count — <a class="text-brand-600 font-medium" routerLink="/invoicing/rules">change the rule</a>. }
                           @case ('fee') { The contract's flat management fee per agent per month. }
                           @default { Billing rate &times; billable-day ratio per agent, from the <a class="text-brand-600 font-medium" routerLink="/csr/leave">attendance sheet</a> and the <button type="button" class="text-brand-600 font-medium" (click)="view.set('annexure')">annexure</button>. Absence is deducted; approved leave stays billable. }
                         }
@@ -359,6 +361,7 @@ export class ReconciliationComponent {
         ...(this.lines().some((x) => x.component === 'fee') ? [{ label: 'Less the management fee, billed on its own line', amount: -fee }] : []),
       ];
       case 'overtime': return c.tiers.map((t) => ({ label: `${t.degree} tier · ${t.headcount} agents · ${t.overtimeHours.toLocaleString('en-GB')} h`, amount: t.overtime }));
+      case 'performance': return c.tiers.map((t) => ({ label: `${t.degree} tier · ${t.qualified} of ${t.headcount} agents above their score threshold`, amount: t.performance }));
       case 'fee': return c.tiers.map((t) => ({ label: `${t.degree} tier · ${t.headcount} agents`, amount: t.fee }));
       default: return [{ label: `${c.eligibleCalls.toLocaleString()} eligible calls (of ${c.sampleCalls.toLocaleString()}) × 0.05 OMR`, amount: c.incentive }];
     }
