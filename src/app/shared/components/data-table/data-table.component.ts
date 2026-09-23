@@ -19,6 +19,8 @@ export interface TableColumn<T = any> {
   align?: 'left' | 'right';
   /** Text shown in the cell instead of the raw value (sorting still uses the raw value). */
   display?: (row: T) => string;
+  /** Extra classes for the cell (e.g. colour the text by the row's status). */
+  cellClass?: (row: T) => string;
   /** Renders buttons in the cell instead of a value; clicks come out of (rowAction). */
   actions?: Array<{ id: string; label: string; icon?: string; hide?: (row: T) => boolean }>;
 }
@@ -97,7 +99,7 @@ export interface TableColumn<T = any> {
                   (click)="rowClick.emit(row)"
                 >
                   @for (col of columns; track col.key) {
-                    <td class="px-4 py-3 whitespace-nowrap text-ink-700" [class.text-right]="col.align === 'right'">
+                    <td class="px-4 py-3 whitespace-nowrap text-ink-700" [class.text-right]="col.align === 'right'" [class]="col.cellClass ? col.cellClass(row) : ''">
                       @if (col.actions) {
                         <div class="flex items-center gap-1">
                           @for (a of col.actions; track a.id) {

@@ -156,6 +156,8 @@ export class CrcStore {
   ]);
 
   readonly budgetLines = signal<BudgetLine[]>(this.mock.getBudgetLines().filter((l) => l.category !== 'Total Budget'));
+  /** Manual override of a Yearly Budget line's approved amount, keyed by "contractId:Y<year>:L<line>". Not read from the ERP. */
+  readonly yearlyBudgetApprovals = signal<Record<string, number>>({});
 
   readonly agents = signal<Agent[]>(this.mock.getAgents(48));
   readonly attendanceDays = signal<string[]>(Array.from({ length: 14 }, (_, i) => isoDay(i - 13)));
@@ -373,6 +375,14 @@ export class CrcStore {
       return { ...att, [agentId]: row };
     });
     if (dayIndex === this.attendanceDays().length - 1) this.syncAgentStatusFromCode(agentId, code);
+  }
+
+  /** Approves a Yearly Budget line's amount (CRC-only; does not alter the contract itself). Caller has already checked the contract total is not exceeded. */
+  setYearlyBudgetLine(contract: Contract, year: number, line: number, lineDescription: string, approved: number) {
+    const key = `${contract.id}:Y${year}:L${line}`;
+    const before = this.yearlyBudgetApprovals()[key];
+    this.yearlyBudgetApprovals.update((m) => ({ ...m, [key]: approved }));
+    this.log('Yearly Budget Line Approved', contract.reference, `Year ${year}, ${lineDescription}: ${before !== undefined ? before.toLocaleString('en-GB') + ' → ' : ''}${approved.toLocaleString('en-GB')} ${contract.currency}.`);
   }
 
   /** Leave override by the CSR team (does not alter the source WFO record). Applies to today. */

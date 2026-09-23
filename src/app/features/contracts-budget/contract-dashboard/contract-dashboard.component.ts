@@ -14,7 +14,8 @@ import { ContractOps } from '../../../core/services/contract-ops.service';
 import { UiService } from '../../../shared/services/ui.service';
 import { Contract } from '../../../core/models/domain';
 import { DIALOG_SIZE } from '../../../shared/dialog-sizes';
-import { remainingLabel, requiredActionFor, statusLevelFor } from '../../../core/services/contract-monitoring';
+import { expiryCountdown, remainingLabel, requiredActionFor, statusLevelFor } from '../../../core/services/contract-monitoring';
+import { StatusLevel } from '../../../core/models/status';
 
 interface VendorSummary {
   name: string;
@@ -25,6 +26,9 @@ interface VendorSummary {
 
 const VENDOR_PALETTE = ['#2d13ea', '#ea6e00', '#0f9c8f', '#0e9f6e', '#e3a008', '#8589a3'];
 const FIELD = 'w-full px-2.5 py-2 text-xs font-semibold rounded-lg border border-surface-border bg-white text-ink-700 focus:outline-none focus:border-brand-400';
+const LEVEL_TEXT: Record<StatusLevel, string> = { normal: 'text-status-normal font-semibold', amber: 'text-status-amber font-semibold', orange: 'text-status-orange font-semibold', red: 'text-status-red font-semibold', info: 'text-status-info font-semibold', neutral: 'text-status-neutral font-semibold' };
+/** Agents are recorded against a short vendor keyword ('Infoline', 'Green Umbrella', 'OJT'); a contract's vendor name starts with it when the two are the same outsourcing vendor. */
+const AGENT_VENDORS = ['Infoline', 'Green Umbrella', 'OJT'] as const;
 
 @Component({
   selector: 'app-contract-dashboard',
@@ -32,9 +36,9 @@ const FIELD = 'w-full px-2.5 py-2 text-xs font-semibold rounded-lg border border
   imports: [CommonModule, RouterModule, MatDialogModule, MatIconModule, BaseChartDirective, PageHeaderComponent, KpiCardComponent, ChartCardComponent, DataTableComponent],
   template: `
     <app-page-header title="Contract Management" [subtitle]="'Synced read-only from the ERP · ' + ops.historical().length + ' cancelled contract' + (ops.historical().length === 1 ? '' : 's') + ' kept for history'">
-      <button (click)="filtersOpen.set(!filtersOpen())" class="inline-flex items-center gap-1.5 text-xs font-semibold text-ink-700 bg-white border border-surface-border hover:border-brand-300 rounded-lg px-3 py-2 transition-colors">
+      <button (click)="filtersOpen.set(!filtersOpen())" class="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-2 border transition-colors" [class]="filtersOpen() ? 'bg-brand-600 border-brand-600 text-white' : 'bg-brand-50 border-brand-200 text-brand-700 hover:border-brand-400'">
         <mat-icon class="!text-[17px] !w-[17px] !h-[17px] !leading-[17px]">filter_alt</mat-icon>Filters
-        @if (activeFilters()) { <span class="bg-brand-600 text-white rounded-full px-1.5 text-[10px] leading-4">{{ activeFilters() }}</span> }
+        @if (activeFilters()) { <span class="rounded-full px-1.5 text-[10px] leading-4" [class]="filtersOpen() ? 'bg-white text-brand-700' : 'bg-brand-600 text-white'">{{ activeFilters() }}</span> }
       </button>
     </app-page-header>
 
@@ -64,48 +68,73 @@ const FIELD = 'w-full px-2.5 py-2 text-xs font-semibold rounded-lg border border
       <a routerLink="/contracts-budget/sync-errors" class="surface-card px-4 py-3 hover:border-brand-300 transition-colors" title="Open the error log"><div class="text-xs text-ink-400">Synchronization errors</div><div class="text-sm font-semibold mt-0.5" [class]="openErrors() ? 'text-status-red' : 'text-status-normal'">{{ openErrors() }} open · {{ ops.errorLog().length }} logged</div></a>
     </div>
 
-    <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-4">
-      <app-kpi-card label="Total Contracts" [value]="rows().length" icon="description"></app-kpi-card>
-      <app-kpi-card label="Active" [value]="count('Active')" level="normal" icon="check_circle"></app-kpi-card>
-      <app-kpi-card label="Expiring Soon" [value]="count('Expiring Soon')" level="amber" icon="schedule"></app-kpi-card>
-      <app-kpi-card label="Expired" [value]="count('Expired')" level="red" icon="event_busy"></app-kpi-card>
-      <app-kpi-card label="Total Contract Value" [value]="totalValue() | number:'1.0-0'" unit="OMR" icon="payments"></app-kpi-card>
-      <app-kpi-card label="Total PO Value" [value]="poValue() | number:'1.0-0'" unit="OMR" icon="request_quote"></app-kpi-card>
-    </div>
-
-    <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
-      <app-kpi-card label="Variation Orders" [value]="variationOrders()" icon="call_split"></app-kpi-card>
-      <app-kpi-card label="Purchase Orders" [value]="pos().length" icon="request_quote"></app-kpi-card>
-      <a routerLink="/contracts-budget/needs-attention" class="contents"><app-kpi-card label="Requiring Action" [value]="actionCount()" [level]="actionCount() ? 'amber' : 'neutral'" icon="assignment_late"></app-kpi-card></a>
-      <a routerLink="/contracts-budget/needs-attention" class="contents"><app-kpi-card label="Unresolved" [value]="unresolved()" [level]="unresolved() ? 'orange' : 'neutral'" icon="report"></app-kpi-card></a>
-      <app-kpi-card label="Escalated" [value]="escalated()" [level]="escalated() ? 'red' : 'neutral'" icon="priority_high"></app-kpi-card>
-    </div>
-
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6 lg:grid-rows-[380px]">
-      <app-chart-card title="Contract Expiry Trend" subtitle="Contracts ending in the next 6 months" type="bar" [data]="expiryChart()"></app-chart-card>
-
-      <div class="surface-card px-4 pt-3.5 pb-4 sm:px-5 flex flex-col gap-2 h-full min-h-0">
-        <div>
-          <h3 class="text-[13.5px] font-bold text-ink-900">Contract Value by Vendor</h3>
-          <p class="text-xs text-ink-400 mt-0.5">Click a vendor for a full breakdown</p>
-        </div>
-        <div class="h-[92px] shrink-0">
-          <canvas baseChart [data]="vendorChart()" type="doughnut" [options]="vendorChartOptions"></canvas>
-        </div>
-        <div class="flex flex-col gap-1 flex-1 min-h-0 overflow-y-auto">
-          @for (v of vendorSummary(); track v.name) {
-            <button (click)="openVendor(v)" class="flex items-center gap-2.5 px-2 py-1 rounded-lg hover:bg-surface-subtle transition-colors text-left shrink-0">
-              <span class="w-2.5 h-2.5 rounded-full shrink-0" [style.background]="v.color"></span>
-              <span class="text-xs text-ink-700 flex-1 truncate">{{ v.name }}</span>
-              <span class="text-xs font-semibold text-ink-900">{{ v.value | number:'1.0-0' }}</span>
-              <mat-icon class="!text-base !text-ink-400">chevron_right</mat-icon>
-            </button>
-          }
-        </div>
+    <!-- Counts across contracts only mean something when more than one contract is in view. -->
+    @if (!selectedContract()) {
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+        <app-kpi-card label="Total Contracts" [value]="rows().length" icon="description"></app-kpi-card>
+        <app-kpi-card label="Active" [value]="count('Active')" level="normal" icon="check_circle"></app-kpi-card>
+        <app-kpi-card label="Expiring Soon" [value]="count('Expiring Soon')" level="amber" icon="schedule"></app-kpi-card>
+        <app-kpi-card label="Expired" [value]="count('Expired')" level="red" icon="event_busy"></app-kpi-card>
       </div>
+    }
 
-      <app-chart-card title="Contract Status Distribution" subtitle="Active, expiring soon and expired" type="doughnut" [data]="statusChart()"></app-chart-card>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+      <app-kpi-card [label]="selectedContract() ? 'Contract Value' : 'Total Contract Value'" [value]="totalValue() | number:'1.0-0'" unit="OMR" icon="payments"></app-kpi-card>
+      <app-kpi-card label="Consumed Amount" [value]="consumedValue() | number:'1.0-0'" unit="OMR" icon="trending_down"></app-kpi-card>
+      <app-kpi-card label="Remaining Amount" [value]="remainingValue() | number:'1.0-0'" unit="OMR" icon="account_balance_wallet"></app-kpi-card>
+      <app-kpi-card label="Saving Percentage" [value]="(savingPercentage() | number:'1.0-0') + '%'" icon="savings"></app-kpi-card>
     </div>
+    <p class="text-xs text-ink-400 -mt-2 mb-4">Consumed is the share of each contract's value used so far, based on elapsed time (not yet read from the ERP). Saving percentage is Total Amount &divide; Consumed Amount.</p>
+
+    @if (selectedContract(); as sc) {
+      <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4 mb-6">
+        <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Expiry in</div><div class="text-sm font-semibold mt-0.5" [class]="sc.daysRemaining < 0 ? 'text-status-red' : 'text-ink-900'">{{ expiryCountdown(sc.endDate) }}</div></div>
+        <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Start Date</div><div class="text-sm font-semibold text-ink-900 mt-0.5">{{ sc.startDate }}</div></div>
+        <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">End Date</div><div class="text-sm font-semibold text-ink-900 mt-0.5">{{ sc.endDate }}</div></div>
+        @if (headcount(sc); as h) {
+          <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Head Count</div><div class="text-sm font-semibold text-ink-900 mt-0.5">{{ h }} resource{{ h === 1 ? '' : 's' }}</div></div>
+        }
+        <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Days Remaining</div><div class="text-sm font-semibold mt-0.5" [class]="sc.daysRemaining < 0 ? 'text-status-red' : 'text-ink-900'">{{ sc.daysRemaining }}</div></div>
+      </div>
+    }
+
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <app-kpi-card label="Variation Orders" [value]="variationOrders()" icon="call_split"></app-kpi-card>
+      @if (!selectedContract()) {
+        <a routerLink="/contracts-budget/needs-attention" class="contents"><app-kpi-card label="Requiring Action" [value]="actionCount()" [level]="actionCount() ? 'amber' : 'neutral'" icon="assignment_late"></app-kpi-card></a>
+        <a routerLink="/contracts-budget/needs-attention" class="contents"><app-kpi-card label="Unresolved" [value]="unresolved()" [level]="unresolved() ? 'orange' : 'neutral'" icon="report"></app-kpi-card></a>
+        <app-kpi-card label="Escalated" [value]="escalated()" [level]="escalated() ? 'red' : 'neutral'" icon="priority_high"></app-kpi-card>
+      }
+    </div>
+
+    <!-- A single contract makes a "distribution"/"trend"/"by vendor" chart trivial (one bar, one 100% slice) — portfolio-only. -->
+    @if (!selectedContract()) {
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6 lg:grid-rows-[380px]">
+        <app-chart-card title="Contract Expiry Trend" subtitle="Contracts ending in the next 6 months" type="bar" [data]="expiryChart()"></app-chart-card>
+
+        <div class="surface-card px-4 pt-3.5 pb-4 sm:px-5 flex flex-col gap-2 h-full min-h-0">
+          <div>
+            <h3 class="text-[13.5px] font-bold text-ink-900">Contract Value by Vendor</h3>
+            <p class="text-xs text-ink-400 mt-0.5">Click a vendor for a full breakdown</p>
+          </div>
+          <div class="h-[92px] shrink-0">
+            <canvas baseChart [data]="vendorChart()" type="doughnut" [options]="vendorChartOptions"></canvas>
+          </div>
+          <div class="flex flex-col gap-1 flex-1 min-h-0 overflow-y-auto">
+            @for (v of vendorSummary(); track v.name) {
+              <button (click)="openVendor(v)" class="flex items-center gap-2.5 px-2 py-1 rounded-lg hover:bg-surface-subtle transition-colors text-left shrink-0">
+                <span class="w-2.5 h-2.5 rounded-full shrink-0" [style.background]="v.color"></span>
+                <span class="text-xs text-ink-700 flex-1 truncate">{{ v.name }}</span>
+                <span class="text-xs font-semibold text-ink-900">{{ v.value | number:'1.0-0' }}</span>
+                <mat-icon class="!text-base !text-ink-400">chevron_right</mat-icon>
+              </button>
+            }
+          </div>
+        </div>
+
+        <app-chart-card title="Contract Status Distribution" subtitle="Active, expiring soon and expired" type="doughnut" [data]="statusChart()"></app-chart-card>
+      </div>
+    }
 
     <app-data-table title="Contract Expiry Tracker" [columns]="columns" [rows]="trackerRows()" [pageSize]="8" [exportable]="store.can('Export Contract Data')" (rowClick)="open($event)" emptyTitle="Nothing expiring in the next 30 days" emptyDescription="Contracts due within 30 days, or expired without a renewal, appear here."></app-data-table>
     <p class="text-xs text-ink-400 mt-3">Colours: more than 30 days normal, 30 amber, 15 orange, 5 or expired red, renewed or extended informational.</p>
@@ -147,11 +176,26 @@ export class ContractDashboardComponent {
   changes = computed(() => this.children().filter((k) => k.recordType !== 'Variation Order').length);
   variationOrders = computed(() => this.children().filter((k) => k.recordType === 'Variation Order').length);
   totalValue = computed(() => this.rows().reduce((s, c) => s + c.amount, 0));
+  /** Elapsed-time share of a contract's value: 0 before it starts, its full amount once it has ended. Not read from the ERP yet. */
+  private consumedFor(c: Contract): number {
+    const clamp = (n: number) => Math.min(1, Math.max(0, n));
+    const elapsed = clamp((Date.now() - +new Date(c.startDate)) / (+new Date(c.endDate) - +new Date(c.startDate)));
+    return c.amount * elapsed;
+  }
+  consumedValue = computed(() => this.rows().reduce((s, c) => s + this.consumedFor(c), 0));
+  remainingValue = computed(() => this.totalValue() - this.consumedValue());
+  savingPercentage = computed(() => (this.consumedValue() > 0 ? (this.totalValue() / this.consumedValue()) * 100 : 0));
+
+  selectedContract = computed(() => (this.parent() === 'All' ? null : this.rows().find((c) => c.reference === this.parent()) ?? null));
+  expiryCountdown = expiryCountdown;
+  headcount(c: Contract): number | null {
+    const key = AGENT_VENDORS.find((k) => c.vendorName.startsWith(k));
+    if (!key) return null;
+    return this.store.agents().filter((a) => a.vendor === key).length;
+  }
   actionCount = computed(() => this.rows().filter((c) => this.ops.needsAction(c)).length);
   count = (s: string) => this.rows().filter((c) => c.status === s).length;
 
-  pos = computed(() => this.rows().flatMap((c) => this.ops.purchaseOrdersOf(c)));
-  poValue = computed(() => this.pos().reduce((s, p) => s + (p.amount ?? 0), 0));
   unresolved = computed(() => this.rows().filter((c) => this.ops.isUnresolved(c)).length);
   escalated = computed(() => this.rows().filter((c) => this.ops.isEscalated(c)).length);
   openErrors = computed(() => this.ops.errorLog().filter((e) => e.resolution === 'Open').length);
@@ -168,7 +212,7 @@ export class ContractDashboardComponent {
 
   columns: TableColumn<any>[] = [
     { key: 'reference', label: 'Contract Reference' },
-    { key: 'name', label: 'Contract Name' },
+    { key: 'name', label: 'Contract Name', cellClass: (r) => LEVEL_TEXT[r.level as StatusLevel] },
     { key: 'vendorName', label: 'Vendor Name' },
     { key: 'contractType', label: 'Contract Type' },
     { key: 'startDate', label: 'Start Date', type: 'date' },

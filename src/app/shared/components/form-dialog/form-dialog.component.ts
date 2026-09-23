@@ -78,8 +78,12 @@ const INPUT = 'w-full px-3 py-2.5 text-sm rounded-lg border border-surface-borde
               @case ('textarea') {
                 <textarea [name]="fld.key" [(ngModel)]="model[fld.key]" [required]="!!fld.required" [attr.rows]="fld.rows || 3" [placeholder]="fld.placeholder || ''" [class]="input + ' resize-y'"></textarea>
               }
+              @case ('number') {
+                <!-- A literal type="number" (not a binding) so Angular's MinValidator/MaxValidator directives, which match on it, actually attach. -->
+                <input [name]="fld.key" type="number" [(ngModel)]="model[fld.key]" [required]="!!fld.required" [placeholder]="fld.placeholder || ''" [min]="fld.min ?? null" [max]="fld.max ?? null" [class]="input" />
+              }
               @default {
-                <input [name]="fld.key" [type]="fld.type || 'text'" [(ngModel)]="model[fld.key]" [required]="!!fld.required" [placeholder]="fld.placeholder || ''" [attr.min]="fld.min" [attr.max]="fld.max" [class]="input" />
+                <input [name]="fld.key" [type]="fld.type || 'text'" [(ngModel)]="model[fld.key]" [required]="!!fld.required" [placeholder]="fld.placeholder || ''" [class]="input" />
               }
             }
             @if (fld.hint) { <p class="text-[11px] text-ink-400 mt-1">{{ fld.hint }}</p> }

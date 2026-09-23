@@ -251,6 +251,22 @@ export function remainingLabel(endDate: string, now = new Date()): string {
   return [months ? plural(months, 'month') : '', days || !months ? plural(days, 'day') : ''].filter(Boolean).join(' and ');
 }
 
+/** Same idea as {@link remainingLabel} but split out to Years, Months and Days for a single selected contract's countdown tile. */
+export function expiryCountdown(endDate: string, now = new Date()): string {
+  const end = new Date(endDate.slice(0, 10) + 'T00:00:00Z');
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
+  if (end < start) return `Expired ${plural(Math.round((+start - +end) / 86400000), 'day')} ago`;
+  if (+end === +start) return 'Ends today';
+  let months = (end.getUTCFullYear() - start.getUTCFullYear()) * 12 + end.getUTCMonth() - start.getUTCMonth();
+  let anchor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + months, start.getUTCDate()));
+  if (anchor > end) { months--; anchor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + months, start.getUTCDate())); }
+  const days = Math.round((+end - +anchor) / 86400000);
+  const years = Math.floor(months / 12);
+  const parts = [years ? plural(years, 'Year') : '', months % 12 ? plural(months % 12, 'Month') : '', days || !months ? plural(days, 'Day') : ''].filter(Boolean);
+  return parts.length <= 1 ? parts[0] ?? '0 Days' : parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1];
+}
+
 // ---------- List rows (contracts and their child records in one table) ----------
 export interface ListRow {
   id: string;

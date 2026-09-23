@@ -16,7 +16,7 @@ import { ContractOps } from '../../../core/services/contract-ops.service';
 import { UiService } from '../../../shared/services/ui.service';
 import { Contract, ContractAttachment, ContractRecord, PurchaseOrder } from '../../../core/models/domain';
 import { daysRemainingToLevel } from '../../../core/models/status';
-import { addDays, attachmentsFor, purchaseOrdersFor, ruleApplies, timelineFor, yearlyBudgetFor } from '../../../core/services/contract-data';
+import { addDays, attachmentsFor, purchaseOrdersFor, ruleApplies, timelineFor, YearlyBudgetLine, yearlyBudgetFor, YearlyBudgetYear } from '../../../core/services/contract-data';
 import { PO_LEVEL, PoDetailDialogComponent } from './po-detail-dialog.component';
 import { ACTION_STATUSES, ACTION_TYPES, ESCALATION_STATUSES, EscalationStatus, MonitoringAction, remainingLabel, statusLevelFor } from '../../../core/services/contract-monitoring';
 import { RequiresDirective } from '../../../shared/directives/requires.directive';
@@ -150,7 +150,7 @@ const today = () => new Date().toISOString().slice(0, 10);
             <div class="flex flex-col gap-4">
               <div class="surface-card px-4 pt-3.5 pb-4">
                 <h3 class="text-[13.5px] font-bold text-ink-900">ERP record</h3>
-                <dl class="grid grid-cols-1 gap-y-3 mt-3 text-sm">
+                <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 mt-3 text-sm">
                   <div><dt class="text-xs text-ink-400">Source system</dt><dd class="font-medium text-ink-900">ERP · read-only in CRC</dd></div>
                   <div><dt class="text-xs text-ink-400">ERP reference</dt><dd class="font-medium text-ink-900">{{ c.erpReference }}</dd></div>
                   <div><dt class="text-xs text-ink-400">ERP vendor ID</dt><dd class="font-medium text-ink-900">{{ c.erpVendorId }}</dd></div>
@@ -163,18 +163,18 @@ const today = () => new Date().toISOString().slice(0, 10);
               </div>
               <div class="surface-card px-4 pt-3.5 pb-4">
                 <h3 class="text-[13.5px] font-bold text-ink-900">Synchronization status</h3>
-                <dl class="grid grid-cols-1 gap-y-3 mt-3 text-sm">
+                <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 mt-3 text-sm">
                   <div><dt class="text-xs text-ink-400">Last successful synchronization</dt><dd class="font-medium text-ink-900">{{ info().lastSuccessAt | date:'medium' }}</dd></div>
                   <div><dt class="text-xs text-ink-400">Last synchronization</dt><dd class="font-medium text-ink-900">{{ info().lastAttemptAt | date:'medium' }}</dd></div>
                   <div><dt class="text-xs text-ink-400">Last synchronization status</dt><dd class="font-medium" [class]="info().error ? 'text-status-red' : 'text-ink-900'">{{ info().lastStatus }} ({{ info().type }})</dd></div>
                   <div><dt class="text-xs text-ink-400">Last initiated by</dt><dd class="font-medium text-ink-900">{{ info().initiatedBy }}</dd></div>
-                  <div><dt class="text-xs text-ink-400">Last error</dt><dd class="font-medium text-ink-900">{{ info().error || 'None' }}</dd></div>
+                  <div class="sm:col-span-2"><dt class="text-xs text-ink-400">Last error</dt><dd class="font-medium text-ink-900">{{ info().error || 'None' }}</dd></div>
                   <div><dt class="text-xs text-ink-400">ERP record reference</dt><dd class="font-medium text-ink-900">{{ c.erpReference }}</dd></div>
                 </dl>
               </div>
               <div class="surface-card px-4 pt-3.5 pb-4">
                 <h3 class="text-[13.5px] font-bold text-ink-900">Key dates</h3>
-                <dl class="grid grid-cols-1 gap-y-3 mt-3 text-sm">
+                <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 mt-3 text-sm">
                   <div><dt class="text-xs text-ink-400">Start</dt><dd class="font-medium text-ink-900">{{ c.startDate }}</dd></div>
                   <div><dt class="text-xs text-ink-400">End</dt><dd class="font-medium text-ink-900">{{ c.endDate }}</dd></div>
                   <div><dt class="text-xs text-ink-400">Next expiry alert</dt><dd class="font-medium text-ink-900">{{ nextAlert() || 'None scheduled' }}</dd></div>
@@ -191,11 +191,12 @@ const today = () => new Date().toISOString().slice(0, 10);
           <div class="pt-4 flex flex-col gap-4">
             <app-data-table title="Yearly budgets" [columns]="yearlyColumns()" [rows]="yearlyBudget()" [pageSize]="10" [exportable]="store.can('Export Contract Data')" [selectedRow]="pickedYear()" (rowClick)="pickYear($event)" emptyTitle="No yearly budgets"></app-data-table>
             @if (pickedYear(); as y) {
-              <app-data-table [title]="'Lines of ' + y.description" [columns]="lineColumns()" [rows]="y.lines" [pageSize]="20" [exportable]="store.can('Export Contract Data')" emptyTitle="No budget lines"></app-data-table>
+              <app-data-table [title]="'Lines of ' + y.description" [columns]="lineColumns()" [rows]="y.lines" [pageSize]="20" [exportable]="store.can('Export Contract Data')" (rowAction)="editLine(y, $event.row)" emptyTitle="No budget lines"></app-data-table>
+              <p class="text-xs text-ink-400 -mt-2">Approved so far across all years: {{ approvedTotal() | number:'1.0-2' }} of {{ c.amount | number:'1.0-2' }} {{ c.currency }}. The total of every line, across every year, can never exceed the contract amount.</p>
             } @else {
               <div class="surface-card px-4 py-6 text-center text-sm text-ink-500">Select a yearly budget above to see its lines.</div>
             }
-            <p class="text-xs text-ink-400">One row per contract year, adding up to the contract amount of {{ c.amount | number:'1.0-2' }} {{ c.currency }}. A contract of one year or less has a single row with the contract's own start and end date. Each year's lines are the lines of the contract's PO. Allocations are not read from the ERP yet: years are split by days and lines evenly.</p>
+            <p class="text-xs text-ink-400">One row per contract year. A contract of one year or less has a single row with the contract's own start and end date. Each year's lines are the lines of the contract's PO. A line not yet approved shows an estimate split evenly by days; once approved, it holds until changed here.</p>
           </div>
         </mat-tab>
 
@@ -379,7 +380,22 @@ export class ContractDetailComponent {
   changeRows = computed(() => { const c = this.contract(); return c ? this.ops.changes().filter((x) => x.contractId === c.id) : []; });
   auditRows = computed(() => { const c = this.contract(); return c ? this.store.audit().filter((a) => a.reference === c.reference) : []; });
 
-  yearlyBudget = computed(() => { const c = this.contract(); return c ? yearlyBudgetFor(c, this.children()) : []; });
+  /** The estimated split, with any line the user has approved substituted in (not read from the ERP either way). */
+  yearlyBudget = computed<YearlyBudgetYear[]>(() => {
+    const c = this.contract();
+    if (!c) return [];
+    const overrides = this.store.yearlyBudgetApprovals();
+    return yearlyBudgetFor(c, this.children()).map((y) => {
+      const lines = y.lines.map((l) => {
+        const v = overrides[`${c.id}:Y${y.year}:L${l.line}`];
+        return v === undefined ? l : { ...l, allocated: v };
+      });
+      return { ...y, lines, allocated: lines.reduce((s, l) => s + l.allocated, 0) };
+    });
+  });
+  /** Approved so far across every year of this contract — must never exceed the contract amount. */
+  approvedTotal = computed(() => this.yearlyBudget().reduce((s, y) => s + y.allocated, 0));
+
   private allocatedCol = (): TableColumn<any> => ({ key: 'allocated', label: 'Allocated budget', type: 'currency', currency: this.contract()?.currency, align: 'right' });
   yearlyColumns = computed<TableColumn<any>[]>(() => [
     { key: 'description', label: 'Yearly budget' },
@@ -391,11 +407,30 @@ export class ContractDetailComponent {
     { key: 'line', label: 'Line', type: 'number' },
     { key: 'description', label: 'Line description' },
     { key: 'scope', label: 'Line scope' },
-    this.allocatedCol(),
+    { key: 'allocated', label: 'Approved Budget', type: 'currency', currency: this.contract()?.currency, align: 'right' },
+    { key: 'edit', label: '', actions: [{ id: 'edit', label: 'Edit', icon: 'edit', hide: () => !this.store.can('Prepare/Edit Draft Budget') }] },
   ]);
   pickedYearNo = signal<number | null>(null);
   pickedYear = computed(() => this.yearlyBudget().find((y) => y.year === this.pickedYearNo()) ?? null);
   pickYear(y: { year: number }) { this.pickedYearNo.set(y.year); }
+
+  async editLine(year: YearlyBudgetYear, line: YearlyBudgetLine) {
+    if (!this.ui.requires('Prepare/Edit Draft Budget')) return;
+    const c = this.contract();
+    if (!c) return;
+    const otherTotal = this.approvedTotal() - line.allocated;
+    const max = Math.max(0, c.amount - otherTotal);
+    const v = await this.ui.form({
+      title: 'Edit approved budget', subtitle: `${year.description} · Line ${line.line} — ${line.description}`, icon: 'edit', submitLabel: 'Save',
+      values: { approved: line.allocated },
+      fields: [
+        { key: 'approved', label: `Approved budget (${c.currency})`, type: 'number', required: true, min: 0, max, hint: `All lines together cannot exceed the contract amount of ${c.amount.toLocaleString('en-GB')} ${c.currency}. Up to ${max.toLocaleString('en-GB')} ${c.currency} is available for this line.` },
+      ],
+    });
+    if (!v) return;
+    this.store.setYearlyBudgetLine(c, year.year, line.line, line.description, Number(v['approved']));
+    this.ui.toast('Approved budget updated.');
+  }
 
   childColumns: TableColumn<any>[] = [
     { key: 'reference', label: 'Change reference' },
