@@ -16,7 +16,7 @@ export type WfoComponent = 'salary' | 'overtime' | 'performance' | 'incentive' |
 
 /** Admin-configured rules for the per-agent Performance and Overtime lines. */
 export interface PayrollRules {
-  /** An Omani agent earns their performance rate only with a monthly score above this percentage. */
+  /** An Omani agent can be given a performance amount only with a performance score above this percentage. */
   omaniMinScore: number;
   /** The same for a non-Omani agent. */
   nonOmaniMinScore: number;
@@ -25,7 +25,7 @@ export interface PayrollRules {
   overtimeDays: number;
   overtimeHoursPerDay: number;
 }
-/** Per agent: the configured performance rate, and this month's score and overtime hours (WFO / performance system). */
+/** Per agent: the fixed monthly performance amount, the performance score that decides eligibility, and this month's overtime hours. */
 export interface AgentPay { performanceRate: number; performanceScore: number; overtimeHours: number }
 /** One line the vendor can invoice on a contract: calculated from WFO attendance, or the contract's monthly share. */
 export interface PayableLineItem {
@@ -578,7 +578,10 @@ export class CrcStore {
     return { hours, rate, amount: Math.round(hours * rate * 1000) / 1000 };
   }
 
-  /** The agent earns their configured performance rate only when this month's score is above the threshold for their nationality. */
+  /**
+   * Performance is a fixed monthly amount configured once per agent and paid every month. Only an agent whose performance
+   * score is above the threshold for their nationality is eligible to hold one; an ineligible agent's amount is 0.
+   */
   performanceFor(a: Agent): { rate: number; score: number; threshold: number; omani: boolean; eligible: boolean; amount: number } {
     const p = this.agentPayFor(a), r = this.payrollRules();
     const omani = /^oman/i.test(a.nationality ?? 'Oman');

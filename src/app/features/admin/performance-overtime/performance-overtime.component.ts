@@ -34,7 +34,7 @@ const NUM = 'w-24 h-9 px-2.5 text-sm font-semibold text-right tabular-nums round
           <div class="w-10 h-10 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center shrink-0"><mat-icon>workspace_premium</mat-icon></div>
           <div class="min-w-0">
             <h3 class="text-[14px] font-bold text-ink-900">Performance eligibility</h3>
-            <p class="text-xs text-ink-400 mt-0.5 leading-relaxed">An agent is paid their performance rate only when the month's score is above the threshold for their nationality — otherwise the line is 0.</p>
+            <p class="text-xs text-ink-400 mt-0.5 leading-relaxed">Only an agent whose performance score is above the threshold for their nationality can be given a performance amount. Once set, it is paid every month.</p>
           </div>
         </div>
         <div class="mt-5"><div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -51,7 +51,7 @@ const NUM = 'w-24 h-9 px-2.5 text-sm font-semibold text-right tabular-nums round
         </div>
         <div class="mt-auto pt-4 lg:mt-0 flex flex-col"><div [class]="'flex-1 ' + note">
           <mat-icon class="!text-lg !w-[18px] !h-[18px] text-brand-600 shrink-0">groups</mat-icon>
-          <span><b class="text-ink-900">{{ preview().qualified }} of {{ preview().total }}</b> agents qualify this month with these thresholds{{ dirty() ? ' — not saved yet' : '' }}.</span>
+          <span><b class="text-ink-900">{{ preview().qualified }} of {{ preview().total }}</b> agents are eligible with these thresholds{{ dirty() ? ' — not saved yet' : '' }}.</span>
         </div></div>
       </div>
 
@@ -90,8 +90,8 @@ const NUM = 'w-24 h-9 px-2.5 text-sm font-semibold text-right tabular-nums round
     <div class="surface-card overflow-hidden mb-4">
       <div class="flex items-center justify-between gap-3 flex-wrap px-4 py-3.5 border-b border-surface-border">
         <div>
-          <h3 class="text-[13.5px] font-bold text-ink-900">Performance rate per agent</h3>
-          <p class="text-xs text-ink-400 mt-0.5">{{ qualifiedCount() }} of {{ rows().length }} agents qualify this month &middot; {{ performanceTotal() | number:'1.0-3' }} OMR performance &middot; {{ overtimeTotal() | number:'1.3-3' }} OMR overtime</p>
+          <h3 class="text-[13.5px] font-bold text-ink-900">Performance amount per agent</h3>
+          <p class="text-xs text-ink-400 mt-0.5">{{ qualifiedCount() }} of {{ rows().length }} agents eligible &middot; {{ performanceTotal() | number:'1.0-3' }} OMR performance per month &middot; {{ overtimeTotal() | number:'1.3-3' }} OMR overtime this month</p>
         </div>
         <div class="grid grid-cols-2 gap-2.5 w-full sm:w-auto sm:min-w-[380px]">
           <select [class]="field" (change)="vendor.set($any($event.target).value)">
@@ -105,7 +105,7 @@ const NUM = 'w-24 h-9 px-2.5 text-sm font-semibold text-right tabular-nums round
           <thead>
             <tr class="text-left">
               <th>Employee</th><th>Vendor</th><th>Nationality</th>
-              <th class="text-right">Performance rate (OMR)</th><th class="text-right">Score this month</th><th>Performance</th>
+              <th class="text-right">Performance score</th><th>Eligibility</th><th class="text-right">Performance (OMR / month)</th>
               <th class="text-right">Overtime hours</th><th class="text-right">Overtime (OMR)</th>
             </tr>
           </thead>
@@ -115,9 +115,9 @@ const NUM = 'w-24 h-9 px-2.5 text-sm font-semibold text-right tabular-nums round
                 <td><a class="font-semibold text-ink-900 hover:text-brand-700" [routerLink]="['/csr/directory', r.a.id]">{{ r.a.name }}</a><div class="text-[11px] text-ink-400">{{ r.a.employeeId }} &middot; {{ r.a.queue }}</div></td>
                 <td>{{ r.a.vendor }}</td>
                 <td>{{ r.a.nationality }}</td>
-                <td class="text-right"><input type="number" min="0" step="10" [class]="num" [ngModel]="r.perf.rate" (change)="setRate(r.a.id, $any($event.target).value)" /></td>
                 <td class="text-right tabular-nums">{{ r.perf.score }}% <span class="text-[11px] text-ink-400">/ &gt;{{ r.perf.threshold }}%</span></td>
-                <td>@if (r.perf.eligible) { <app-status-chip [label]="(r.perf.amount | number:'1.0-3') + ' OMR'" level="normal"></app-status-chip> } @else { <app-status-chip label="Below threshold" level="neutral"></app-status-chip> }</td>
+                <td>@if (r.perf.eligible) { <app-status-chip label="Eligible" level="normal"></app-status-chip> } @else { <app-status-chip label="Not eligible" level="neutral"></app-status-chip> }</td>
+                <td class="text-right">@if (r.perf.eligible) { <input type="number" min="0" step="10" [class]="num" [ngModel]="r.perf.rate" (change)="setRate(r.a.id, $any($event.target).value)" /> } @else { <span class="text-ink-400 tabular-nums" title="Score is not above the threshold">0</span> }</td>
                 <td class="text-right tabular-nums">{{ r.ot.hours | number:'1.0-1' }}</td>
                 <td class="text-right tabular-nums">{{ r.ot.amount | number:'1.3-3' }}</td>
               </tr>
@@ -126,7 +126,7 @@ const NUM = 'w-24 h-9 px-2.5 text-sm font-semibold text-right tabular-nums round
         </table>
       </div>
     </div>
-    <p class="text-xs text-ink-400">Scores and overtime hours come from WFO each month (sample figures in the prototype). A rate change applies from this month's calculation and is written to the audit log.</p>
+    <p class="text-xs text-ink-400">The performance amount is set once and paid every month. Scores and overtime hours come from WFO (sample figures in the prototype). Every change is written to the audit log.</p>
   `,
 })
 export class PerformanceOvertimeComponent {
@@ -150,7 +150,7 @@ export class PerformanceOvertimeComponent {
   validScores = computed(() => { const d = this.draft(), pct = (n: number) => Number.isFinite(n) && n >= 0 && n <= 100; return pct(d.omaniMinScore) && pct(d.nonOmaniMinScore); });
   validOvertime = computed(() => { const d = this.draft(); return d.overtimeDays >= 1 && d.overtimeHoursPerDay >= 1 && d.overtimePremium >= 1; });
   valid = computed(() => this.validScores() && this.validOvertime());
-  /** How many agents would qualify with the thresholds on screen, before they are saved. */
+  /** How many agents would be eligible with the thresholds on screen, before they are saved. */
   preview = computed(() => {
     const d = this.draft(), agents = this.store.agents();
     const qualified = agents.filter((a) => this.store.agentPayFor(a).performanceScore > (/^oman/i.test(a.nationality ?? 'Oman') ? d.omaniMinScore : d.nonOmaniMinScore)).length;
