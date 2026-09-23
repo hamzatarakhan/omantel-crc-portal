@@ -35,15 +35,9 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Not validated': 'neutra
       <app-status-chip [label]="status()" [level]="statusLevel()"></app-status-chip>
     </app-page-header>
 
-    <!-- 1. Filters — same pattern as the Contract List: contract details on top, then labelled dropdowns -->
+    <!-- 1. Filters — labelled dropdowns, same pattern as the Contract List -->
     <div class="surface-card px-4 py-3.5 mb-4">
-      <div class="flex items-center gap-2 flex-wrap">
-        @if (contract(); as c) {
-          <span class="text-[11px] text-ink-400">{{ c.status }}{{ c.billing ? " · agents' attendance billed here" : '' }} · PO {{ c.poNumber || '—' }} · {{ c.startDate }} &rarr; {{ c.endDate }} · {{ c.amount | number:'1.0-0' }} OMR · queries to {{ vendorContact() }}</span>
-          <a class="ml-auto text-xs font-semibold text-brand-700 hover:underline" [routerLink]="['/contracts-budget/contracts', c.id]">Open contract</a>
-        }
-      </div>
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mt-3">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
         <label class="block"><span class="text-[10.5px] font-bold text-ink-400 uppercase tracking-wide">Vendor</span>
           <select [class]="field + ' mt-1'" (change)="vendor.set($any($event.target).value)">
             @for (v of vendors; track v) { <option [value]="v" [selected]="v === vendor()">{{ v }}</option> }
