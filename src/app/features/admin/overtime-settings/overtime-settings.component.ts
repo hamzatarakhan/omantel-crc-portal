@@ -17,7 +17,7 @@ import { AGENT_VENDORS, SETTINGS_UI } from '../settings-ui';
     <app-page-header
       title="Overtime Settings"
       subtitle="How one overtime hour is priced for each agent"
-      [breadcrumbs]="[{ label: 'Administration', link: '/admin/access-control' }, { label: 'Payroll Settings' }, { label: 'Overtime Settings' }]"
+      [breadcrumbs]="[{ label: 'CSR Management', link: '/csr/directory' }, { label: 'Payroll Settings' }, { label: 'Overtime Settings' }]"
     >
       @if (dirty()) { <span class="status-chip status-chip--amber">Unsaved changes</span> }
       <button type="button" [class]="ui.discard" (click)="reset()" [disabled]="!dirty()">Discard</button>

@@ -17,7 +17,7 @@ import { AGENT_VENDORS, SETTINGS_UI } from '../settings-ui';
     <app-page-header
       title="Performance Settings"
       subtitle="Who earns the performance rate in a month, and each agent's fixed rate"
-      [breadcrumbs]="[{ label: 'Administration', link: '/admin/access-control' }, { label: 'Payroll Settings' }, { label: 'Performance Settings' }]"
+      [breadcrumbs]="[{ label: 'CSR Management', link: '/csr/directory' }, { label: 'Payroll Settings' }, { label: 'Performance Settings' }]"
     >
       @if (dirty()) { <span class="status-chip status-chip--amber">Unsaved changes</span> }
       <button type="button" [class]="ui.discard" (click)="reset()" [disabled]="!dirty()">Discard</button>

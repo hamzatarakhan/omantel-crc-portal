@@ -63,7 +63,7 @@ const FIELD = 'w-full px-2.5 py-2 text-xs font-semibold rounded-lg border border
         </table>
       </div>
     </div>
-    <p class="text-xs text-ink-400">Scores and overtime hours come from WFO each month (sample figures in the prototype). Thresholds and rates are set on <a class="text-brand-600 font-medium" routerLink="/admin/performance-settings">Performance Settings</a> and <a class="text-brand-600 font-medium" routerLink="/admin/overtime-settings">Overtime Settings</a>.</p>
+    <p class="text-xs text-ink-400">Scores and overtime hours come from WFO each month (sample figures in the prototype). Thresholds and rates are set on <a class="text-brand-600 font-medium" routerLink="/csr/performance-settings">Performance Settings</a> and <a class="text-brand-600 font-medium" routerLink="/csr/overtime-settings">Overtime Settings</a>.</p>
   `,
 })
 export class PerformanceOvertimeComponent {

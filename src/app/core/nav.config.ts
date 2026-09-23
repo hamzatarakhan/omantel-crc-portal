@@ -27,6 +27,8 @@ export const HIDDEN_MODULES = ['Internal Project Movement'];
 
 const VIEW_CONTRACTS = ['View Contracts'];
 const VIEW_AGENTS = ['View Agent Profiles'];
+/** Performance and overtime rules decide what agents are paid, so only roles that may see salaries can open them. */
+const PAYROLL_SETTINGS = ['View Employee Salary'];
 const MOVEMENT_ANY = ['Create Movement Announcement', 'Review/Approve Movement Requests'];
 
 export const NAV_GROUPS: NavGroup[] = [
@@ -63,6 +65,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'CSR Management',
     icon: 'groups',
     basePath: '/csr',
+    sections: { 'Payroll Settings': 'tune' },
     items: [
       { label: 'Team & Agent Directory', path: 'directory', icon: 'badge', perms: VIEW_AGENTS },
       { label: 'Leave Management', path: 'leave', icon: 'event_available', perms: VIEW_AGENTS },
@@ -70,6 +73,8 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: 'Recruitment & Interview', path: 'recruitment', icon: 'person_search', perms: ['Manage Recruitment'] },
       { label: 'Performance Monitoring', path: 'performance', icon: 'speed', perms: VIEW_AGENTS },
       { label: 'Performance & Overtime', path: 'performance-overtime', icon: 'query_stats', perms: VIEW_AGENTS },
+      { label: 'Performance Settings', path: 'performance-settings', icon: 'workspace_premium', perms: PAYROLL_SETTINGS, section: 'Payroll Settings' },
+      { label: 'Overtime Settings', path: 'overtime-settings', icon: 'more_time', perms: PAYROLL_SETTINGS, section: 'Payroll Settings' },
     ],
   },
   {
@@ -100,11 +105,8 @@ export const NAV_GROUPS: NavGroup[] = [
     icon: 'admin_panel_settings',
     basePath: '/admin',
     adminOnly: true,
-    sections: { 'Payroll Settings': 'tune' },
     items: [
       { label: 'Access Control', path: 'access-control', icon: 'lock_person' },
-      { label: 'Performance Settings', path: 'performance-settings', icon: 'workspace_premium', section: 'Payroll Settings' },
-      { label: 'Overtime Settings', path: 'overtime-settings', icon: 'more_time', section: 'Payroll Settings' },
       { label: 'Audit Log', path: 'audit-log', icon: 'history' },
     ],
   },
