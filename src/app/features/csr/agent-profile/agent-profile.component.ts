@@ -49,6 +49,7 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
       </div>
 
       <mat-tab-group>
+        @if (showIdTab) {
         <mat-tab label="ID & Compliance">
           <div class="pt-4 max-w-xl flex flex-col gap-3">
             @if (doc(); as d) {
@@ -82,6 +83,7 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
             <p class="text-xs text-ink-400">Supported: JPG, PNG or PDF. The name and ID number are read automatically and must be confirmed by a person before they are trusted.</p>
           </div>
         </mat-tab>
+        }
 
         <mat-tab label="Salary & Pay">
           <div class="pt-4">
@@ -170,6 +172,8 @@ export class AgentProfileComponent {
   private id = toSignal(inject(ActivatedRoute).paramMap.pipe(map((p) => p.get('id'))));
 
   days = this.store.attendanceDays;
+  /** ID & Compliance tab hidden on request; the code is kept so it can be switched back on. */
+  readonly showIdTab = false;
   agent = computed(() => this.store.agents().find((a) => a.id === this.id()));
   doc = computed(() => this.store.idDocs()[this.id() ?? '']);
   canSeePay = computed(() => this.store.can('View Employee Salary'));
