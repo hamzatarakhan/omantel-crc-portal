@@ -28,8 +28,8 @@ import { AGENT_VENDORS, SETTINGS_UI } from '../settings-ui';
       <div class="flex items-start gap-3">
         <div class="w-10 h-10 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center shrink-0"><mat-icon>more_time</mat-icon></div>
         <div class="min-w-0">
-          <h3 class="text-[14px] font-bold text-ink-900">Overtime rate</h3>
-          <p class="text-xs text-ink-400 mt-0.5 leading-relaxed">How one overtime hour is priced for each agent, from their basic salary.</p>
+          <h3 class="text-[14px] font-bold text-ink-900">Default overtime rate</h3>
+          <p class="text-xs text-ink-400 mt-0.5 leading-relaxed">The formula for every agent who has no rate of their own, worked out from their basic salary.</p>
         </div>
       </div>
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-5">
@@ -57,7 +57,7 @@ import { AGENT_VENDORS, SETTINGS_UI } from '../settings-ui';
       <div class="flex items-center justify-between gap-3 flex-wrap px-4 py-3.5 border-b border-surface-border">
         <div>
           <h3 class="text-[13.5px] font-bold text-ink-900">Overtime rate per agent</h3>
-          <p class="text-xs text-ink-400 mt-0.5">What one overtime hour pays each agent with the values above{{ dirty() ? ' (not saved yet)' : '' }}.</p>
+          <p class="text-xs text-ink-400 mt-0.5">Type a rate to give an agent their own; clear it to go back to the default{{ dirty() ? ' (default shown with the unsaved values)' : '' }}. Changes are written to the audit log.</p>
         </div>
         <div class="grid grid-cols-2 gap-2.5 w-full sm:w-auto sm:min-w-[380px]">
           <select [class]="ui.field" (change)="vendor.set($any($event.target).value)">
@@ -68,7 +68,7 @@ import { AGENT_VENDORS, SETTINGS_UI } from '../settings-ui';
       </div>
       <div class="overflow-x-auto">
         <table class="crc-table w-full">
-          <thead><tr class="text-left"><th>Employee</th><th>Vendor</th><th>Degree</th><th class="text-right">Basic salary (OMR)</th><th class="text-right">Overtime rate (OMR / hour)</th></tr></thead>
+          <thead><tr class="text-left"><th>Employee</th><th>Vendor</th><th>Degree</th><th class="text-right">Basic salary (OMR)</th><th class="text-right">Default rate</th><th class="text-right">Overtime rate (OMR / hour)</th></tr></thead>
           <tbody>
             @for (r of rows(); track r.a.id) {
               <tr>
@@ -76,9 +76,13 @@ import { AGENT_VENDORS, SETTINGS_UI } from '../settings-ui';
                 <td>{{ r.a.vendor }}</td>
                 <td>{{ r.a.degree }}</td>
                 <td class="text-right tabular-nums">{{ r.basic | number:'1.3-3' }}</td>
-                <td class="text-right tabular-nums font-semibold text-ink-900">{{ rateFor(r.basic) | number:'1.3-3' }}</td>
+                <td class="text-right tabular-nums text-ink-400">{{ rateFor(r.basic) | number:'1.3-3' }}</td>
+                <td class="text-right whitespace-nowrap">
+                  @if (r.custom !== undefined) { <span class="status-chip status-chip--info mr-1.5">Own rate</span> }
+                  <input type="number" min="0" step="0.001" [class]="ui.num" [placeholder]="(rateFor(r.basic) | number:'1.3-3') ?? ''" [ngModel]="r.custom ?? null" (change)="setRate(r.a.id, $any($event.target).value)" />
+                </td>
               </tr>
-            } @empty { <tr><td colspan="5" class="!text-center text-sm text-ink-400 !py-8">No agents match.</td></tr> }
+            } @empty { <tr><td colspan="6" class="!text-center text-sm text-ink-400 !py-8">No agents match.</td></tr> }
           </tbody>
         </table>
       </div>
@@ -104,8 +108,15 @@ export class OvertimeSettingsComponent {
     const q = this.q().trim().toLowerCase();
     return this.store.agents()
       .filter((a) => (this.vendor() === 'All' || a.vendor === this.vendor()) && (!q || a.name.toLowerCase().includes(q) || a.employeeId.includes(q)))
-      .map((a) => ({ a, basic: this.store.payrollFor(a).basic }));
+      .map((a) => ({ a, basic: this.store.payrollFor(a).basic, custom: this.store.overtimeRates()[a.id] }));
   });
+
+  setRate(id: string, v: string) {
+    if (v === '' || v === null) { this.store.setOvertimeRate(id, null); return; }
+    const rate = Number(v);
+    if (!Number.isFinite(rate) || rate < 0) { this.toast.toast('An overtime rate must be 0 or more.'); return; }
+    this.store.setOvertimeRate(id, rate);
+  }
 
   rateFor(basic: number) {
     return (basic / this.days() / this.hours()) * this.premium();

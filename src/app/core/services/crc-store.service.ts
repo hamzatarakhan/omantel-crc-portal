@@ -208,6 +208,8 @@ export class CrcStore {
   readonly payrollRules = signal<PayrollRules>({ omaniMinScore: 90, nonOmaniMinScore: 95, overtimePremium: 1.25, overtimeDays: 30, overtimeHoursPerDay: 8 });
   /** Performance rates set by an admin on Performance Settings, replacing the seeded ones. */
   readonly performanceRates = signal<Record<string, number>>({});
+  /** Overtime rates (OMR / hour) set for individual agents on Overtime Settings; everyone else follows the formula. */
+  readonly overtimeRates = signal<Record<string, number>>({});
   readonly payableRules = signal<PayableRules>({ thresholdSeconds: 10, deviationPct: 2, perVendor: false, includeIncentive: false });
   /** Every validate/approve pass, per vendor, oldest first — a vendor can have several, one per subset of lines paid over time. */
   readonly invoiceRuns = signal<Record<string, InvoiceRun[]>>({});
@@ -605,10 +607,29 @@ export class CrcStore {
 
   /** Overtime pay from the hours worked: basic ÷ days ÷ hours per day × premium × hours — the formula of the June 2026 overtime sheet. */
   overtimeFor(a: Agent, month?: string): { hours: number; rate: number; amount: number } {
-    const r = this.payrollRules();
     const hours = this.agentMonthFor(a, month).overtimeHours;
-    const rate = (this.payrollFor(a).basic / r.overtimeDays / r.overtimeHoursPerDay) * r.overtimePremium;
+    const rate = this.overtimeRateFor(a);
     return { hours, rate, amount: Math.round(hours * rate * 1000) / 1000 };
+  }
+
+  /** The formula rate: basic ÷ days ÷ hours per day × premium. */
+  formulaOvertimeRate(a: Agent, r = this.payrollRules()): number {
+    return (this.payrollFor(a).basic / r.overtimeDays / r.overtimeHoursPerDay) * r.overtimePremium;
+  }
+
+  /** The agent's own overtime rate if one was set, otherwise the formula rate. */
+  overtimeRateFor(a: Agent): number {
+    return this.overtimeRates()[a.id] ?? this.formulaOvertimeRate(a);
+  }
+
+  /** Sets an agent's own overtime rate, or clears it (null) so they follow the formula again. */
+  setOvertimeRate(agentId: string, rate: number | null) {
+    const a = this.agents().find((x) => x.id === agentId);
+    if (!a) return;
+    const before = this.overtimeRateFor(a);
+    this.overtimeRates.update((m) => { const { [agentId]: _old, ...rest } = m; return rate === null ? rest : { ...rest, [agentId]: rate }; });
+    const after = this.overtimeRateFor(a);
+    this.log('Overtime Rate Changed', a.employeeId, a.name + ': overtime rate ' + before.toFixed(3) + ' → ' + after.toFixed(3) + ' OMR/hour' + (rate === null ? ' (back to the formula)' : '') + '.', 'Success', undefined, { previousValue: before.toFixed(3), newValue: after.toFixed(3) });
   }
 
   /** The agent earns their performance rate in a month only when that month's score is above the threshold for their nationality. */
