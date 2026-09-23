@@ -136,7 +136,7 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Not validated': 'neutra
               @if (isExpanded(l.key)) {
                 <tr>
                   <td class="!border-t-0 !bg-surface-subtle"></td>
-                  <td colspan="6" class="!border-t-0 !bg-surface-subtle !whitespace-normal !pt-0">
+                  <td colspan="6" class="!border-t-0 !bg-surface-subtle !whitespace-normal !pt-3">
                     @if (l.source === 'wfo') {
                       <div class="max-w-xl text-xs text-ink-500 bg-white border border-surface-border rounded-lg px-3 py-1.5">
                         @for (b of breakdown(l); track b.label) {
@@ -149,7 +149,7 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Not validated': 'neutra
                           @case ('overtime') { Overtime hours &times; basic &divide; {{ store.payrollRules().overtimeDays }} days &divide; {{ store.payrollRules().overtimeHoursPerDay }} hours &times; {{ store.payrollRules().overtimePremium }}, per agent — set in <a class="text-brand-600 font-medium" routerLink="/csr/overtime-settings">Overtime Settings</a>. }
                           @case ('incentive') { Calls shorter than {{ calc().threshold }}s don't count — <a class="text-brand-600 font-medium" routerLink="/invoicing/rules">change the rule</a>. }
                           @case ('fee') { The contract's flat management fee per agent per month. }
-                          @default { Billing rate &times; billable-day ratio per agent, from the <a class="text-brand-600 font-medium" routerLink="/csr/leave">attendance sheet</a> and the <button type="button" class="text-brand-600 font-medium" (click)="view.set('annexure')">annexure</button>. Absence is deducted; approved leave stays billable. }
+                          @default { Billing rate &times; billable-day ratio per agent, from the <a class="text-brand-600 font-medium" routerLink="/csr/leave">attendance sheet</a> and the <button type="button" class="text-[11px] text-brand-600 font-medium hover:underline" (click)="view.set('annexure')">annexure</button>. Absence is deducted; approved leave stays billable. }
                         }
                       </p>
                     } @else {
