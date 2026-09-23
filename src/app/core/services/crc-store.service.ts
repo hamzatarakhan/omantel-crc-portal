@@ -206,6 +206,8 @@ export class CrcStore {
   readonly resignations = signal<ResignationRecord[]>(this.seedResignations());
   readonly importInfo = signal<{ fileName: string; employees: number; days: number; resignations: number; period: string } | null>(null);
   readonly payrollRules = signal<PayrollRules>({ omaniMinScore: 90, nonOmaniMinScore: 95, overtimePremium: 1.25, overtimeDays: 30, overtimeHoursPerDay: 8 });
+  /** Performance rates set by an admin on Performance Settings, replacing the seeded ones. */
+  readonly performanceRates = signal<Record<string, number>>({});
   readonly payableRules = signal<PayableRules>({ thresholdSeconds: 10, deviationPct: 2, perVendor: false, includeIncentive: false });
   /** Every validate/approve pass, per vendor, oldest first — a vendor can have several, one per subset of lines paid over time. */
   readonly invoiceRuns = signal<Record<string, InvoiceRun[]>>({});
@@ -572,8 +574,19 @@ export class CrcStore {
 
   /** The agent's fixed performance rate (OMR), configured once. */
   performanceRateFor(a: Agent): number {
+    const set = this.performanceRates()[a.id];
+    if (set !== undefined) return set;
     const rates = [100, 100, 100, 100, 50, 50, 50, 20, 20, 40, 0]; // spread seen in the June 2026 performance sheet
     return rates[hash(a.id + '|pay') % rates.length];
+  }
+
+  setPerformanceRate(agentId: string, rate: number) {
+    const a = this.agents().find((x) => x.id === agentId);
+    if (!a) return;
+    const before = this.performanceRateFor(a);
+    if (before === rate) return;
+    this.performanceRates.update((m) => ({ ...m, [agentId]: rate }));
+    this.log('Performance Rate Changed', a.employeeId, `${a.name}: performance rate ${before} → ${rate} OMR.`, 'Success', undefined, { previousValue: String(before), newValue: String(rate) });
   }
 
   /**
