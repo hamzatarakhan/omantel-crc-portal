@@ -23,7 +23,7 @@ export interface NavGroup {
 }
 
 /** Permission modules that belong to hidden screens (also hidden from the access matrix). */
-export const HIDDEN_MODULES = ['CSR Management', 'Internal Project Movement'];
+export const HIDDEN_MODULES = ['Internal Project Movement'];
 
 const VIEW_CONTRACTS = ['View Contracts'];
 const VIEW_AGENTS = ['View Agent Profiles'];
@@ -63,7 +63,6 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'CSR Management',
     icon: 'groups',
     basePath: '/csr',
-    hidden: true,
     items: [
       { label: 'Team & Agent Directory', path: 'directory', icon: 'badge', perms: VIEW_AGENTS },
       { label: 'Leave Management', path: 'leave', icon: 'event_available', perms: VIEW_AGENTS },
