@@ -103,7 +103,6 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
                       <tr class="border-t border-surface-border"><td class="px-3 py-2 text-ink-700">Other allowance</td><td class="px-3 py-2 text-right">{{ p.other | number:'1.3-3' }}</td></tr>
                       <tr class="border-t-2 border-surface-border font-semibold"><td class="px-3 py-2 text-ink-900">Gross salary</td><td class="px-3 py-2 text-right text-ink-900">{{ p.gross | number:'1.3-3' }}</td></tr>
                       <tr class="border-t border-surface-border"><td class="px-3 py-2 text-ink-700">Management fee</td><td class="px-3 py-2 text-right">{{ p.managementFee | number:'1.3-3' }}</td></tr>
-                      <tr class="border-t border-surface-border"><td class="px-3 py-2 text-ink-700">Performance <span class="text-xs text-ink-400">&middot; {{ perfPay().eligible ? 'fixed amount, paid every month' : 'not eligible — score ' + perfPay().score + '% is not above ' + perfPay().threshold + '% (' + (perfPay().omani ? 'Omani' : 'non-Omani') + ')' }}</span></td><td class="px-3 py-2 text-right">{{ perfPay().amount | number:'1.3-3' }}</td></tr>
                       <tr class="border-t-2 border-surface-border font-semibold"><td class="px-3 py-2 text-ink-900">Billing rate <span class="text-xs font-normal text-ink-400">&middot; gross salary + management fee</span></td><td class="px-3 py-2 text-right text-brand-700">{{ p.billingRate | number:'1.3-3' }}</td></tr>
                     </tbody>
                   </table>
@@ -177,7 +176,6 @@ export class AgentProfileComponent {
   canSeePay = computed(() => this.store.can('View Employee Salary'));
   pay = computed(() => { const a = this.agent(); return a && this.canSeePay() ? this.store.payrollFor(a) : null; });
   ot = computed(() => { const a = this.agent(); return a ? this.store.overtimeFor(a) : { hours: 0, rate: 0, amount: 0 }; });
-  perfPay = computed(() => { const a = this.agent(); return a ? this.store.performanceFor(a) : { rate: 0, score: 0, threshold: 0, omani: true, eligible: false, amount: 0 }; });
   codes = computed(() => this.store.attendance()[this.id() ?? ''] ?? []);
   perf = computed(() => this.store.performance().find((p) => p.agentId === this.id()));
   moves = computed(() => this.store.movementRequests().filter((m) => m.agentId === this.id() && (m.status === 'Active' || m.status === 'Ending Soon' || m.status === 'Expired')));
