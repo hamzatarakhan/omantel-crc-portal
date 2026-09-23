@@ -103,10 +103,9 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
                       <tr class="border-t border-surface-border"><td class="px-3 py-2 text-ink-700">Other allowance</td><td class="px-3 py-2 text-right">{{ p.other | number:'1.3-3' }}</td></tr>
                       <tr class="border-t-2 border-surface-border font-semibold"><td class="px-3 py-2 text-ink-900">Gross salary</td><td class="px-3 py-2 text-right text-ink-900">{{ p.gross | number:'1.3-3' }}</td></tr>
                       <tr class="border-t border-surface-border"><td class="px-3 py-2 text-ink-700">Management fee</td><td class="px-3 py-2 text-right">{{ p.managementFee | number:'1.3-3' }}</td></tr>
-                      <tr class="border-t-2 border-surface-border font-semibold"><td class="px-3 py-2 text-ink-900">Billing rate <span class="text-xs font-normal text-ink-400">&middot; gross salary + management fee</span></td><td class="px-3 py-2 text-right text-brand-700">{{ p.billingRate | number:'1.3-3' }}</td></tr>
-                      <tr><td colspan="2" class="px-3 pt-5 pb-2 text-[10.5px] font-bold text-ink-400 uppercase tracking-wide !border-t-0">Rates</td></tr>
                       <tr class="border-t border-surface-border"><td class="px-3 py-2 text-ink-700">Overtime rate <span class="text-xs text-ink-400">&middot; per hour</span></td><td class="px-3 py-2 text-right">{{ ot().rate | number:'1.3-3' }}</td></tr>
                       <tr class="border-t border-surface-border"><td class="px-3 py-2 text-ink-700">Performance <span class="text-xs text-ink-400">&middot; fixed amount, paid when the month's score is above {{ perfPay().threshold }}% ({{ perfPay().omani ? 'Omani' : 'non-Omani' }})</span></td><td class="px-3 py-2 text-right">{{ perfPay().rate | number:'1.3-3' }}</td></tr>
+                      <tr class="border-t-2 border-surface-border font-semibold"><td class="px-3 py-2 text-ink-900">Billing rate <span class="text-xs font-normal text-ink-400">&middot; gross salary + management fee</span></td><td class="px-3 py-2 text-right text-brand-700">{{ p.billingRate | number:'1.3-3' }}</td></tr>
                     </tbody>
                   </table>
                 </div>
