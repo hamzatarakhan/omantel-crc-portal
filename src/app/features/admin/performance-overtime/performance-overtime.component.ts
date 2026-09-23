@@ -34,7 +34,7 @@ const NUM = 'w-24 h-9 px-2.5 text-sm font-semibold text-right tabular-nums round
           <div class="w-10 h-10 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center shrink-0"><mat-icon>workspace_premium</mat-icon></div>
           <div class="min-w-0">
             <h3 class="text-[14px] font-bold text-ink-900">Performance eligibility</h3>
-            <p class="text-xs text-ink-400 mt-0.5 leading-relaxed">An agent is paid their performance rate only when the month's score is above the threshold for their nationality — otherwise the line is 0.</p>
+            <p class="text-xs text-ink-400 mt-0.5 leading-relaxed min-h-[39px]">An agent is paid their performance rate only when the month's score is above the threshold for their nationality — otherwise the line is 0.</p>
           </div>
         </div>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-5">
@@ -60,7 +60,7 @@ const NUM = 'w-24 h-9 px-2.5 text-sm font-semibold text-right tabular-nums round
           <div class="w-10 h-10 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center shrink-0"><mat-icon>more_time</mat-icon></div>
           <div class="min-w-0">
             <h3 class="text-[14px] font-bold text-ink-900">Overtime rate</h3>
-            <p class="text-xs text-ink-400 mt-0.5 leading-relaxed">How one overtime hour is priced for each agent, from their basic salary.</p>
+            <p class="text-xs text-ink-400 mt-0.5 leading-relaxed min-h-[39px]">How one overtime hour is priced for each agent, from their basic salary.</p>
           </div>
         </div>
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-5">
@@ -136,7 +136,7 @@ export class PerformanceOvertimeComponent {
   readonly group = 'flex items-stretch h-10 rounded-lg border border-surface-border bg-white overflow-hidden transition-shadow focus-within:border-brand-400 focus-within:ring-2 focus-within:ring-brand-100';
   readonly inp = 'w-full min-w-0 px-3 text-sm font-semibold tabular-nums text-ink-900 bg-transparent focus:outline-none';
   readonly affix = 'px-3 flex items-center text-xs font-semibold text-ink-500 bg-surface-subtle border-surface-border whitespace-nowrap';
-  readonly note = 'flex items-center gap-x-1.5 gap-y-1 rounded-lg bg-surface-subtle border border-surface-border px-3.5 py-2.5 text-xs text-ink-600';
+  readonly note = 'min-h-[42px] flex items-center gap-x-1.5 gap-y-1 rounded-lg bg-surface-subtle border border-surface-border px-3.5 py-2.5 text-xs text-ink-600';
   readonly op = 'text-brand-600 font-bold';
   readonly vendors = ['All', 'Infoline', 'Green Umbrella', 'OJT'];
 
