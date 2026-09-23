@@ -950,6 +950,20 @@ export class CrcStore {
     });
   }
 
+  /**
+   * An agent's attendance code on any day: the live WFO window (the last 14 days, editable) when the day is in it, otherwise
+   * their history. Blank before they joined and after today.
+   * ponytail: history is seeded from the agent and the date until WFO's archive is connected.
+   */
+  attendanceOn(a: Agent, day: string): string {
+    const i = this.attendanceDays().indexOf(day);
+    if (i >= 0) return this.attendance()[a.id]?.[i] ?? '';
+    if (day > isoDay(0) || day < a.joinDate) return '';
+    if (new Date(day).getDay() >= 5) return 'OFF';
+    const h = hash(a.id + '|' + day) % 100;
+    return h < 3 ? 'A' : h < 7 ? 'S/L' : h < 11 ? 'C/L' : 'P';
+  }
+
   private seedAttendance(): Record<string, string[]> {
     const rec: Record<string, string[]> = {};
     const agents = this.agents();

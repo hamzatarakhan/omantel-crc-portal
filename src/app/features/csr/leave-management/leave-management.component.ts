@@ -38,26 +38,33 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
       subtitle="Leave data synced from the Workforce (WFO) system &middot; reclassify type or add a note without altering the source"
       [breadcrumbs]="[{ label: 'CSR Management', link: '/csr/directory' }, { label: 'Leave Management' }]"
     >
+      <select class="h-9 pl-3 pr-8 text-xs font-semibold rounded-lg border border-surface-border bg-white text-ink-700 focus:outline-none focus:border-brand-400" (change)="month.set($any($event.target).value)" title="Month">
+        @for (m of months; track m) { <option [value]="m" [selected]="m === month()">{{ monthLabel(m) }}</option> }
+      </select>
       <button mat-stroked-button (click)="exportSheet()"><mat-icon class="!text-base !mr-1">download</mat-icon>Export sheet</button>
       <button mat-flat-button color="primary" (click)="override()" appRequires="Manage Leave & Attendance"><mat-icon class="!text-base !mr-1">edit_calendar</mat-icon>Record leave override</button>
     </app-page-header>
 
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-      <div class="surface-card px-4 py-3"><div class="text-[11px] font-bold text-ink-400 uppercase tracking-wide">Present today</div><div class="text-lg font-extrabold text-status-normal">{{ today()['Present'] }}</div></div>
-      <div class="surface-card px-4 py-3"><div class="text-[11px] font-bold text-ink-400 uppercase tracking-wide">On leave</div><div class="text-lg font-extrabold text-status-amber">{{ today()['On Leave'] }}</div></div>
-      <div class="surface-card px-4 py-3"><div class="text-[11px] font-bold text-ink-400 uppercase tracking-wide">Off day</div><div class="text-lg font-extrabold text-ink-700">{{ today()['Off'] }}</div></div>
-      <div class="surface-card px-4 py-3"><div class="text-[11px] font-bold text-ink-400 uppercase tracking-wide">Absent</div><div class="text-lg font-extrabold text-status-red">{{ today()['Absent'] }}</div></div>
+      @for (c of cards(); track c.label) {
+        <div class="surface-card px-4 py-3"><div class="text-[11px] font-bold text-ink-400 uppercase tracking-wide">{{ c.label }}</div><div class="text-lg font-extrabold" [class]="c.tone">{{ c.value }}</div></div>
+      }
     </div>
 
     <mat-tab-group>
-      <mat-tab label="On leave today">
+      <mat-tab [label]="isCurrent() ? 'On leave today' : 'Leave in ' + monthLabel(month())">
         <div class="pt-4">
-          <app-data-table title="Agents on leave" [columns]="columns" [rows]="onLeave()" (rowClick)="reclassify($event)" emptyTitle="No one is on leave today" emptyDescription="All agents are scheduled as present or off."></app-data-table>
-          <p class="text-xs text-ink-400 mt-3">Click a row to reclassify the leave type or return the agent to present.</p>
+          @if (isCurrent()) {
+            <app-data-table title="Agents on leave" [columns]="columns" [rows]="onLeave()" (rowClick)="reclassify($event)" emptyTitle="No one is on leave today" emptyDescription="All agents are scheduled as present or off."></app-data-table>
+            <p class="text-xs text-ink-400 mt-3">Click a row to reclassify the leave type or return the agent to present.</p>
+          } @else {
+            <app-data-table [title]="'Agents with leave in ' + monthLabel(month())" [columns]="monthColumns" [rows]="monthLeave()" emptyTitle="No leave that month" emptyDescription="Every agent was present, off or absent."></app-data-table>
+            <p class="text-xs text-ink-400 mt-3">A past month is read-only. Its day-by-day codes are on the attendance sheet tab.</p>
+          }
         </div>
       </mat-tab>
 
-      <mat-tab [label]="'Attendance sheet (' + days().length + ' days)'">
+      <mat-tab [label]="'Attendance sheet · ' + monthLabel(month())">
         <div class="pt-4">
           <div class="surface-card p-4 mb-4">
             <h3 class="text-xs font-semibold uppercase tracking-wide text-ink-500 mb-3">Leave Code Legend</h3>
@@ -94,26 +101,30 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
                 <thead>
                   <tr class="text-left">
                     <th class="sticky left-0 top-0 z-20 min-w-[220px] border-b border-surface-border">Agent</th>
-                    @for (d of days(); track d) { <th class="sticky top-0 z-10 !px-1 text-center border-b border-surface-border">{{ d.slice(5) }}</th> }
+                    @for (d of monthDays(); track d) { <th class="sticky top-0 z-10 !px-1 text-center border-b border-surface-border">{{ d.slice(8) }}</th> }
                   </tr>
                 </thead>
                 <tbody>
                   @for (a of sheet(); track a.id) {
                     <tr>
                       <td class="sticky left-0 z-10 bg-white"><div class="font-semibold text-ink-900 text-[13px] truncate max-w-[200px]">{{ a.name }}</div><div class="text-[11px] text-ink-400 mt-0.5">{{ a.queue }}</div></td>
-                      @for (code of att()[a.id]; track $index) {
+                      @for (d of monthDays(); track d) {
                         <td class="!px-1 !py-2 text-center">
-                          <button (click)="cycle(a.id, $index, code)" class="block w-full max-w-[46px] mx-auto rounded-lg py-1.5 text-[11px] font-bold border border-transparent hover:border-brand-300 transition-colors" [class]="style(code)">{{ code }}</button>
+                          @if (liveIndex(d) >= 0) {
+                            <button (click)="cycle(a.id, liveIndex(d), store.attendanceOn(a, d))" class="block w-full max-w-[46px] mx-auto rounded-lg py-1.5 text-[11px] font-bold border border-transparent hover:border-brand-300 transition-colors" [class]="style(store.attendanceOn(a, d))">{{ store.attendanceOn(a, d) }}</button>
+                          } @else if (store.attendanceOn(a, d)) {
+                            <span class="block w-full max-w-[46px] mx-auto rounded-lg py-1.5 text-[11px] font-bold" [class]="style(store.attendanceOn(a, d))">{{ store.attendanceOn(a, d) }}</span>
+                          } @else { <span class="text-ink-300 text-[11px]">&middot;</span> }
                         </td>
                       }
                     </tr>
                   } @empty {
-                    <tr><td [attr.colspan]="days().length + 1" class="text-center text-ink-400 !py-10">No agents match your filter.</td></tr>
+                    <tr><td [attr.colspan]="monthDays().length + 1" class="text-center text-ink-400 !py-10">No agents match your filter.</td></tr>
                   }
                 </tbody>
               </table>
             </div>
-            <div class="p-3.5 border-t border-surface-border text-xs text-ink-400">Click a cell to cycle P → A → S/L → C/L → OFF, or use “Record leave override” for other codes. Billable days used by the Reconciliation Workspace come from this sheet.</div>
+            <div class="p-3.5 border-t border-surface-border text-xs text-ink-400">The last 14 days come live from WFO and can be edited: click a cell to cycle P → A → S/L → C/L → OFF, or use “Record leave override” for other codes. Earlier days are history and read-only. Billable days used by the Reconciliation Workspace come from the live days.</div>
           </div>
         </div>
       </mat-tab>
@@ -127,9 +138,62 @@ export class LeaveManagementComponent {
 
   legend = LEAVE_LEGEND;
   days = this.store.attendanceDays;
-  att = this.store.attendance;
   q = signal('');
   vendor = signal('All');
+  readonly months = [...this.store.payrollMonths()].reverse();
+  month = signal(this.months[0]);
+  isCurrent = computed(() => this.month() === this.months[0]);
+  /** Every day of the selected month, 'YYYY-MM-DD'. */
+  monthDays = computed(() => {
+    const [y, m] = this.month().split('-').map(Number);
+    return Array.from({ length: new Date(y, m, 0).getDate() }, (_, i) => `${this.month()}-${String(i + 1).padStart(2, '0')}`);
+  });
+  private codeMeaning = Object.fromEntries(LEAVE_LEGEND.map((l) => [l.code, l.meaning]));
+
+  /** Today's counts in the current month; day totals across the month for a past one. */
+  cards = computed(() => {
+    if (this.isCurrent()) {
+      const t = this.today();
+      return [
+        { label: 'Present today', value: t['Present'], tone: 'text-status-normal' }, { label: 'On leave', value: t['On Leave'], tone: 'text-status-amber' },
+        { label: 'Off day', value: t['Off'], tone: 'text-ink-700' }, { label: 'Absent', value: t['Absent'], tone: 'text-status-red' },
+      ];
+    }
+    const n = { P: 0, leave: 0, OFF: 0, A: 0 };
+    for (const a of this.store.agents()) for (const d of this.monthDays()) {
+      const c = this.store.attendanceOn(a, d);
+      if (c === 'P' || c === 'OFF' || c === 'A') n[c]++; else if (c) n.leave++;
+    }
+    return [
+      { label: 'Present days', value: n.P, tone: 'text-status-normal' }, { label: 'Leave days', value: n.leave, tone: 'text-status-amber' },
+      { label: 'Off days', value: n.OFF, tone: 'text-ink-700' }, { label: 'Absent days', value: n.A, tone: 'text-status-red' },
+    ];
+  });
+
+  /** Agents with leave in a past month: their main leave type and how many days. */
+  monthLeave = computed(() => this.store.agents().map((a) => {
+    const counts: Record<string, number> = {};
+    for (const d of this.monthDays()) { const c = this.store.attendanceOn(a, d); if (c && c !== 'P' && c !== 'OFF' && c !== 'A') counts[c] = (counts[c] ?? 0) + 1; }
+    const codes = Object.keys(counts).sort((x, y) => counts[y] - counts[x]);
+    return { ...a, leaveType: codes.map((c) => this.codeMeaning[c] ?? c).join(', '), leaveDays: codes.reduce((s, c) => s + counts[c], 0) };
+  }).filter((r) => r.leaveDays > 0));
+
+  monthColumns: TableColumn<any>[] = [
+    { key: 'name', label: 'Agent' },
+    { key: 'employeeId', label: 'Employee ID' },
+    { key: 'queue', label: 'Queue' },
+    { key: 'leaveType', label: 'Leave Type', type: 'status', statusFn: (r) => ({ label: r.leaveType, level: 'amber' }) },
+    { key: 'leaveDays', label: 'Leave days', type: 'number', align: 'right' },
+  ];
+
+  liveIndex(day: string) {
+    return this.days().indexOf(day);
+  }
+
+  monthLabel(m: string) {
+    const [y, mo] = m.split('-').map(Number);
+    return new Date(y, mo - 1, 1).toLocaleString('en-GB', { month: 'long', year: 'numeric' });
+  }
 
   onLeave = computed(() => this.store.agents().filter((a) => a.status === 'On Leave'));
   today = computed(() => {
@@ -191,6 +255,6 @@ export class LeaveManagementComponent {
   }
 
   exportSheet() {
-    this.ui.csv('attendance-sheet', this.sheet().map((a) => ({ Agent: a.name, 'Employee ID': a.employeeId, Queue: a.queue, Vendor: a.vendor, ...Object.fromEntries(this.days().map((d, i) => [d, this.att()[a.id]?.[i] ?? ''])) })));
+    this.ui.csv(`attendance-sheet-${this.month()}`, this.sheet().map((a) => ({ Agent: a.name, 'Employee ID': a.employeeId, Queue: a.queue, Vendor: a.vendor, ...Object.fromEntries(this.monthDays().map((d) => [d, this.store.attendanceOn(a, d)])) })));
   }
 }
