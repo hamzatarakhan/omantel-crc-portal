@@ -27,17 +27,17 @@ const NUM = 'w-24 h-9 px-2.5 text-sm font-semibold text-right tabular-nums round
       <button type="button" class="inline-flex items-center gap-1.5 h-9 px-4 text-xs font-semibold rounded-lg bg-brand-600 text-white hover:bg-brand-700 active:scale-[0.97] transition-all disabled:opacity-40 disabled:pointer-events-none" (click)="save()" [disabled]="!dirty() || !valid()"><mat-icon class="!text-[17px] !w-[17px] !h-[17px]">save</mat-icon>Save rules</button>
     </app-page-header>
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6"><!-- the two cards share one row grid (subgrid), so header, fields and summary line up whatever the text length -->
       <!-- Performance eligibility -->
-      <div class="surface-card p-5 flex flex-col">
+      <div class="surface-card p-5 flex flex-col lg:grid lg:grid-rows-subgrid lg:row-span-3 lg:gap-y-0">
         <div class="flex items-start gap-3">
           <div class="w-10 h-10 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center shrink-0"><mat-icon>workspace_premium</mat-icon></div>
           <div class="min-w-0">
             <h3 class="text-[14px] font-bold text-ink-900">Performance eligibility</h3>
-            <p class="text-xs text-ink-400 mt-0.5 leading-relaxed min-h-[39px]">An agent is paid their performance rate only when the month's score is above the threshold for their nationality — otherwise the line is 0.</p>
+            <p class="text-xs text-ink-400 mt-0.5 leading-relaxed">An agent is paid their performance rate only when the month's score is above the threshold for their nationality — otherwise the line is 0.</p>
           </div>
         </div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-5">
+        <div class="mt-5"><div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <label class="block">
             <span [class]="lbl">Omani agents</span>
             <div [class]="group"><span [class]="affix + ' border-r'">Above</span><input type="number" min="0" max="100" step="0.5" [class]="inp" [ngModel]="draft().omaniMinScore" (ngModelChange)="set('omaniMinScore', $event)" /><span [class]="affix + ' border-l'">%</span></div>
@@ -48,22 +48,23 @@ const NUM = 'w-24 h-9 px-2.5 text-sm font-semibold text-right tabular-nums round
           </label>
         </div>
         @if (!validScores()) { <p class="text-xs text-status-red font-medium mt-2">Thresholds must be between 0 and 100%.</p> }
-        <div class="mt-auto pt-4"><div [class]="note">
+        </div>
+        <div class="mt-auto pt-4 lg:mt-0 flex flex-col"><div [class]="'flex-1 ' + note">
           <mat-icon class="!text-lg !w-[18px] !h-[18px] text-brand-600 shrink-0">groups</mat-icon>
           <span><b class="text-ink-900">{{ preview().qualified }} of {{ preview().total }}</b> agents qualify this month with these thresholds{{ dirty() ? ' — not saved yet' : '' }}.</span>
         </div></div>
       </div>
 
       <!-- Overtime rate -->
-      <div class="surface-card p-5 flex flex-col">
+      <div class="surface-card p-5 flex flex-col lg:grid lg:grid-rows-subgrid lg:row-span-3 lg:gap-y-0">
         <div class="flex items-start gap-3">
           <div class="w-10 h-10 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center shrink-0"><mat-icon>more_time</mat-icon></div>
           <div class="min-w-0">
             <h3 class="text-[14px] font-bold text-ink-900">Overtime rate</h3>
-            <p class="text-xs text-ink-400 mt-0.5 leading-relaxed min-h-[39px]">How one overtime hour is priced for each agent, from their basic salary.</p>
+            <p class="text-xs text-ink-400 mt-0.5 leading-relaxed">How one overtime hour is priced for each agent, from their basic salary.</p>
           </div>
         </div>
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-5">
+        <div class="mt-5"><div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <label class="block">
             <span [class]="lbl">Days per month</span>
             <div [class]="group"><input type="number" min="1" max="31" [class]="inp" [ngModel]="draft().overtimeDays" (ngModelChange)="set('overtimeDays', $event)" /><span [class]="affix + ' border-l'">days</span></div>
@@ -78,7 +79,8 @@ const NUM = 'w-24 h-9 px-2.5 text-sm font-semibold text-right tabular-nums round
           </label>
         </div>
         @if (!validOvertime()) { <p class="text-xs text-status-red font-medium mt-2">Days and hours must be at least 1, and the premium at least 1.</p> }
-        <div class="mt-auto pt-4"><div [class]="note + ' flex-wrap'">
+        </div>
+        <div class="mt-auto pt-4 lg:mt-0 flex flex-col"><div [class]="'flex-1 ' + note + ' flex-wrap'">
           <span class="font-semibold text-ink-700">Basic</span> <span [class]="op">&divide;</span> {{ draft().overtimeDays }} <span [class]="op">&divide;</span> {{ draft().overtimeHoursPerDay }} <span [class]="op">&times;</span> {{ draft().overtimePremium }} <span [class]="op">&times;</span> <span class="font-semibold text-ink-700">hours</span>
           <span class="ml-auto text-ink-400">e.g. 276.722 OMR, 25.5 h &rarr; <b class="text-ink-900">{{ example() | number:'1.3-3' }} OMR</b></span>
         </div></div>
