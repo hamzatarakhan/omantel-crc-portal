@@ -25,8 +25,8 @@ export interface PayrollRules {
   overtimeDays: number;
   overtimeHoursPerDay: number;
 }
-/** Per agent: the fixed monthly performance amount, the performance score that decides eligibility, and this month's overtime hours. */
-export interface AgentPay { performanceRate: number; performanceScore: number; overtimeHours: number }
+/** One agent's figures for one month (WFO / performance system): the performance score and the overtime hours worked. */
+export interface AgentMonth { performanceScore: number; overtimeHours: number }
 /** One line the vendor can invoice on a contract: calculated from WFO attendance, or the contract's monthly share. */
 export interface PayableLineItem {
   key: string;
@@ -206,8 +206,6 @@ export class CrcStore {
   readonly resignations = signal<ResignationRecord[]>(this.seedResignations());
   readonly importInfo = signal<{ fileName: string; employees: number; days: number; resignations: number; period: string } | null>(null);
   readonly payrollRules = signal<PayrollRules>({ omaniMinScore: 90, nonOmaniMinScore: 95, overtimePremium: 1.25, overtimeDays: 30, overtimeHoursPerDay: 8 });
-  /** Overrides of the seeded per-agent pay inputs (an admin changing a performance rate). */
-  readonly agentPay = signal<Record<string, AgentPay>>({});
   readonly payableRules = signal<PayableRules>({ thresholdSeconds: 10, deviationPct: 2, perVendor: false, includeIncentive: false });
   /** Every validate/approve pass, per vendor, oldest first — a vendor can have several, one per subset of lines paid over time. */
   readonly invoiceRuns = signal<Record<string, InvoiceRun[]>>({});
@@ -566,51 +564,53 @@ export class CrcStore {
     return this.payroll()[a.id] ?? this.makePayroll(a.id, a.degree);
   }
 
-  agentPayFor(a: Agent): AgentPay {
-    return this.agentPay()[a.id] ?? this.seedAgentPay(a.id);
+  /** The last 12 billing months, oldest first, ending with the current one ('YYYY-MM'). */
+  payrollMonths(): string[] {
+    const [y, m] = this.periodStart().split('-').map(Number);
+    return Array.from({ length: 12 }, (_, i) => { const d = new Date(Date.UTC(y, m - 12 + i, 1)); return d.toISOString().slice(0, 7); });
+  }
+
+  /** The agent's fixed performance rate (OMR), configured once. */
+  performanceRateFor(a: Agent): number {
+    const rates = [100, 100, 100, 100, 50, 50, 50, 20, 20, 40, 0]; // spread seen in the June 2026 performance sheet
+    return rates[hash(a.id + '|pay') % rates.length];
+  }
+
+  /**
+   * The agent's score and overtime hours in a month (default: the current billing month).
+   * ponytail: seeded stand-ins for WFO; the current month keeps the figures the rest of the demo was built on.
+   */
+  agentMonthFor(a: Agent, month = this.periodStart().slice(0, 7)): AgentMonth {
+    const current = month === this.periodStart().slice(0, 7);
+    const raw = hash(a.id + (current ? '|pay' : '|' + month));
+    // a string hash barely moves between '2026-06' and '2026-07', so scramble it (murmur3 finaliser) for the other months
+    const mix = (x: number) => { x = Math.imul(x ^ (x >>> 16), 0x85ebca6b) >>> 0; x = Math.imul(x ^ (x >>> 13), 0xc2b2ae35) >>> 0; return (x ^ (x >>> 16)) >>> 0; };
+    const h = current ? raw : mix(raw);
+    const hours = [0, 0, 0, 0, 0, 0, 0, 8.5, 12, 25.5, 34, 16];
+    return { performanceScore: 84 + ((h >>> 5) % 17), overtimeHours: hours[(h >>> 11) % hours.length] };
   }
 
   /** Overtime pay from the hours worked: basic ÷ days ÷ hours per day × premium × hours — the formula of the June 2026 overtime sheet. */
-  overtimeFor(a: Agent): { hours: number; rate: number; amount: number } {
+  overtimeFor(a: Agent, month?: string): { hours: number; rate: number; amount: number } {
     const r = this.payrollRules();
-    const hours = this.agentPayFor(a).overtimeHours;
+    const hours = this.agentMonthFor(a, month).overtimeHours;
     const rate = (this.payrollFor(a).basic / r.overtimeDays / r.overtimeHoursPerDay) * r.overtimePremium;
     return { hours, rate, amount: Math.round(hours * rate * 1000) / 1000 };
   }
 
-  /**
-   * Performance is a fixed monthly amount configured once per agent and paid every month. Only an agent whose performance
-   * score is above the threshold for their nationality is eligible to hold one; an ineligible agent's amount is 0.
-   */
-  performanceFor(a: Agent): { rate: number; score: number; threshold: number; omani: boolean; eligible: boolean; amount: number } {
-    const p = this.agentPayFor(a), r = this.payrollRules();
+  /** The agent earns their performance rate in a month only when that month's score is above the threshold for their nationality. */
+  performanceFor(a: Agent, month?: string): { rate: number; score: number; threshold: number; omani: boolean; eligible: boolean; amount: number } {
+    const r = this.payrollRules(), rate = this.performanceRateFor(a), score = this.agentMonthFor(a, month).performanceScore;
     const omani = /^oman/i.test(a.nationality ?? 'Oman');
     const threshold = omani ? r.omaniMinScore : r.nonOmaniMinScore;
-    const eligible = p.performanceScore > threshold;
-    return { rate: p.performanceRate, score: p.performanceScore, threshold, omani, eligible, amount: eligible ? p.performanceRate : 0 };
-  }
-
-  setPerformanceRate(agentId: string, rate: number) {
-    const a = this.agents().find((x) => x.id === agentId);
-    if (!a) return;
-    const before = this.agentPayFor(a).performanceRate;
-    if (before === rate) return;
-    this.agentPay.update((m) => ({ ...m, [agentId]: { ...this.agentPayFor(a), performanceRate: rate } }));
-    this.log('Performance Rate Changed', a.employeeId, `${a.name}: performance rate ${before} → ${rate} OMR.`, 'Success', undefined, { previousValue: String(before), newValue: String(rate) });
+    const eligible = score > threshold;
+    return { rate, score, threshold, omani, eligible, amount: eligible ? rate : 0 };
   }
 
   savePayrollRules(rules: PayrollRules) {
     const r = this.payrollRules();
     this.payrollRules.set(rules);
     this.log('Payroll Rules Saved', 'PAYROLL-RULES', `Performance: Omani above ${rules.omaniMinScore}%, non-Omani above ${rules.nonOmaniMinScore}% (was ${r.omaniMinScore}% / ${r.nonOmaniMinScore}%). Overtime: basic ÷ ${rules.overtimeDays} ÷ ${rules.overtimeHoursPerDay} × ${rules.overtimePremium}.`);
-  }
-
-  /** ponytail: demo inputs — rates follow the spread in the June 2026 performance sheet; scores and hours stand in for WFO until it is connected. */
-  private seedAgentPay(id: string): AgentPay {
-    const h = hash(id + '|pay');
-    const rates = [100, 100, 100, 100, 50, 50, 50, 20, 20, 40, 0];
-    const hours = [0, 0, 0, 0, 0, 0, 0, 8.5, 12, 25.5, 34, 16];
-    return { performanceRate: rates[h % rates.length], performanceScore: 84 + ((h >> 5) % 17), overtimeHours: hours[(h >> 11) % hours.length] };
   }
 
   /**

@@ -91,9 +91,12 @@ const NUM = 'w-24 h-9 px-2.5 text-sm font-semibold text-right tabular-nums round
       <div class="flex items-center justify-between gap-3 flex-wrap px-4 py-3.5 border-b border-surface-border">
         <div>
           <h3 class="text-[13.5px] font-bold text-ink-900">Performance rate per agent</h3>
-          <p class="text-xs text-ink-400 mt-0.5">{{ qualifiedCount() }} of {{ rows().length }} agents qualify this month &middot; {{ performanceTotal() | number:'1.0-3' }} OMR performance &middot; {{ overtimeTotal() | number:'1.3-3' }} OMR overtime</p>
+          <p class="text-xs text-ink-400 mt-0.5">{{ qualifiedCount() }} of {{ rows().length }} agents qualify in {{ monthLabel(month()) }} &middot; {{ performanceTotal() | number:'1.0-3' }} OMR performance &middot; {{ overtimeTotal() | number:'1.3-3' }} OMR overtime</p>
         </div>
-        <div class="grid grid-cols-2 gap-2.5 w-full sm:w-auto sm:min-w-[380px]">
+        <div class="grid grid-cols-3 gap-2.5 w-full sm:w-auto sm:min-w-[560px]">
+          <select [class]="field" (change)="month.set($any($event.target).value)">
+            @for (m of months; track m) { <option [value]="m" [selected]="m === month()">{{ monthLabel(m) }}</option> }
+          </select>
           <select [class]="field" (change)="vendor.set($any($event.target).value)">
             @for (v of vendors; track v) { <option [value]="v" [selected]="v === vendor()">{{ v === 'All' ? 'All vendors' : v }}</option> }
           </select>
@@ -105,7 +108,7 @@ const NUM = 'w-24 h-9 px-2.5 text-sm font-semibold text-right tabular-nums round
           <thead>
             <tr class="text-left">
               <th>Employee</th><th>Vendor</th><th>Nationality</th>
-              <th class="text-right">Performance rate (OMR)</th><th class="text-right">Score this month</th><th>Performance</th>
+              <th class="text-right">Performance rate (OMR)</th><th class="text-right">Score</th><th>Performance</th>
               <th class="text-right">Overtime hours</th><th class="text-right">Overtime (OMR)</th>
             </tr>
           </thead>
@@ -115,7 +118,7 @@ const NUM = 'w-24 h-9 px-2.5 text-sm font-semibold text-right tabular-nums round
                 <td><a class="font-semibold text-ink-900 hover:text-brand-700" [routerLink]="['/csr/directory', r.a.id]">{{ r.a.name }}</a><div class="text-[11px] text-ink-400">{{ r.a.employeeId }} &middot; {{ r.a.queue }}</div></td>
                 <td>{{ r.a.vendor }}</td>
                 <td>{{ r.a.nationality }}</td>
-                <td class="text-right"><input type="number" min="0" step="10" [class]="num" [ngModel]="r.perf.rate" (change)="setRate(r.a.id, $any($event.target).value)" /></td>
+                <td class="text-right tabular-nums">{{ r.perf.rate | number:'1.0-3' }}</td>
                 <td class="text-right tabular-nums">{{ r.perf.score }}% <span class="text-[11px] text-ink-400">/ &gt;{{ r.perf.threshold }}%</span></td>
                 <td>@if (r.perf.eligible) { <app-status-chip [label]="(r.perf.amount | number:'1.0-3') + ' OMR'" level="normal"></app-status-chip> } @else { <app-status-chip label="Below threshold" level="neutral"></app-status-chip> }</td>
                 <td class="text-right tabular-nums">{{ r.ot.hours | number:'1.0-1' }}</td>
@@ -145,6 +148,8 @@ export class PerformanceOvertimeComponent {
   draft = signal<PayrollRules>(this.store.payrollRules());
   vendor = signal('All');
   q = signal('');
+  readonly months = [...this.store.payrollMonths()].reverse();
+  month = signal(this.months[0]);
 
   dirty = computed(() => JSON.stringify(this.draft()) !== JSON.stringify(this.store.payrollRules()));
   validScores = computed(() => { const d = this.draft(), pct = (n: number) => Number.isFinite(n) && n >= 0 && n <= 100; return pct(d.omaniMinScore) && pct(d.nonOmaniMinScore); });
@@ -153,7 +158,7 @@ export class PerformanceOvertimeComponent {
   /** How many agents would qualify with the thresholds on screen, before they are saved. */
   preview = computed(() => {
     const d = this.draft(), agents = this.store.agents();
-    const qualified = agents.filter((a) => this.store.agentPayFor(a).performanceScore > (/^oman/i.test(a.nationality ?? 'Oman') ? d.omaniMinScore : d.nonOmaniMinScore)).length;
+    const qualified = agents.filter((a) => this.store.agentMonthFor(a).performanceScore > (/^oman/i.test(a.nationality ?? 'Oman') ? d.omaniMinScore : d.nonOmaniMinScore)).length;
     return { qualified, total: agents.length };
   });
   example = computed(() => { const d = this.draft(); return (276.722 / d.overtimeDays / d.overtimeHoursPerDay) * d.overtimePremium * 25.5; });
@@ -162,11 +167,16 @@ export class PerformanceOvertimeComponent {
     const q = this.q().trim().toLowerCase();
     return this.store.agents()
       .filter((a) => (this.vendor() === 'All' || a.vendor === this.vendor()) && (!q || a.name.toLowerCase().includes(q) || a.employeeId.includes(q)))
-      .map((a) => ({ a, perf: this.store.performanceFor(a), ot: this.store.overtimeFor(a) }));
+      .map((a) => ({ a, perf: this.store.performanceFor(a, this.month()), ot: this.store.overtimeFor(a, this.month()) }));
   });
   qualifiedCount = computed(() => this.rows().filter((r) => r.perf.eligible).length);
   performanceTotal = computed(() => this.rows().reduce((s, r) => s + r.perf.amount, 0));
   overtimeTotal = computed(() => this.rows().reduce((s, r) => s + r.ot.amount, 0));
+
+  monthLabel(m: string) {
+    const [y, mo] = m.split('-').map(Number);
+    return new Date(y, mo - 1, 1).toLocaleString('en-GB', { month: 'long', year: 'numeric' });
+  }
 
   set(key: keyof PayrollRules, v: any) {
     this.draft.update((d) => ({ ...d, [key]: Number(v) }));
@@ -178,9 +188,4 @@ export class PerformanceOvertimeComponent {
     this.ui.toast('Rules saved — Performance and Overtime recalculated.');
   }
 
-  setRate(id: string, v: string) {
-    const rate = Number(v);
-    if (!Number.isFinite(rate) || rate < 0) { this.ui.toast('A performance rate must be 0 or more.'); return; }
-    this.store.setPerformanceRate(id, rate);
-  }
 }
