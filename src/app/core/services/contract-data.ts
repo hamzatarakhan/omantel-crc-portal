@@ -52,7 +52,7 @@ const TEMPLATES: Record<string, Template> = {
   'Manpower Outsourcing': {
     description: (v) => `Secondment of bilingual customer service representatives by ${v} to Omantel's Customer Care contact centre, including payroll, management fee, overtime and replacement cover.`,
     scope: ['Bilingual (Arabic/English) agents for Sales, Retention, Complaints and Billing queues', 'Monthly payroll, management fee and overtime billed against attendance', 'Agent onboarding, OJT and replacement within 10 working days'],
-    terms: 'Monthly in arrears, net 30 days from a validated tax invoice', renewal: 'Renewable for one further year by mutual written agreement', lines: ['Salary', 'Incentive', 'Over time', 'Management fee'],
+    terms: 'Monthly in arrears, net 30 days from a validated tax invoice', renewal: 'Renewable for one further year by mutual written agreement', lines: ['Salary', 'Overtime', 'Performance', 'Yearly Performance', 'Incentive', 'Voice', 'Chat', 'Project'],
   },
   'Facilities Management': {
     description: (v) => `Integrated facilities management of Omantel Customer Care premises by ${v}: cleaning, maintenance, security and pantry services.`,

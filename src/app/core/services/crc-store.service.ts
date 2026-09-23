@@ -626,7 +626,7 @@ export class CrcStore {
 
   /**
    * What the vendor can invoice on one contract this month: one line per line of the contract's PO. On the billing contract,
-   * lines that match what WFO calculates (salary, overtime, the 3 Clicks incentive, management fee) take the calculated figure,
+   * the Salary, Overtime and Performance (3 Clicks) lines — and a management fee line, if any — take the calculated figure,
    * and any calculated component with no matching PO line is added as its own line so nothing billed is lost. Every other line
    * is the contract's monthly share of its yearly budget.
    * ponytail: lines are matched to WFO components by name; map them explicitly once the ERP gives a line type.
@@ -649,9 +649,9 @@ export class CrcStore {
     const fee = calc.tiers.reduce((sum, t) => sum + t.fee, 0);
     const hasFeeLine = lines.some((l) => /management fee/i.test(l.label));
     const wfo: Array<{ component: WfoComponent; label: string; match: RegExp; amount: number; note?: string }> = [
-      { component: 'salary', label: 'Salary', match: /salary/i, amount: calc.salaryBase + calc.newJoining.amount + calc.resignation.amount - (hasFeeLine ? fee : 0) },
-      { component: 'overtime', label: 'Overtime', match: /over ?time/i, amount: calc.overtimeBase },
-      { component: 'performance', label: 'Performance Incentive', match: /incentive/i, amount: calc.incentive, note: calc.incentiveIncluded ? undefined : 'Not on the vendor invoice by the current payable rule' },
+      { component: 'salary', label: 'Salary', match: /^salary$/i, amount: calc.salaryBase + calc.newJoining.amount + calc.resignation.amount - (hasFeeLine ? fee : 0) },
+      { component: 'overtime', label: 'Overtime', match: /^over ?time$/i, amount: calc.overtimeBase },
+      { component: 'performance', label: 'Performance', match: /^performance( incentive)?$/i, amount: calc.incentive, note: calc.incentiveIncluded ? undefined : 'Not on the vendor invoice by the current payable rule' },
       ...(hasFeeLine ? [{ component: 'fee' as WfoComponent, label: 'Management fee', match: /management fee/i, amount: fee }] : []),
     ];
     for (const w of wfo) {
