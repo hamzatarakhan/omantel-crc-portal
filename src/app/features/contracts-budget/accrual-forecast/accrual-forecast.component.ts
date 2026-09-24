@@ -9,7 +9,7 @@ import { KpiCardComponent } from '../../../shared/components/kpi-card/kpi-card.c
 import { RequiresDirective } from '../../../shared/directives/requires.directive';
 import { CrcStore } from '../../../core/services/crc-store.service';
 import { UiService } from '../../../shared/services/ui.service';
-import { AccrualCell, AccrualRow, FY_YEAR, ForecastService, MONTHS, MONTH_LONG, MONTH_SHORT } from '../../../core/services/forecast.service';
+import { AccrualCell, AccrualRow, CUR_MONTH, FY_YEAR, ForecastService, MONTHS, MONTH_LONG, MONTH_SHORT } from '../../../core/services/forecast.service';
 
 const FIELD = 'w-full px-2.5 py-2 text-xs font-semibold rounded-lg border border-surface-border bg-white text-ink-700 focus:outline-none focus:border-brand-400';
 interface Line { r: AccrualRow; cells: AccrualCell[]; forecast: number; actual: number; expected: number }
@@ -38,7 +38,7 @@ const totalsOf = (ls: Line[]): Totals => ({
       [breadcrumbs]="[{ label: 'Contracts & Budget', link: '/contracts-budget/dashboard' }, { label: 'Forecast' }, { label: 'Accrual Forecast' }]"
     >
       @if (!editing()) {
-        <button mat-stroked-button (click)="startEdit()" appRequires="Edit Forecast"><mat-icon class="!text-base !mr-1">edit_calendar</mat-icon>Enter yearly forecast</button>
+        <button mat-stroked-button (click)="startEdit()" appRequires="Edit Forecast"><mat-icon class="!text-base !mr-1">edit_calendar</mat-icon>Enter / change yearly forecast</button>
         <button mat-flat-button color="primary" (click)="svc.exportAccrual(filtered())" appRequires="Export Forecast"><mat-icon class="!text-base !mr-1">download</mat-icon>Export to Excel</button>
       }
     </app-page-header>
@@ -90,6 +90,13 @@ const totalsOf = (ls: Line[]): Totals => ({
 
     <mat-tab-group>
       <mat-tab label="Per line">
+        @if (!editing()) {
+          <div class="surface-card px-4 py-3 mt-4 flex flex-wrap items-center gap-3 border-l-4 !border-l-brand-500">
+            <mat-icon class="text-brand-600">edit_calendar</mat-icon>
+            <div class="flex-1 min-w-[260px] text-sm text-ink-700">The <span class="text-brand-700 bg-brand-50 px-1 font-semibold">tinted</span> months ({{ short[cur] }} – Dec) are still forecast and can be changed. Click one, or use the button, to type the forecast of each line for each month.</div>
+            <button mat-flat-button color="primary" (click)="startEdit()" appRequires="Edit Forecast"><mat-icon class="!text-base !mr-1">edit_calendar</mat-icon>Enter / change yearly forecast</button>
+          </div>
+        }
         <div class="surface-card overflow-x-auto mt-4">
           <table class="crc-table w-full text-sm">
             <thead><tr class="bg-surface-subtle text-left text-[11px] text-ink-500 uppercase tracking-wide">
@@ -120,7 +127,8 @@ const totalsOf = (ls: Line[]): Totals => ({
                       } @else {
                         <td class="px-2.5 py-1.5 text-right whitespace-nowrap" [title]="c.source + (c.renewal ? ' · contract renewal in progress' : '')"
                           [class.text-ink-900]="c.actual" [class.bg-brand-50]="!c.actual && c.value !== null && !c.awaiting" [class.text-brand-700]="!c.actual && c.value !== null && !c.awaiting"
-                          [class.bg-amber-50]="c.awaiting" [class.text-status-amber]="c.awaiting" [class.text-ink-300]="c.value === null">
+                          [class.bg-amber-50]="c.awaiting" [class.text-status-amber]="c.awaiting" [class.text-ink-300]="c.value === null"
+                          [class.ed]="canType(l.r, c)" (click)="canType(l.r, c) && startEdit()">
                           {{ c.value === null ? '—' : (c.value | number:'1.0-0') }}
                         </td>
                       }
@@ -161,7 +169,7 @@ const totalsOf = (ls: Line[]): Totals => ({
       </mat-tab>
     </mat-tab-group>
   `,
-  styles: [`.lbl { font-size: 10.5px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: .04em; } .chg { background: #fffbeb !important; border-color: #f59e0b !important; }`],
+  styles: [`.lbl { font-size: 10.5px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: .04em; } .chg { background: #fffbeb !important; border-color: #f59e0b !important; } .ed { cursor: pointer; } .ed:hover { outline: 1px solid #fb923c; outline-offset: -1px; }`],
 })
 export class AccrualForecastComponent {
   store = inject(CrcStore);
@@ -171,6 +179,7 @@ export class AccrualForecastComponent {
   field = FIELD;
   year = FY_YEAR;
   months = MONTHS;
+  cur = CUR_MONTH;
   short = MONTH_SHORT;
   long = MONTH_LONG;
 
@@ -217,6 +226,7 @@ export class AccrualForecastComponent {
   changed = computed(() => Object.values(this.draft()).reduce((n, d) => n + Object.keys(d).length, 0));
 
   editable = (r: AccrualRow, c: AccrualCell) => !r.feed && !c.actual && c.value !== null;
+  canType = (r: AccrualRow, c: AccrualCell) => !this.editing() && this.editable(r, c) && this.store.can('Edit Forecast');
   draftValue = (key: string, m: number, current: number | null) => this.draft()[key]?.[m] ?? current ?? '';
   isChanged = (key: string, m: number) => this.draft()[key]?.[m] !== undefined;
 
