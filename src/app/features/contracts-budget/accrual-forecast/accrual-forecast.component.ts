@@ -9,7 +9,7 @@ import { KpiCardComponent } from '../../../shared/components/kpi-card/kpi-card.c
 import { RequiresDirective } from '../../../shared/directives/requires.directive';
 import { CrcStore } from '../../../core/services/crc-store.service';
 import { UiService } from '../../../shared/services/ui.service';
-import { AccrualCell, AccrualRow, CUR_MONTH, FY_YEAR, ForecastService, MONTHS, MONTH_LONG, MONTH_SHORT } from '../../../core/services/forecast.service';
+import { AccrualCell, AccrualRow, FY_YEAR, ForecastService, MONTHS, MONTH_LONG, MONTH_SHORT } from '../../../core/services/forecast.service';
 
 const FIELD = 'w-full px-2.5 py-2 text-xs font-semibold rounded-lg border border-surface-border bg-white text-ink-700 focus:outline-none focus:border-brand-400';
 interface Line { r: AccrualRow; cells: AccrualCell[]; forecast: number; actual: number; expected: number }
@@ -79,15 +79,6 @@ const totalsOf = (ls: Line[]): Totals => ({
 
     <mat-tab-group>
       <mat-tab label="Per line">
-        <div class="surface-card px-4 py-3 mt-4 flex flex-wrap items-center gap-3 border-l-4 !border-l-brand-500">
-          <mat-icon class="text-brand-600">{{ editing() ? 'edit_note' : 'edit_calendar' }}</mat-icon>
-          @if (editing()) {
-            <div class="flex-1 min-w-[260px] text-sm text-ink-700"><b>Editing the yearly forecast.</b> Type the amount of each line for each month in the boxes. Months with an approved invoice are locked; lines tagged TEAM or TRANSACTION are changed on those screens. Save or cancel from the bar at the bottom.</div>
-          } @else {
-            <div class="flex-1 min-w-[260px] text-sm text-ink-700">The <span class="text-brand-700 bg-brand-50 px-1 font-semibold">tinted</span> months ({{ short[cur] }} – Dec) are still forecast and can be changed. Click one, or use the button, to type the forecast of each line for each month.</div>
-            <button mat-flat-button color="primary" (click)="startEdit()" appRequires="Edit Forecast"><mat-icon class="!text-base !mr-1">edit_calendar</mat-icon>Enter / change yearly forecast</button>
-          }
-        </div>
         <div class="surface-card overflow-x-auto mt-4">
           <table class="crc-table w-full text-sm">
             <thead><tr class="bg-surface-subtle text-left text-[11px] text-ink-500 uppercase tracking-wide">
@@ -165,6 +156,7 @@ const totalsOf = (ls: Line[]): Totals => ({
         <span class="inline-flex items-center gap-1.5 text-sm font-semibold" [class.text-status-amber]="changed()" [class.text-ink-500]="!changed()">
           <mat-icon class="!text-lg">{{ changed() ? 'pending' : 'edit_note' }}</mat-icon>{{ changed() ? changed() + ' change' + (changed() === 1 ? '' : 's') + ' not saved yet' : 'No changes yet' }}
         </span>
+        <span class="text-xs text-ink-400">Invoiced months and TEAM / TRANSACTION lines are locked.</span>
         <input class="flex-1 min-w-[220px] max-w-md ml-auto px-3 py-2 text-sm rounded-lg border border-surface-border focus:outline-none focus:border-brand-400" placeholder="Note for this forecast, e.g. FY{{ year }} forecast" [value]="note()" (input)="note.set($any($event.target).value)" />
         <button mat-stroked-button (click)="cancel()">Cancel</button>
         <button mat-flat-button color="primary" (click)="save()" [disabled]="!changed()"><mat-icon class="!text-base !mr-1">save</mat-icon>Save forecast</button>
@@ -181,7 +173,6 @@ export class AccrualForecastComponent {
   field = FIELD;
   year = FY_YEAR;
   months = MONTHS;
-  cur = CUR_MONTH;
   short = MONTH_SHORT;
   long = MONTH_LONG;
 
