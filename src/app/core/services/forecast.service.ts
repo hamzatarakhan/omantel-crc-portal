@@ -196,15 +196,18 @@ export class ForecastService {
     return null;
   }
 
-  saveTeamBudgets(next: Array<{ name: string; budget: number; approvedHc: number | null }>) {
+  /** Each team's approved budget month by month (it follows the contract, so months can differ) and its approved head count. */
+  saveTeamBudgets(next: Array<{ name: string; budget: number[]; approvedHc: number | null }>) {
     const changes: string[] = [];
+    const f = (n: number) => n.toLocaleString('en-GB', { maximumFractionDigits: 3 });
     this.teams.update((l) => l.map((t) => {
       const n = next.find((x) => x.name === t.name);
       if (!n) return t;
-      const monthly = t.budget.find((b) => b > 0) ?? 0;
-      if (n.budget === monthly && n.approvedHc === t.approvedHc) return t;
-      changes.push(`${t.name}: ${monthly.toLocaleString('en-GB')} → ${n.budget.toLocaleString('en-GB')} OMR/month, head count ${t.approvedHc ?? '—'} → ${n.approvedHc ?? '—'}`);
-      return { ...t, budget: t.budget.map((_, m) => (m >= t.from ? n.budget : 0)), approvedHc: n.approvedHc };
+      const budget = t.budget.map((b, m) => (m >= t.from ? n.budget[m] : b));
+      const months = MONTHS.filter((m) => budget[m] !== t.budget[m]);
+      if (!months.length && n.approvedHc === t.approvedHc) return t;
+      changes.push(`${t.name}: ${months.map((m) => `${MONTH_SHORT[m]} ${f(t.budget[m])} → ${f(budget[m])}`).join(', ')}${n.approvedHc !== t.approvedHc ? `${months.length ? ', ' : ''}head count ${t.approvedHc ?? '—'} → ${n.approvedHc ?? '—'}` : ''}`);
+      return { ...t, budget, approvedHc: n.approvedHc };
     }));
     if (changes.length) this.store.log('Forecast Settings Changed', 'Team approved budgets', changes.join('; '));
     return changes.length;
