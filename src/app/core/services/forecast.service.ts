@@ -22,8 +22,6 @@ export const MONTHS = MONTH_SHORT.map((_, i) => i);
 export const isActual = (m: number) => m < CUR_MONTH;
 
 export type ForecastKind = 'Accrual' | 'Team' | 'Transaction';
-export const ACCRUAL_RULES = ['Last actual carried forward', 'Average of the last 3 actual months', 'Contract monthly share'] as const;
-export type AccrualRule = (typeof ACCRUAL_RULES)[number];
 
 export interface ForecastEdit { id: string; at: string; by: string; kind: ForecastKind; item: string; month: number; field: string; from: number | null; to: number | null; reason: string }
 
@@ -85,7 +83,8 @@ export interface AccrualRow {
   /** Where the forecast comes from when it is not typed by hand. */
   feed: { kind: 'Team' } | { kind: 'Transaction'; type: string } | null;
 }
-export interface AccrualCell { value: number | null; actual: boolean; manual: boolean; renewal: boolean; source: string }
+/** value: what the month shows (actual if invoiced, else forecast); null = outside the contract. awaiting = a past month whose invoice is not approved yet. */
+export interface AccrualCell { value: number | null; forecast: number | null; actual: boolean; awaiting: boolean; renewal: boolean; source: string }
 
 const r3 = (n: number) => Math.round(n * 1000) / 1000;
 const monthStart = (m: number) => `${FY_YEAR}-${String(m + 1).padStart(2, '0')}-01`;
@@ -100,7 +99,6 @@ export class ForecastService {
   private id = (p: string) => `${p}-${++this.seq}`;
 
   readonly edits = signal<ForecastEdit[]>([]);
-  readonly accrualRule = signal<AccrualRule>('Last actual carried forward');
 
   // ================= Transaction =================
   readonly txRates = signal<Record<string, number>>({ Voice: 1.071, 'Live Chat': 0.9 });
@@ -220,13 +218,16 @@ export class ForecastService {
       }));
   });
 
-  /** Actual amounts: the seeded history plus every line approved for payment in Reconciliation. */
+  /** Actual amounts: the invoices approved so far (seeded history) plus every line approved for payment in Reconciliation. */
   readonly actuals = signal<Record<string, Record<number, number>>>({});
-  readonly overrides = signal<Record<string, Record<number, number>>>({});
+  /** The yearly forecast: entered once a year per line and month (null = not entered). Salary / Voice / Non Voice follow their own screens. */
+  readonly plan = signal<Record<string, Array<number | null>>>({});
 
   constructor() {
-    this.actuals.set(this.seedActuals(this.accrualRows()));
-    // An approved line in Reconciliation replaces that month's forecast with the invoiced amount.
+    const rows = this.accrualRows();
+    this.actuals.set(this.seedActuals(rows));
+    this.plan.set(this.seedPlan(rows));
+    // An approved line in Reconciliation replaces that month's forecast with the invoiced amount; the forecast is kept for comparison.
     effect(() => {
       const runs = this.store.invoiceRuns();
       untracked(() => {
@@ -245,77 +246,81 @@ export class ForecastService {
 
   inPeriod = (c: Contract, m: number) => c.startDate <= monthEnd(m) && c.endDate >= monthStart(m);
   private renewal = (c: Contract, m: number) => !this.inPeriod(c, m) && c.renewalStatus === 'Renewal in progress' && c.startDate <= monthEnd(m);
+  private open = (r: AccrualRow, m: number) => this.inPeriod(r.contract, m) || this.renewal(r.contract, m);
   private monthlyShare(r: AccrualRow) {
     const c = r.contract, months = Math.max(1, Math.round((new Date(c.endDate).getTime() - new Date(c.startDate).getTime()) / 2629800000));
     const lines = this.accrualRows().filter((x) => x.contract.reference === c.reference).length || 1;
     return r3(c.amount / months / lines);
+  }
+  private sheetBase(r: AccrualRow, m: number) {
+    const sheet = r.contract.reference === INFOLINE_REF ? PER_LINE[norm(r.line)] : undefined;
+    return sheet ? fill(sheet)[m] : r.contract.reference === INFOLINE_REF ? 0 : this.monthlyShare(r);
   }
 
   private seedActuals(rows: AccrualRow[]) {
     const out: Record<string, Record<number, number>> = {};
     for (const r of rows) {
       const hist: Record<number, number> = {};
-      const sheet = r.contract.reference === INFOLINE_REF ? PER_LINE[norm(r.line)] : undefined;
       for (const m of MONTHS.filter(isActual)) {
-        if (!this.inPeriod(r.contract, m) && !this.renewal(r.contract, m)) continue;
+        if (!this.open(r, m)) continue;
         if (r.feed?.kind === 'Transaction') hist[m] = this.txAmount(r.feed.type, m);
         else if (r.feed?.kind === 'Team' && m >= 6) hist[m] = r3(this.teamMonthTotal(m));
-        else if (sheet) hist[m] = fill(sheet)[m];
-        else if (r.contract.reference === INFOLINE_REF) hist[m] = 0;
-        else hist[m] = r3(this.monthlyShare(r) * (0.94 + (hash(r.key + m) % 13) / 100));
+        else hist[m] = r.contract.reference === INFOLINE_REF ? this.sheetBase(r, m) : r3(this.sheetBase(r, m) * (0.94 + (hash(r.key + m) % 13) / 100));
       }
       out[r.key] = hist;
     }
     return out;
   }
 
-  /** What one line shows in one month, and where the figure comes from. */
+  /** The forecast the team entered at the start of the year: a figure per month, rounded like a hand-made plan. */
+  private seedPlan(rows: AccrualRow[]) {
+    const out: Record<string, Array<number | null>> = {};
+    for (const r of rows.filter((x) => !x.feed)) {
+      out[r.key] = MONTHS.map((m) => {
+        if (!this.open(r, m)) return null;
+        const base = this.sheetBase(r, m), step = base >= 1000 ? 100 : 10;
+        return Math.round((base * (0.95 + (hash(r.key + 'p' + m) % 11) / 100)) / step) * step;
+      });
+    }
+    return out;
+  }
+
+  forecastOf(r: AccrualRow, m: number): number | null {
+    if (r.feed?.kind === 'Team') return r3(this.teamMonthTotal(m));
+    if (r.feed?.kind === 'Transaction') return this.txAmount(r.feed.type, m);
+    return this.plan()[r.key]?.[m] ?? null;
+  }
+
+  /** What one line shows in one month: the approved invoice amount once there is one, otherwise the forecast. */
   cell(r: AccrualRow, m: number): AccrualCell {
-    const act = this.actuals()[r.key]?.[m];
-    const renewal = this.renewal(r.contract, m);
-    if (!this.inPeriod(r.contract, m) && !renewal) return { value: null, actual: false, manual: false, renewal: false, source: 'Outside the contract period' };
-    if (act !== undefined) return { value: act, actual: true, manual: false, renewal, source: isActual(m) ? 'Actual (invoiced)' : 'Actual — invoice approved in Reconciliation' };
-    if (isActual(m)) return { value: 0, actual: true, manual: false, renewal, source: 'No invoice for the month' };
-    const man = this.overrides()[r.key]?.[m];
-    if (man !== undefined) return { value: man, actual: false, manual: true, renewal, source: 'Typed by hand' };
-    if (r.feed?.kind === 'Team') return { value: r3(this.teamMonthTotal(m)), actual: false, manual: false, renewal, source: 'Team Forecast total' };
-    if (r.feed?.kind === 'Transaction') return { value: this.txAmount(r.feed.type, m), actual: false, manual: false, renewal, source: `Transaction Forecast — ${r.feed.type}` };
-    return { value: this.ruleValue(r), actual: false, manual: false, renewal, source: this.accrualRule() };
+    if (!this.open(r, m)) return { value: null, forecast: null, actual: false, awaiting: false, renewal: false, source: 'Outside the contract period' };
+    const renewal = this.renewal(r.contract, m), forecast = this.forecastOf(r, m), act = this.actuals()[r.key]?.[m];
+    const f = (n: number) => n.toLocaleString('en-GB', { maximumFractionDigits: 3 });
+    if (act !== undefined) return { value: act, forecast, actual: true, awaiting: false, renewal, source: `Actual — approved invoice ${f(act)} OMR` + (forecast !== null ? ` · forecast was ${f(forecast)} (${act - forecast >= 0 ? '+' : ''}${f(r3(act - forecast))})` : '') };
+    const awaiting = m < CUR_MONTH;
+    const from = r.feed ? `${r.feed.kind} Forecast` : 'Yearly forecast';
+    return { value: forecast ?? 0, forecast, actual: false, awaiting, renewal, source: (forecast === null ? 'No forecast entered' : from) + (awaiting ? ' · invoice not approved yet' : '') };
   }
 
-  private ruleValue(r: AccrualRow) {
-    const rule = this.accrualRule(), hist = this.actuals()[r.key] ?? {};
-    const last = Object.keys(hist).map(Number).sort((a, b) => b - a);
-    if (rule === 'Contract monthly share' || !last.length) return this.monthlyShare(r);
-    if (rule === 'Last actual carried forward') return hist[last[0]];
-    const three = last.slice(0, 3);
-    return r3(three.reduce((s, m) => s + hist[m], 0) / three.length);
-  }
-
-  /** Types a forecast for one line and month; `null` goes back to the automatic forecast. */
-  setAccrual(r: AccrualRow, m: number, value: number | null, reason: string): string | null {
-    const c = this.cell(r, m);
-    if (c.actual) return `${MONTH_LONG[m]} already has its actual amount.`;
-    if (c.value === null) return 'This month is outside the contract period.';
-    if (r.feed) return `This line follows the ${r.feed.kind} Forecast — change it there.`;
-    if (value !== null && (!isFinite(value) || value < 0)) return 'The amount cannot be negative.';
-    if (!reason.trim()) return 'Enter the reason for the change.';
-    if (value === c.value && c.manual) return 'Nothing was changed.';
-    this.overrides.update((o) => {
-      const cur = { ...(o[r.key] ?? {}) };
-      if (value === null) delete cur[m]; else cur[m] = value;
-      return { ...o, [r.key]: cur };
+  /** Saves the yearly forecast typed on the Accrual screen. Months with an approved invoice and lines fed by another screen are skipped. */
+  setPlan(changes: Array<{ r: AccrualRow; m: number; value: number }>, note: string): string | null {
+    const ok = changes.filter(({ r, m }) => !r.feed && this.open(r, m) && this.actuals()[r.key]?.[m] === undefined);
+    if (ok.some((c) => !isFinite(c.value) || c.value < 0)) return 'Amounts cannot be negative.';
+    const real = ok.filter((c) => (this.plan()[c.r.key]?.[c.m] ?? null) !== c.value);
+    if (!real.length) return 'Nothing was changed.';
+    if (!note.trim()) return 'Enter a note for this forecast (for example "FY forecast" or the reason for the change).';
+    const before = real.map((c) => this.plan()[c.r.key]?.[c.m] ?? null);
+    this.plan.update((p) => {
+      const n = { ...p };
+      for (const c of real) { n[c.r.key] = [...(n[c.r.key] ?? MONTHS.map(() => null))]; n[c.r.key][c.m] = c.value; }
+      return n;
     });
-    const to = value ?? this.cell(r, m).value;
-    this.record('Accrual', `${r.contract.reference} · ${r.line}`, m, value === null ? 'Back to automatic forecast' : 'Amount', c.value, to, reason);
+    real.forEach((c, i) => this.record('Accrual', `${c.r.contract.reference} · ${c.r.line}`, c.m, 'Forecast', before[i], c.value, note, false));
+    const lines = new Set(real.map((c) => c.r.key)).size;
+    this.store.log('Accrual Forecast Updated', `${lines} line(s)`, `${real.length} month figure(s) changed. Note: ${note.trim()}`);
     return null;
   }
 
-  setAccrualRule(rule: AccrualRule) {
-    if (rule === this.accrualRule()) return;
-    this.store.log('Forecast Settings Changed', 'Accrual forecast rule', `${this.accrualRule()} → ${rule}`);
-    this.accrualRule.set(rule);
-  }
   setTxSettings(budget: number, rates: Record<string, number>) {
     const changes = [budget !== this.txBudget() && `Approved budget ${this.txBudget().toLocaleString('en-GB')} → ${budget.toLocaleString('en-GB')} OMR`, ...Object.keys(rates).filter((k) => rates[k] !== this.txRates()[k]).map((k) => `${k} rate ${this.txRates()[k]} → ${rates[k]} OMR`)].filter(Boolean);
     if (!changes.length) return 0;
@@ -325,25 +330,24 @@ export class ForecastService {
     return changes.length;
   }
 
-  private record(kind: ForecastKind, item: string, month: number, field: string, from: number | null, to: number | null, reason: string) {
+  private record(kind: ForecastKind, item: string, month: number, field: string, from: number | null, to: number | null, reason: string, log = true) {
     const e: ForecastEdit = { id: this.id('FE'), at: new Date().toISOString(), by: CURRENT_USER, kind, item, month, field, from, to, reason: reason.trim() };
     this.edits.update((l) => [e, ...l]);
     const f = (n: number | null) => (n === null ? '—' : n.toLocaleString('en-GB', { maximumFractionDigits: 3 }));
-    this.store.log(`${kind} Forecast Updated`, `${item} · ${MONTH_LONG[month]}`, `${field}: ${f(from)} → ${f(to)}. Reason: ${e.reason}`);
+    if (log) this.store.log(`${kind} Forecast Updated`, `${item} · ${MONTH_LONG[month]}`, `${field}: ${f(from)} → ${f(to)}. Reason: ${e.reason}`);
   }
 
   // ================= Excel exports (same layout as the sheets) =================
   exportAccrual(rows: AccrualRow[]) {
     const money = (n: number | null) => (n === null ? '' : r3(n));
+    const head = (r: AccrualRow) => ({ Vendor: r.vendor, Contract: r.contract.reference, 'Contract type': r.contract.contractType, 'Scope of work': r.line, 'PO no.': r.po, From: r.contract.startDate, To: r.contract.endDate, 'Contract value': r.contract.amount });
     const out = rows.map((r) => {
       const cells = MONTHS.map((m) => this.cell(r, m));
-      return {
-        Vendor: r.vendor, Contract: r.contract.reference, 'Contract type': r.contract.contractType, 'Scope of work': r.line, 'PO no.': r.po, From: r.contract.startDate, To: r.contract.endDate, 'Contract value': r.contract.amount,
-        ...Object.fromEntries(MONTHS.map((m) => [`${MONTH_SHORT[m]} ${FY_YEAR}${isActual(m) ? '' : ' (F)'}`, money(cells[m].value)])),
-        'Actual to date': r3(cells.filter((c) => c.actual).reduce((s, c) => s + (c.value ?? 0), 0)), Forecast: r3(cells.filter((c) => !c.actual).reduce((s, c) => s + (c.value ?? 0), 0)), 'Year total': r3(cells.reduce((s, c) => s + (c.value ?? 0), 0)),
-      };
+      const actual = cells.filter((c) => c.actual).reduce((s, c) => s + (c.value ?? 0), 0), remaining = cells.filter((c) => !c.actual).reduce((s, c) => s + (c.value ?? 0), 0);
+      return { ...head(r), ...Object.fromEntries(MONTHS.map((m) => [`${MONTH_SHORT[m]} ${FY_YEAR}${cells[m].actual ? '' : ' (F)'}`, money(cells[m].value)])), 'Yearly forecast': r3(cells.reduce((s, c) => s + (c.forecast ?? 0), 0)), 'Actual (approved)': r3(actual), 'Expected year total': r3(actual + remaining) };
     });
-    return this.save('Accrual_Forecast', 'Accrual Forecast', out, `(F) = forecast month. Forecast rule: ${this.accrualRule()}.`);
+    const plan = rows.map((r) => ({ ...head(r), ...Object.fromEntries(MONTHS.map((m) => [`${MONTH_SHORT[m]} ${FY_YEAR}`, money(this.cell(r, m).forecast)])) }));
+    return this.save('Accrual_Forecast', 'Accrual Forecast', out, 'Each month shows the approved invoice amount, or the forecast (F) until the invoice is approved. The Yearly Forecast sheet keeps the forecast of every month.', [{ name: 'Yearly Forecast', rows: plan }]);
   }
 
   exportTeam() {
@@ -364,10 +368,10 @@ export class ForecastService {
     return this.save('Transaction_Forecast', 'Transaction Forecast', out, `Forecast amount = transactions × unit rate (${TX_TYPES.map((t) => `${t.type} ${this.txRates()[t.type]} OMR`).join(', ')}). Approved budget ${r3(s.budget)} · Total ${r3(s.total)} · Saving ${r3(s.saving)} (${s.pct.toFixed(2)}%) OMR.`);
   }
 
-  private save(stem: string, title: string, rows: Array<Record<string, any>>, note: string) {
+  private save(stem: string, title: string, rows: Array<Record<string, any>>, note: string, extra: Array<{ name: string; rows: Array<Record<string, any>> }> = []) {
     const stamp = new Date();
     const meta = [['Report', title], ['Financial year', FY_LABEL], ['Actual months', CUR_MONTH ? `January – ${MONTH_LONG[CUR_MONTH - 1]}` : 'None yet'], ['Forecast months', `${MONTH_LONG[CUR_MONTH]} – December`], ['Notes', note], ['Exported by', CURRENT_USER], ['Export date and time', stamp.toLocaleString('en-GB')]].map(([Field, Value]) => ({ Field, Value }));
-    const name = this.ui.xlsxSheets(`${stem}_${FY_LABEL}`, [{ name: title, rows }, { name: 'Report Info', rows: meta }], false);
+    const name = this.ui.xlsxSheets(`${stem}_${FY_LABEL}`, [{ name: title, rows }, ...extra, { name: 'Report Info', rows: meta }], false);
     if (name) { this.store.log('Forecast Exported', name, `${title} exported (${rows.length} rows).`); this.ui.toast(`Downloaded ${name}.`); }
     return name;
   }
