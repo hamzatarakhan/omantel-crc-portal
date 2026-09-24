@@ -106,15 +106,13 @@ export function enrichContract(c: Contract, i: number): Contract {
  * time extensions. Line amounts are not read from the ERP yet, so they stay empty and show as "—".
  */
 /**
- * The purchase order of a contract: one PO per contract (agreed with the Budget Team), whose value is the contract amount
- * plus any amendments and which carries every record — variation orders, amendments, time extensions — made under it.
+ * The purchase order of a contract: one PO per contract (agreed with the Budget Team), always equal to the contract value,
+ * and which carries every record — variation orders, amendments, time extensions — made under it.
  */
 export function purchaseOrdersFor(c: Contract, children: ContractRecord[]): PurchaseOrder[] {
-  const known = children.filter((k) => k.amount !== undefined);
-  const extra = known.reduce((s, k) => s + (k.amount ?? 0), 0);
   return [{
     poNumber: c.poNumber ?? '', main: true, poType: c.contractType === 'Manpower Outsourcing' ? 'Outsource' : 'Standard', category: 'Original PO',
-    amount: c.amount + extra, currency: c.currency,
+    amount: c.amount, currency: c.currency,
     poDate: c.signedDate ?? c.startDate, startDate: c.startDate, endDate: c.endDate,
     status: c.status, parentReference: c.reference, erpReference: 'ERP-PO-' + (c.poNumber ?? ''), documents: children.reduce((s, k) => s + k.attachments, 0), records: children,
   }];

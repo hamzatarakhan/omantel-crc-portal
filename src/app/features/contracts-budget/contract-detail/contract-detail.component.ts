@@ -114,7 +114,7 @@ const today = () => new Date().toISOString().slice(0, 10);
                   <div><div class="text-xs text-ink-400">Variation Order lines</div><div class="text-base font-extrabold text-ink-900">{{ count('Variation Order') }}</div></div>
                   <div><div class="text-xs text-ink-400">Amendments</div><div class="text-base font-extrabold text-ink-900">{{ amendmentValue() | number:'1.0-0' }} <span class="text-xs font-medium text-ink-400">{{ c.currency }}</span></div></div>
                 </div>
-                <div class="text-xs text-ink-400 mt-3">PO value is this contract's one purchase order: the contract amount plus amendments. Amounts per variation order line will be read from the ERP later and show as "—" until then.</div>
+                <div class="text-xs text-ink-400 mt-3">PO value is this contract's one purchase order and always equals the contract amount. Amounts per variation order line will be read from the ERP later and show as "—" until then.</div>
               </div>
 
               @if (po(); as p) {
