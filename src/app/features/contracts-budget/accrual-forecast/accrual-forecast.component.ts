@@ -77,26 +77,17 @@ const totalsOf = (ls: Line[]): Totals => ({
       ({{ variancePct() | number:'1.1-1' }}%) against the forecast. Expected year total = approved invoices + the forecast of the months not invoiced yet.
     </p>
 
-    @if (editing()) {
-      <div class="surface-card px-4 py-3 mb-4 flex flex-wrap items-center gap-3 border-l-4 !border-l-brand-500 sticky top-2 z-20">
-        <mat-icon class="text-brand-600">edit_calendar</mat-icon>
-        <div class="flex-1 min-w-[260px] text-sm text-ink-700">Type the forecast of each line for each month. Months with an approved invoice are locked; lines tagged TEAM or TRANSACTION come from those screens.
-          <b>{{ changed() }}</b> figure(s) changed.</div>
-        <input class="w-72 px-3 py-2 text-sm rounded-lg border border-surface-border focus:outline-none focus:border-brand-400" placeholder="Note (e.g. FY{{ year }} forecast)" [value]="note()" (input)="note.set($any($event.target).value)" />
-        <button mat-stroked-button (click)="cancel()">Cancel</button>
-        <button mat-flat-button color="primary" (click)="save()"><mat-icon class="!text-base !mr-1">save</mat-icon>Save forecast</button>
-      </div>
-    }
-
     <mat-tab-group>
       <mat-tab label="Per line">
-        @if (!editing()) {
-          <div class="surface-card px-4 py-3 mt-4 flex flex-wrap items-center gap-3 border-l-4 !border-l-brand-500">
-            <mat-icon class="text-brand-600">edit_calendar</mat-icon>
+        <div class="surface-card px-4 py-3 mt-4 flex flex-wrap items-center gap-3 border-l-4 !border-l-brand-500">
+          <mat-icon class="text-brand-600">{{ editing() ? 'edit_note' : 'edit_calendar' }}</mat-icon>
+          @if (editing()) {
+            <div class="flex-1 min-w-[260px] text-sm text-ink-700"><b>Editing the yearly forecast.</b> Type the amount of each line for each month in the boxes. Months with an approved invoice are locked; lines tagged TEAM or TRANSACTION are changed on those screens. Save or cancel from the bar at the bottom.</div>
+          } @else {
             <div class="flex-1 min-w-[260px] text-sm text-ink-700">The <span class="text-brand-700 bg-brand-50 px-1 font-semibold">tinted</span> months ({{ short[cur] }} – Dec) are still forecast and can be changed. Click one, or use the button, to type the forecast of each line for each month.</div>
             <button mat-flat-button color="primary" (click)="startEdit()" appRequires="Edit Forecast"><mat-icon class="!text-base !mr-1">edit_calendar</mat-icon>Enter / change yearly forecast</button>
-          </div>
-        }
+          }
+        </div>
         <div class="surface-card overflow-x-auto mt-4">
           <table class="crc-table w-full text-sm">
             <thead><tr class="bg-surface-subtle text-left text-[11px] text-ink-500 uppercase tracking-wide">
@@ -168,8 +159,19 @@ const totalsOf = (ls: Line[]): Totals => ({
         </div>
       </mat-tab>
     </mat-tab-group>
+
+    @if (editing()) {
+      <div class="savebar sticky -bottom-4 sm:-bottom-6 z-30 -mx-4 sm:-mx-6 -mb-4 sm:-mb-6 mt-6 px-4 sm:px-6 py-3 bg-white border-t border-surface-border flex flex-wrap items-center gap-3">
+        <span class="inline-flex items-center gap-1.5 text-sm font-semibold" [class.text-status-amber]="changed()" [class.text-ink-500]="!changed()">
+          <mat-icon class="!text-lg">{{ changed() ? 'pending' : 'edit_note' }}</mat-icon>{{ changed() ? changed() + ' change' + (changed() === 1 ? '' : 's') + ' not saved yet' : 'No changes yet' }}
+        </span>
+        <input class="flex-1 min-w-[220px] max-w-md ml-auto px-3 py-2 text-sm rounded-lg border border-surface-border focus:outline-none focus:border-brand-400" placeholder="Note for this forecast, e.g. FY{{ year }} forecast" [value]="note()" (input)="note.set($any($event.target).value)" />
+        <button mat-stroked-button (click)="cancel()">Cancel</button>
+        <button mat-flat-button color="primary" (click)="save()" [disabled]="!changed()"><mat-icon class="!text-base !mr-1">save</mat-icon>Save forecast</button>
+      </div>
+    }
   `,
-  styles: [`.lbl { font-size: 10.5px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: .04em; } .chg { background: #fffbeb !important; border-color: #f59e0b !important; } .ed { cursor: pointer; } .ed:hover { outline: 1px solid #fb923c; outline-offset: -1px; }`],
+  styles: [`.savebar { box-shadow: 0 -6px 18px -8px rgba(25, 23, 51, .18); } .lbl { font-size: 10.5px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: .04em; } .chg { background: #fffbeb !important; border-color: #f59e0b !important; } .ed { cursor: pointer; } .ed:hover { outline: 1px solid #fb923c; outline-offset: -1px; }`],
 })
 export class AccrualForecastComponent {
   store = inject(CrcStore);
