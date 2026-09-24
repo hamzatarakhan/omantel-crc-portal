@@ -9,7 +9,7 @@ import { Contract } from '../models/domain';
  * - Accrual ("Per Line"): every contract PO line, month by month — actual once invoiced, forecast after.
  * - Team ("Budget Forecasting By Team"): the salary PO split by team — approved budget and head count vs actual/forecast, and the saving.
  * - Transaction ("Actual / Forecast Spending per month"): Voice and Live Chat — transactions and amount, forecast = transactions × unit rate.
- * The Team total feeds the Accrual salary line and the Transaction amounts feed its Voice / Non Voice lines, so the three always agree.
+ * The three are kept separately, as in the sheets: every accrual line (salary, voice and chat included) has its own yearly forecast.
  * Months before the current one are closed with actuals; the current month and later are forecast. Data lives in memory.
  */
 export const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -44,12 +44,14 @@ const PER_LINE: Record<string, number[]> = {
   incentiveebutelesales: [2500, 2500, 2604.96, 2500, 2500, 2500],
   incentiveretentiondevice: [6000, 6000, 6907.013, 6000, 6000, 6200],
   incentivedebtcollection: [3400, 3400, 3400, 3400, 3400, 3400],
+  nonvoice: [72431.048, 67579.992, 74415.096, 69897, 69067, 70000],
+  voice: [127391.971, 131753.67, 129887.272, 134672, 125331, 134672],
 };
 
-export interface TxType { type: string; reportedTo: string; state: string; accrualLine: string }
+export interface TxType { type: string; reportedTo: string; state: string }
 export const TX_TYPES: TxType[] = [
-  { type: 'Voice', reportedTo: 'Customer Excellence', state: 'Hybrid', accrualLine: 'Voice' },
-  { type: 'Live Chat', reportedTo: 'Customer Excellence', state: 'Hybrid', accrualLine: 'Non Voice' },
+  { type: 'Voice', reportedTo: 'Customer Excellence', state: 'Hybrid' },
+  { type: 'Live Chat', reportedTo: 'Customer Excellence', state: 'Hybrid' },
 ];
 /** "Actual Forecast Spending per month - Transaction.xlsx": [amount OMR, transactions] per month. */
 const TX_SEED: Record<string, Array<[number, number]>> = {
@@ -80,8 +82,6 @@ export interface AccrualRow {
   contract: Contract;
   po: string;
   line: string;
-  /** Where the forecast comes from when it is not typed by hand. */
-  feed: { kind: 'Team' } | { kind: 'Transaction'; type: string } | null;
 }
 /** value: what the month shows (actual if invoiced, else forecast); null = outside the contract. awaiting = a past month whose invoice is not approved yet. */
 export interface AccrualCell { value: number | null; forecast: number | null; actual: boolean; awaiting: boolean; renewal: boolean; source: string }
@@ -210,17 +210,12 @@ export class ForecastService {
     return this.store.contracts()
       .filter((c) => c.status !== 'Cancelled' && c.startDate <= fyEnd && (c.endDate >= fyStart || c.renewalStatus === 'Renewal in progress'))
       .sort((a, b) => infolineFirst(a.vendorName, b.vendorName) || a.reference.localeCompare(b.reference))
-      .flatMap((c) => childRecordsFor(c).filter((k) => k.recordType === 'Variation Order').map((k, i) => {
-        const n = norm(k.description), infoline = c.reference === INFOLINE_REF;
-        const tx = infoline ? TX_TYPES.find((t) => norm(t.accrualLine) === n) : undefined;
-        const feed: AccrualRow['feed'] = infoline && n === 'infolinesalary' ? { kind: 'Team' } : tx ? { kind: 'Transaction', type: tx.type } : null;
-        return { key: `${c.reference}|L${i + 1}`, vendor: c.vendorName, contract: c, po: c.poNumber ?? '', line: k.description, feed };
-      }));
+      .flatMap((c) => childRecordsFor(c).filter((k) => k.recordType === 'Variation Order').map((k, i) => ({ key: `${c.reference}|L${i + 1}`, vendor: c.vendorName, contract: c, po: c.poNumber ?? '', line: k.description })));
   });
 
   /** Actual amounts: the invoices approved so far (seeded history) plus every line approved for payment in Reconciliation. */
   readonly actuals = signal<Record<string, Record<number, number>>>({});
-  /** The yearly forecast: entered once a year per line and month (null = not entered). Salary / Voice / Non Voice follow their own screens. */
+  /** The yearly forecast: entered once a year per line and month (null = not entered). */
   readonly plan = signal<Record<string, Array<number | null>>>({});
 
   constructor() {
@@ -263,9 +258,7 @@ export class ForecastService {
       const hist: Record<number, number> = {};
       for (const m of MONTHS.filter(isActual)) {
         if (!this.open(r, m)) continue;
-        if (r.feed?.kind === 'Transaction') hist[m] = this.txAmount(r.feed.type, m);
-        else if (r.feed?.kind === 'Team' && m >= 6) hist[m] = r3(this.teamMonthTotal(m));
-        else hist[m] = r.contract.reference === INFOLINE_REF ? this.sheetBase(r, m) : r3(this.sheetBase(r, m) * (0.94 + (hash(r.key + m) % 13) / 100));
+        hist[m] = r.contract.reference === INFOLINE_REF ? this.sheetBase(r, m) : r3(this.sheetBase(r, m) * (0.94 + (hash(r.key + m) % 13) / 100));
       }
       out[r.key] = hist;
     }
@@ -275,7 +268,7 @@ export class ForecastService {
   /** The forecast the team entered at the start of the year: a figure per month, rounded like a hand-made plan. */
   private seedPlan(rows: AccrualRow[]) {
     const out: Record<string, Array<number | null>> = {};
-    for (const r of rows.filter((x) => !x.feed)) {
+    for (const r of rows) {
       out[r.key] = MONTHS.map((m) => {
         if (!this.open(r, m)) return null;
         const base = this.sheetBase(r, m), step = base >= 1000 ? 100 : 10;
@@ -286,8 +279,6 @@ export class ForecastService {
   }
 
   forecastOf(r: AccrualRow, m: number): number | null {
-    if (r.feed?.kind === 'Team') return r3(this.teamMonthTotal(m));
-    if (r.feed?.kind === 'Transaction') return this.txAmount(r.feed.type, m);
     return this.plan()[r.key]?.[m] ?? null;
   }
 
@@ -298,13 +289,12 @@ export class ForecastService {
     const f = (n: number) => n.toLocaleString('en-GB', { maximumFractionDigits: 3 });
     if (act !== undefined) return { value: act, forecast, actual: true, awaiting: false, renewal, source: `Actual — approved invoice ${f(act)} OMR` + (forecast !== null ? ` · forecast was ${f(forecast)} (${act - forecast >= 0 ? '+' : ''}${f(r3(act - forecast))})` : '') };
     const awaiting = m < CUR_MONTH;
-    const from = r.feed ? `${r.feed.kind} Forecast` : 'Yearly forecast';
-    return { value: forecast ?? 0, forecast, actual: false, awaiting, renewal, source: (forecast === null ? 'No forecast entered' : from) + (awaiting ? ' · invoice not approved yet' : '') };
+    return { value: forecast ?? 0, forecast, actual: false, awaiting, renewal, source: (forecast === null ? 'No forecast entered' : 'Yearly forecast') + (awaiting ? ' · invoice not approved yet' : '') };
   }
 
-  /** Saves the yearly forecast typed on the Accrual screen. Months with an approved invoice and lines fed by another screen are skipped. */
+  /** Saves the yearly forecast typed on the Accrual screen. Months with an approved invoice are skipped. */
   setPlan(changes: Array<{ r: AccrualRow; m: number; value: number }>, note: string): string | null {
-    const ok = changes.filter(({ r, m }) => !r.feed && this.open(r, m) && this.actuals()[r.key]?.[m] === undefined);
+    const ok = changes.filter(({ r, m }) => this.open(r, m) && this.actuals()[r.key]?.[m] === undefined);
     if (ok.some((c) => !isFinite(c.value) || c.value < 0)) return 'Amounts cannot be negative.';
     const real = ok.filter((c) => (this.plan()[c.r.key]?.[c.m] ?? null) !== c.value);
     if (!real.length) return 'Nothing was changed.';

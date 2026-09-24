@@ -1,6 +1,5 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RouterModule } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTabsModule } from '@angular/material/tabs';
@@ -30,7 +29,7 @@ const totalsOf = (ls: Line[]): Totals => ({
 @Component({
   selector: 'app-accrual-forecast',
   standalone: true,
-  imports: [CommonModule, RouterModule, MatButtonModule, MatIconModule, MatTabsModule, PageHeaderComponent, KpiCardComponent, RequiresDirective],
+  imports: [CommonModule, MatButtonModule, MatIconModule, MatTabsModule, PageHeaderComponent, KpiCardComponent, RequiresDirective],
   template: `
     <app-page-header
       title="Accrual Forecast"
@@ -100,7 +99,6 @@ const totalsOf = (ls: Line[]): Totals => ({
                   <tr class="border-t border-surface-border hover:bg-surface-subtle/40">
                     <td class="px-3 py-1.5 sticky left-0 bg-white z-10">
                       <span class="text-ink-800">{{ l.r.line }}</span>
-                      @if (l.r.feed; as f) { <a class="ml-1.5 text-[10px] font-bold uppercase text-brand-600 hover:underline" [routerLink]="f.kind === 'Team' ? '/contracts-budget/team-forecast' : '/contracts-budget/transaction-forecast'" title="The forecast of this line comes from the {{ f.kind }} Forecast">{{ f.kind }}</a> }
                     </td>
                     @for (c of l.cells; track $index) {
                       @if (editing() && editable(l.r, c)) {
@@ -156,7 +154,7 @@ const totalsOf = (ls: Line[]): Totals => ({
         <span class="inline-flex items-center gap-1.5 text-sm font-semibold" [class.text-status-amber]="changed()" [class.text-ink-500]="!changed()">
           <mat-icon class="!text-lg">{{ changed() ? 'pending' : 'edit_note' }}</mat-icon>{{ changed() ? changed() + ' change' + (changed() === 1 ? '' : 's') + ' not saved yet' : 'No changes yet' }}
         </span>
-        <span class="text-xs text-ink-400">Invoiced months and TEAM / TRANSACTION lines are locked.</span>
+        <span class="text-xs text-ink-400">Months with an approved invoice are locked.</span>
         <input class="flex-1 min-w-[220px] max-w-md ml-auto px-3 py-2 text-sm rounded-lg border border-surface-border focus:outline-none focus:border-brand-400" placeholder="Note for this forecast, e.g. FY{{ year }} forecast" [value]="note()" (input)="note.set($any($event.target).value)" />
         <button mat-stroked-button (click)="cancel()">Cancel</button>
         <button mat-flat-button color="primary" (click)="save()" [disabled]="!changed()"><mat-icon class="!text-base !mr-1">save</mat-icon>Save forecast</button>
@@ -218,7 +216,7 @@ export class AccrualForecastComponent {
   history = computed(() => this.svc.edits().filter((e) => e.kind === 'Accrual'));
   changed = computed(() => Object.values(this.draft()).reduce((n, d) => n + Object.keys(d).length, 0));
 
-  editable = (r: AccrualRow, c: AccrualCell) => !r.feed && !c.actual && c.value !== null;
+  editable = (_r: AccrualRow, c: AccrualCell) => !c.actual && c.value !== null;
   canType = (r: AccrualRow, c: AccrualCell) => !this.editing() && this.editable(r, c) && this.store.can('Edit Forecast');
   draftValue = (key: string, m: number, current: number | null) => this.draft()[key]?.[m] ?? current ?? '';
   isChanged = (key: string, m: number) => this.draft()[key]?.[m] !== undefined;

@@ -77,7 +77,7 @@ const TH = 'px-3 py-2.5 font-medium';
             </tr></tfoot>
           </table>
         </div>
-        <p class="text-xs text-ink-400 mt-3">Amounts in OMR. Actual months show the invoiced amount and the transactions handled; OMR / tx is what each transaction really cost. The monthly amounts are the forecast of the Voice and Non Voice lines on the Accrual Forecast.</p>
+        <p class="text-xs text-ink-400 mt-3">Amounts in OMR. Actual months show the invoiced amount and the transactions handled; OMR / tx is what each transaction really cost.</p>
       </mat-tab>
 
       <mat-tab label="Change history ({{ history().length }})">
