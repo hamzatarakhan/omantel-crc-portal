@@ -83,7 +83,7 @@ export class RecordDetailDialogComponent {
       ['Type', r.recordType], ['Scope of work', r.description], ['PO number', r.poNumber],
       ['Amount', r.amount === undefined ? '— (read from the ERP later)' : `${r.amount.toLocaleString('en-GB')} ${r.currency}`], ['From', r.startDate], ['To', r.endDate],
       ['Status', r.status], ['Days remaining', String(r.daysRemaining)], ['Contract', r.parentReference],
-      ['Line reference', r.reference], ['ERP reference', r.erpReference], ['Supplier', r.counterparty],
+      ['Line reference', r.reference], ['ERP reference', r.erpReference], ['Vendor', r.counterparty],
     ];
   }
 }

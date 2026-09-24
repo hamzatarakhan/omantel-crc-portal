@@ -16,6 +16,7 @@ import { Contract } from '../../../core/models/domain';
 import { DIALOG_SIZE } from '../../../shared/dialog-sizes';
 import { expiryCountdown, remainingLabel, requiredActionFor, statusLevelFor } from '../../../core/services/contract-monitoring';
 import { StatusLevel } from '../../../core/models/status';
+import { infolineFirst } from '../../../core/services/contract-data';
 
 interface VendorSummary {
   name: string;
@@ -157,7 +158,7 @@ export class ContractDashboardComponent {
   from = signal('');
   to = signal('');
 
-  private vendors = computed(() => [...new Set(this.ops.active().map((c) => c.vendorName))].sort());
+  private vendors = computed(() => [...new Set(this.ops.active().map((c) => c.vendorName))].sort(infolineFirst));
   private types = computed(() => [...new Set(this.ops.active().map((c) => c.contractType))].sort());
   selects = computed(() => [
     { key: 'vendor', label: 'Vendor', all: 'All vendors', value: this.vendor, set: (v: string) => this.vendor.set(v), options: ['All', ...this.vendors()] },

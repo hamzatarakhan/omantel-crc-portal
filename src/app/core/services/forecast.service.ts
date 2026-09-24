@@ -1,7 +1,7 @@
 import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 import { CURRENT_USER, CrcStore } from './crc-store.service';
 import { UiService } from '../../shared/services/ui.service';
-import { childRecordsFor } from './contract-data';
+import { childRecordsFor, infolineFirst } from './contract-data';
 import { Contract } from '../models/domain';
 
 /**
@@ -211,7 +211,7 @@ export class ForecastService {
     const fyStart = monthStart(0), fyEnd = monthEnd(11);
     return this.store.contracts()
       .filter((c) => c.status !== 'Cancelled' && c.startDate <= fyEnd && (c.endDate >= fyStart || c.renewalStatus === 'Renewal in progress'))
-      .sort((a, b) => a.vendorName.localeCompare(b.vendorName) || a.reference.localeCompare(b.reference))
+      .sort((a, b) => infolineFirst(a.vendorName, b.vendorName) || a.reference.localeCompare(b.reference))
       .flatMap((c) => childRecordsFor(c).filter((k) => k.recordType === 'Variation Order').map((k, i) => {
         const n = norm(k.description), infoline = c.reference === INFOLINE_REF;
         const tx = infoline ? TX_TYPES.find((t) => norm(t.accrualLine) === n) : undefined;
@@ -338,7 +338,7 @@ export class ForecastService {
     const out = rows.map((r) => {
       const cells = MONTHS.map((m) => this.cell(r, m));
       return {
-        'Supplier name': r.vendor, Contract: r.contract.reference, 'Contract type': r.contract.contractType, 'Scope of work': r.line, 'PO no.': r.po, From: r.contract.startDate, To: r.contract.endDate, 'Contract value': r.contract.amount,
+        Vendor: r.vendor, Contract: r.contract.reference, 'Contract type': r.contract.contractType, 'Scope of work': r.line, 'PO no.': r.po, From: r.contract.startDate, To: r.contract.endDate, 'Contract value': r.contract.amount,
         ...Object.fromEntries(MONTHS.map((m) => [`${MONTH_SHORT[m]} ${FY_YEAR}${isActual(m) ? '' : ' (F)'}`, money(cells[m].value)])),
         'Actual to date': r3(cells.filter((c) => c.actual).reduce((s, c) => s + (c.value ?? 0), 0)), Forecast: r3(cells.filter((c) => !c.actual).reduce((s, c) => s + (c.value ?? 0), 0)), 'Year total': r3(cells.reduce((s, c) => s + (c.value ?? 0), 0)),
       };

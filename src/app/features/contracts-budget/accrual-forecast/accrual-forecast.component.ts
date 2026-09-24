@@ -30,9 +30,9 @@ const sumOf = (cs: AccrualCell[], pick: (c: AccrualCell) => boolean) => cs.filte
 
     <div class="surface-card px-4 py-3.5 mb-4">
       <div class="grid grid-cols-2 md:grid-cols-4 gap-2.5">
-        <label class="block"><span class="lbl">Supplier</span>
+        <label class="block"><span class="lbl">Vendor</span>
           <select [class]="field + ' mt-1'" (change)="vendor.set($any($event.target).value); contract.set('All')">
-            <option value="All">All suppliers</option>
+            <option value="All" [selected]="vendor() === 'All'">All vendors</option>
             @for (v of vendors(); track v) { <option [value]="v" [selected]="v === vendor()">{{ v }}</option> }
           </select></label>
         <label class="block"><span class="lbl">Contract</span>
@@ -146,7 +146,7 @@ export class AccrualForecastComponent {
   curLong = MONTH_LONG[CUR_MONTH];
   lastActualShort = MONTH_SHORT[Math.max(0, CUR_MONTH - 1)];
 
-  vendor = signal('All');
+  vendor = signal('Infoline LLC');
   contract = signal('All');
   type = signal('All');
   q = signal('');
@@ -186,7 +186,7 @@ export class AccrualForecastComponent {
   history = computed(() => this.svc.edits().filter((e) => e.kind === 'Accrual'));
 
   editable = (r: AccrualRow, c: AccrualCell) => !r.feed && !c.actual && c.value !== null && this.store.can('Edit Forecast');
-  clear() { this.vendor.set('All'); this.contract.set('All'); this.type.set('All'); this.q.set(''); }
+  clear() { this.vendor.set('Infoline LLC'); this.contract.set('All'); this.type.set('All'); this.q.set(''); }
 
   async edit(r: AccrualRow, m: number) {
     if (!this.ui.requires('Edit Forecast')) return;

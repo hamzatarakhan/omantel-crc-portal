@@ -11,7 +11,7 @@ import { CrcStore } from '../../../core/services/crc-store.service';
 import { ContractOps } from '../../../core/services/contract-ops.service';
 import { UiService } from '../../../shared/services/ui.service';
 import { Contract, NotificationRule } from '../../../core/models/domain';
-import { ruleApplies, DEPARTMENT_BY_TYPE } from '../../../core/services/contract-data';
+import { ruleApplies, DEPARTMENT_BY_TYPE, infolineFirst } from '../../../core/services/contract-data';
 import { NotificationTemplate, PLACEHOLDERS, renderTemplate } from '../../../core/services/contract-monitoring';
 
 const CHANNELS = ['Email', 'SMS'];
@@ -122,7 +122,7 @@ export class NotificationConfigComponent {
   placeholders = PLACEHOLDERS.join('  ');
   rules = this.store.notificationRules;
   types = computed(() => [...new Set(this.store.contracts().map((c) => c.contractType))].sort());
-  vendors = computed(() => [...new Set(this.store.contracts().map((c) => c.vendorName))].sort());
+  vendors = computed(() => [...new Set(this.store.contracts().map((c) => c.vendorName))].sort(infolineFirst));
   departments = computed(() => [...new Set([...this.store.contracts().map((c) => c.department ?? ''), ...Object.values(DEPARTMENT_BY_TYPE)])].filter(Boolean).sort());
   escalated = computed(() => this.ops.active().filter((c) => this.ops.isEscalated(c)).length);
   unresolved = computed(() => this.ops.active().filter((c) => this.ops.isUnresolved(c)).length);

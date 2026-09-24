@@ -1,5 +1,8 @@
 import { Contract, ContractAttachment, ContractRecord, ContractTimelineEvent, NotificationRule, PurchaseOrder } from '../models/domain';
 
+/** Vendor order used in every list: Infoline first, then A–Z. */
+export const infolineFirst = (a: string, b: string) => Number(/infoline/i.test(b)) - Number(/infoline/i.test(a)) || a.localeCompare(b);
+
 export const DEPARTMENT_BY_TYPE: Record<string, string> = {
   'Manpower Outsourcing': 'Customer Care — Contact Centre', 'Facilities Management': 'Facilities & Administration', 'IT Support': 'IT Operations',
   'Training Services': 'Learning & Development', 'Recruitment Services': 'HR & Talent Acquisition',

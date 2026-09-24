@@ -6,7 +6,7 @@ import { Contract } from '../../../core/models/domain';
 import { PageHeaderComponent } from '../../../shared/components/page-header/page-header.component';
 import { ChartCardComponent } from '../../../shared/components/chart-card/chart-card.component';
 import { ContractOps } from '../../../core/services/contract-ops.service';
-import { addDays } from '../../../core/services/contract-data';
+import { addDays, infolineFirst } from '../../../core/services/contract-data';
 import { requiredActionFor, needsAction } from '../../../core/services/contract-monitoring';
 
 const FIELD = 'w-full px-2.5 py-2 text-xs font-semibold rounded-lg border border-surface-border bg-white text-ink-700 focus:outline-none focus:border-brand-400';
@@ -79,7 +79,7 @@ export class ContractTrendsComponent {
 
   private base = computed(() => this.ops.active());
   selects = computed(() => [
-    { key: 'vendor', label: 'Vendor', all: 'All vendors', value: this.vendor, set: (v: string) => this.vendor.set(v), options: ['All', ...new Set(this.base().map((c) => c.vendorName))].sort() },
+    { key: 'vendor', label: 'Vendor', all: 'All vendors', value: this.vendor, set: (v: string) => this.vendor.set(v), options: ['All', ...[...new Set(this.base().map((c) => c.vendorName))].sort(infolineFirst)] },
     { key: 'type', label: 'Contract type', all: 'All types', value: this.type, set: (v: string) => this.type.set(v), options: ['All', ...new Set(this.base().map((c) => c.contractType))].sort() },
     { key: 'parent', label: 'Contract', all: 'All contracts', value: this.parent, set: (v: string) => this.parent.set(v), options: ['All', ...this.base().map((c) => c.reference)] },
     { key: 'status', label: 'Status', all: 'All statuses', value: this.status, set: (v: string) => this.status.set(v), options: ['All', 'Active', 'Expiring Soon', 'Expired'] },

@@ -8,6 +8,7 @@ import { CrcStore } from '../../../core/services/crc-store.service';
 import { ContractOps } from '../../../core/services/contract-ops.service';
 import { UiService } from '../../../shared/services/ui.service';
 import { ListRow } from '../../../core/services/contract-monitoring';
+import { infolineFirst } from '../../../core/services/contract-data';
 
 const STATUSES = ['All', 'Active', 'Expiring Soon', 'Expired', 'Historical'] as const;
 const RECORD_TYPES: Array<[string, string]> = [['All', 'All records'], ['Contract', 'Contracts'], ['Purchase Order', 'Purchase orders'], ['Variation Order', 'Variation Orders'], ['Amendment', 'Amendments'], ['Time Extension', 'Time extensions']];
@@ -78,7 +79,7 @@ export class ContractListComponent {
 
   searchKeys = ['poNumber', 'vendorRef', 'erpReference', 'parentReference', 'contractType', 'status'];
 
-  private vendors = computed(() => [...new Set(this.ops.scoped().map((c) => c.vendorName))].sort());
+  private vendors = computed(() => [...new Set(this.ops.scoped().map((c) => c.vendorName))].sort(infolineFirst));
   private types = computed(() => [...new Set(this.ops.scoped().map((c) => c.contractType))].sort());
   private opts = (list: string[], all: string): Array<[string, string]> => [['All', all], ...list.map((x): [string, string] => [x, x])];
 
