@@ -58,6 +58,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: 'Project Requests', path: 'projects', icon: 'rocket_launch', perms: ['Submit Project Requests', 'Approve Projects', 'View Budget'], section: 'Budget' },
       { label: 'Accrual Forecast', path: 'accrual-forecast', icon: 'receipt_long', perms: ['View Accrual Forecast'], section: 'Forecast' },
       { label: 'Team Forecast', path: 'team-forecast', icon: 'groups', perms: ['View Team Forecast'], section: 'Forecast' },
+      { label: 'Transaction Forecast', path: 'transaction-forecast', icon: 'support_agent', perms: ['View Transaction Forecast'], section: 'Forecast' },
       { label: 'Forecast Settings', path: 'forecast-settings', icon: 'tune', perms: ['Configure Forecast'], section: 'Forecast' },
     ],
   },

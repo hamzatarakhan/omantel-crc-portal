@@ -5,7 +5,7 @@ import { SidebarComponent } from '../sidebar/sidebar.component';
 import { TopbarComponent } from '../topbar/topbar.component';
 import { CrcStore } from '../../services/crc-store.service';
 import { UiService } from '../../../shared/services/ui.service';
-import { AccrualForecast } from '../../services/forecast.service';
+import { ForecastService } from '../../services/forecast.service';
 
 @Component({
   selector: 'app-shell',
@@ -48,7 +48,7 @@ export class ShellComponent {
   store = inject(CrcStore);
   private router = inject(Router);
   private ui = inject(UiService);
-  private accrual = inject(AccrualForecast); // keeps the accrual forecast listening for approved invoices on every screen
+  private forecast = inject(ForecastService); // keeps the accrual forecast listening for approved invoice lines on every screen
   mobileNavOpen = signal(false);
 
   private lastRole = this.store.currentRole();

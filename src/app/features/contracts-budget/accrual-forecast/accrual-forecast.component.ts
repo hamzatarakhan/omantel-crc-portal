@@ -1,327 +1,207 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Router, RouterModule } from '@angular/router';
-import { MatDialog } from '@angular/material/dialog';
+import { RouterModule } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTabsModule } from '@angular/material/tabs';
 import { PageHeaderComponent } from '../../../shared/components/page-header/page-header.component';
 import { KpiCardComponent } from '../../../shared/components/kpi-card/kpi-card.component';
-import { StatusChipComponent } from '../../../shared/components/status-chip/status-chip.component';
 import { RequiresDirective } from '../../../shared/directives/requires.directive';
 import { CrcStore } from '../../../core/services/crc-store.service';
 import { UiService } from '../../../shared/services/ui.service';
-import { DIALOG_SIZE } from '../../../shared/dialog-sizes';
-import { ACCRUAL_LEVEL, ACCRUAL_STATUSES, AccrualCell, AccrualForecast, AccrualLine, COMPS, COMP_LABEL, CUR_MONTH, FY_LABEL, FY_YEAR, MONTH_LONG, MONTH_SHORT } from '../../../core/services/forecast.service';
-import { AccrualDetailDialogComponent } from './accrual-detail-dialog.component';
+import { AccrualCell, AccrualRow, CUR_MONTH, FY_YEAR, ForecastService, MONTHS, MONTH_LONG, MONTH_SHORT, isActual } from '../../../core/services/forecast.service';
 
 const FIELD = 'w-full px-2.5 py-2 text-xs font-semibold rounded-lg border border-surface-border bg-white text-ink-700 focus:outline-none focus:border-brand-400';
-const num = (v: any) => Number(v ?? 0) || 0;
-
-interface Row { line: AccrualLine; cell?: AccrualCell; applicable: boolean; status: string; invoice: string; t: ReturnType<AccrualForecast['totals']> | null }
+interface Line { r: AccrualRow; cells: AccrualCell[]; actual: number; forecast: number; total: number }
+const sumOf = (cs: AccrualCell[], pick: (c: AccrualCell) => boolean) => cs.filter(pick).reduce((s, c) => s + (c.value ?? 0), 0);
 
 @Component({
   selector: 'app-accrual-forecast',
   standalone: true,
-  imports: [CommonModule, RouterModule, MatButtonModule, MatIconModule, MatTabsModule, PageHeaderComponent, KpiCardComponent, StatusChipComponent, RequiresDirective],
+  imports: [CommonModule, RouterModule, MatButtonModule, MatIconModule, MatTabsModule, PageHeaderComponent, KpiCardComponent, RequiresDirective],
   template: `
     <app-page-header
       title="Accrual Forecast"
-      subtitle="The expected cost of each outsourcing contract, month by month. Forecast amounts are replaced by the real invoice amount once the invoice is approved."
+      subtitle="Every contract PO line, month by month. Closed months show the invoiced amount; from {{ curLong }} on, the forecast."
       [breadcrumbs]="[{ label: 'Contracts & Budget', link: '/contracts-budget/dashboard' }, { label: 'Forecast' }, { label: 'Accrual Forecast' }]"
     >
-      <button mat-stroked-button (click)="generate()" appRequires="Edit Accrual Forecast"><mat-icon class="!text-base !mr-1">autorenew</mat-icon>Generate forecast</button>
-      @if (svc.settings().lockAfter === 'Finance approval') { <button mat-stroked-button (click)="approve()" appRequires="Close Forecast Period"><mat-icon class="!text-base !mr-1">verified</mat-icon>Approve period</button> }
-      <button mat-stroked-button (click)="close()" appRequires="Close Forecast Period"><mat-icon class="!text-base !mr-1">lock</mat-icon>Close period</button>
-      <button mat-flat-button color="primary" (click)="exportExcel()" appRequires="Export Forecast"><mat-icon class="!text-base !mr-1">download</mat-icon>Export to Excel</button>
+      <button mat-flat-button color="primary" (click)="svc.exportAccrual(filtered())" appRequires="Export Forecast"><mat-icon class="!text-base !mr-1">download</mat-icon>Export to Excel</button>
     </app-page-header>
 
-    @if (svc.pending(); as p) {
-      <div class="surface-card px-4 py-3 mb-4 flex items-center gap-3 border-l-4 !border-l-status-amber"><mat-icon class="text-status-amber">hourglass_top</mat-icon>
-        <div class="flex-1 text-sm text-ink-700">The scheduled forecast for <b>{{ p }}</b> is waiting for a confirmation.</div>
-        <button mat-flat-button color="primary" (click)="confirmGeneration()" appRequires="Edit Accrual Forecast">Confirm generation</button></div>
-    }
-    @if (svc.closure(); as cl) {
-      <div class="surface-card px-4 py-3 mb-4 flex items-center gap-3 border-l-4 !border-l-status-amber"><mat-icon class="text-status-amber">event_busy</mat-icon>
-        <div class="flex-1 text-sm text-ink-700"><b>{{ cl.label }}</b> is not closed yet. {{ cl.days < 0 ? 'Its closing day (' + svc.settings().closeByDay + ') has passed.' : 'It should be closed by day ' + svc.settings().closeByDay + ' (' + cl.days + ' day(s) left).' }}</div>
-        <button mat-stroked-button (click)="month.set(cl.month)">Show it</button></div>
-    }
-
     <div class="surface-card px-4 py-3.5 mb-4">
-      <div class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-2.5">
-        @for (f of selects(); track f.key) {
-          <label class="block"><span class="text-[10.5px] font-bold text-ink-400 uppercase tracking-wide">{{ f.label }}</span>
-            <select [class]="field + ' mt-1'" (change)="f.set($any($event.target).value)">
-              @for (o of f.options; track o.value) { <option [value]="o.value" [selected]="o.value === (f.value() + '')">{{ o.label }}</option> }
-            </select>
-          </label>
-        }
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+        <label class="block"><span class="lbl">Supplier</span>
+          <select [class]="field + ' mt-1'" (change)="vendor.set($any($event.target).value); contract.set('All')">
+            <option value="All">All suppliers</option>
+            @for (v of vendors(); track v) { <option [value]="v" [selected]="v === vendor()">{{ v }}</option> }
+          </select></label>
+        <label class="block"><span class="lbl">Contract</span>
+          <select [class]="field + ' mt-1'" (change)="contract.set($any($event.target).value)">
+            <option value="All">All contracts</option>
+            @for (c of contracts(); track c) { <option [value]="c" [selected]="c === contract()">{{ c }}</option> }
+          </select></label>
+        <label class="block"><span class="lbl">Contract type</span>
+          <select [class]="field + ' mt-1'" (change)="type.set($any($event.target).value)">
+            <option value="All">All types</option>
+            @for (t of types(); track t) { <option [value]="t" [selected]="t === type()">{{ t }}</option> }
+          </select></label>
+        <label class="block"><span class="lbl">Scope of work</span>
+          <input [class]="field + ' mt-1'" placeholder="Search a line" [value]="q()" (input)="q.set($any($event.target).value)" /></label>
       </div>
       <div class="flex items-center justify-between mt-2.5 text-xs text-ink-400">
-        <span>Next automatic generation: <b class="text-ink-600">{{ svc.nextRun() }}</b> · <a class="text-brand-600 font-medium" routerLink="/contracts-budget/forecast-settings" appRequires="Configure Forecast">Change settings</a></span>
+        <span>Forecast rule for other lines: <b class="text-ink-600">{{ svc.accrualRule() }}</b> · <a class="text-brand-600 font-medium" routerLink="/contracts-budget/forecast-settings" appRequires="Configure Forecast">Change</a></span>
         <button (click)="clear()" class="font-semibold text-brand-700 hover:underline">Clear filters</button>
       </div>
     </div>
 
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-2">
-      <app-kpi-card label="Total forecast" [value]="summary().forecast | number:'1.0-0'" unit="OMR" icon="query_stats"></app-kpi-card>
-      <app-kpi-card label="Total actual" [value]="summary().actual | number:'1.0-0'" unit="OMR" icon="receipt_long" level="normal"></app-kpi-card>
-      <app-kpi-card label="Total variance" [value]="(summary().variance > 0 ? '+' : '') + (summary().variance | number:'1.0-0')" unit="OMR" icon="compare_arrows" [level]="summary().flagged ? 'red' : 'neutral'"></app-kpi-card>
-      <app-kpi-card label="Active contracts" [value]="summary().contracts" icon="description"></app-kpi-card>
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+      <app-kpi-card [label]="'Actual — Jan to ' + lastActualShort" [value]="totals().actual | number:'1.0-0'" unit="OMR" icon="receipt_long" level="normal"></app-kpi-card>
+      <app-kpi-card [label]="'Forecast — ' + curShort + ' to Dec'" [value]="totals().forecast | number:'1.0-0'" unit="OMR" icon="query_stats" level="info"></app-kpi-card>
+      <app-kpi-card [label]="'Year total ' + year" [value]="totals().total | number:'1.0-0'" unit="OMR" icon="functions"></app-kpi-card>
+      <app-kpi-card label="PO lines" [value]="filtered().length" icon="list_alt"></app-kpi-card>
     </div>
-    <p class="text-xs text-ink-500 mb-4 px-1">
-      <b class="text-ink-700">{{ summary().lines }}</b> forecasted lines · <b class="text-ink-700">{{ summary().actualized }}</b> actualized · <b class="text-ink-700">{{ summary().manual }}</b> manually updated for {{ monthName() }} {{ year }}
-    </p>
 
     <mat-tab-group>
-      <mat-tab label="{{ monthName() }} forecast">
+      <mat-tab label="Per line">
         <div class="surface-card overflow-x-auto mt-4">
           <table class="crc-table w-full text-sm">
-            <thead><tr class="bg-surface-subtle text-left text-xs text-ink-500 uppercase tracking-wide">
-              <th class="px-3 py-2.5 w-8"></th><th class="px-3 py-2.5 font-medium">Vendor</th><th class="px-3 py-2.5 font-medium">Contract</th><th class="px-3 py-2.5 font-medium">Resource category</th>
-              <th class="px-3 py-2.5 font-medium text-right">Resources</th><th class="px-3 py-2.5 font-medium text-right">Salary</th><th class="px-3 py-2.5 font-medium text-right">Overtime</th><th class="px-3 py-2.5 font-medium text-right">{{ svc.settings().performanceLabel }}</th>
-              <th class="px-3 py-2.5 font-medium text-right">Forecast</th><th class="px-3 py-2.5 font-medium text-right">Actual</th><th class="px-3 py-2.5 font-medium text-right">Variance</th><th class="px-3 py-2.5 font-medium">Status</th><th class="px-3 py-2.5 font-medium text-right">Actions</th>
+            <thead><tr class="bg-surface-subtle text-left text-[11px] text-ink-500 uppercase tracking-wide">
+              <th class="px-3 py-2.5 font-medium sticky left-0 bg-surface-subtle min-w-[240px]">Scope of work</th>
+              @for (m of months; track m) { <th class="px-2.5 py-2.5 font-medium text-right whitespace-nowrap" [class.text-brand-700]="!isActual(m)">{{ short[m] }}@if (!isActual(m)) {<span class="ml-0.5 text-[9px]">F</span>}</th> }
+              <th class="px-2.5 py-2.5 font-medium text-right">Actual</th><th class="px-2.5 py-2.5 font-medium text-right">Forecast</th><th class="px-2.5 py-2.5 font-medium text-right">Year</th>
             </tr></thead>
             <tbody>
-              @for (r of rows(); track r.line.id) {
-                <tr class="border-t border-surface-border hover:bg-surface-subtle/60" [class.opacity-60]="!r.applicable">
-                  <td class="px-3 py-2.5"><button class="w-6 h-6 rounded flex items-center justify-center text-ink-400 hover:bg-surface-subtle" (click)="toggle(r.line.id)" title="Show the monthly breakdown"><mat-icon class="!text-lg">{{ open().has(r.line.id) ? 'expand_more' : 'chevron_right' }}</mat-icon></button></td>
-                  <td class="px-3 py-2.5 font-medium text-ink-900">{{ r.line.vendor }}</td>
-                  <td class="px-3 py-2.5 text-ink-700"><div>{{ r.line.contract }}</div><div class="text-[11px] text-ink-400">{{ r.line.contractStatus }} · ends {{ r.line.endDate }}</div></td>
-                  <td class="px-3 py-2.5 text-ink-700">{{ r.line.category }}</td>
-                  <td class="px-3 py-2.5 text-right">{{ r.cell ? r.cell.hc : '—' }}</td>
-                  <td class="px-3 py-2.5 text-right">{{ r.cell ? (svc.shown(r.cell, 'salary') | number:'1.0-0') : '—' }}</td>
-                  <td class="px-3 py-2.5 text-right">{{ r.cell ? (svc.shown(r.cell, 'overtime') | number:'1.0-0') : '—' }}</td>
-                  <td class="px-3 py-2.5 text-right">{{ r.cell ? (svc.shown(r.cell, 'performance') | number:'1.0-0') : '—' }}</td>
-                  <td class="px-3 py-2.5 text-right font-medium">{{ r.t ? (r.t.forecast | number:'1.0-0') : '—' }}</td>
-                  <td class="px-3 py-2.5 text-right font-medium">{{ r.t && r.t.actual !== null ? (r.t.actual | number:'1.0-0') : '—' }}</td>
-                  <td class="px-3 py-2.5 text-right" [class.text-status-red]="r.t?.flagged" [class.font-semibold]="r.t?.flagged">{{ r.t && r.t.variance !== null ? ((r.t.variance > 0 ? '+' : '') + (r.t.variance | number:'1.0-0') + ' (' + (r.t.pct | number:'1.1-1') + '%)') : '—' }}</td>
-                  <td class="px-3 py-2.5"><app-status-chip [label]="r.status" [level]="level(r.status)"></app-status-chip></td>
-                  <td class="px-3 py-2.5">
-                    <div class="flex items-center justify-end gap-0.5">
-                      <button class="act" title="View details and adjustment history" (click)="detail(r.line.id)"><mat-icon>visibility</mat-icon></button>
-                      @if (r.cell && svc.canEdit(r.cell) && store.can('Edit Accrual Forecast')) {
-                        <button class="act" title="Edit the current-month forecast" (click)="edit(r)"><mat-icon>edit</mat-icon></button>
-                        <button class="act" title="Recalculate from the latest data" (click)="recalc(r)"><mat-icon>sync</mat-icon></button>
-                      }
-                      @if (r.cell?.invoice) { <button class="act" title="View invoice {{ r.cell?.invoice?.ref }}" (click)="viewInvoice()"><mat-icon>receipt_long</mat-icon></button> }
-                    </div>
+              @for (g of groups(); track g.ref) {
+                <tr class="border-t-2 border-surface-border bg-surface-subtle/60">
+                  <td class="px-3 py-2 sticky left-0 bg-surface-subtle" [attr.colspan]="1">
+                    <div class="font-semibold text-ink-900">{{ g.vendor }}</div>
+                    <div class="text-[11px] text-ink-500">{{ g.ref }} · PO {{ g.po || '—' }} · {{ g.from }} → {{ g.to }} · value {{ g.value | number:'1.0-0' }} OMR@if (g.renewal) { · <span class="text-status-amber font-semibold">renewal in progress</span>}</div>
                   </td>
+                  @for (m of months; track m) { <td class="px-2.5 py-2 text-right text-xs font-semibold text-ink-700">{{ g.sub[m] ? (g.sub[m] | number:'1.0-0') : '—' }}</td> }
+                  <td class="px-2.5 py-2 text-right text-xs font-semibold">{{ g.actual | number:'1.0-0' }}</td><td class="px-2.5 py-2 text-right text-xs font-semibold text-brand-700">{{ g.forecast | number:'1.0-0' }}</td><td class="px-2.5 py-2 text-right text-xs font-bold">{{ g.total | number:'1.0-0' }}</td>
                 </tr>
-                @if (open().has(r.line.id)) {
-                  <tr class="bg-surface-subtle/50 border-t border-surface-border">
-                    <td></td>
-                    <td colspan="12" class="px-3 py-3">
-                      <div class="text-[11px] font-bold uppercase tracking-wide text-ink-400 mb-2">Monthly breakdown — {{ r.line.category }} · {{ year }}</div>
-                      <div class="grid grid-cols-6 md:grid-cols-12 gap-2">
-                        @for (m of months; track m.i) {
-                          <button class="rounded-lg border border-surface-border bg-white px-2 py-1.5 text-left hover:border-brand-300" [class.ring-2]="m.i === month()" [class.ring-brand-300]="m.i === month()" (click)="month.set(m.i)" title="Show {{ m.long }}">
-                            <div class="text-[10px] font-bold text-ink-400 uppercase">{{ m.short }}</div>
-                            @if (svc.cell(r.line.id, m.i); as c) {
-                              <div class="text-xs font-semibold" [class.text-ink-900]="tag(c) !== 'F'" [class.text-ink-400]="tag(c) === 'F'">{{ svc.shownTotal(c) | number:'1.0-0' }}</div>
-                              <div class="text-[10px] font-bold" [class.text-status-green]="tag(c) === 'A'" [class.text-status-amber]="tag(c) === 'M' || tag(c) === 'P'" [class.text-ink-400]="tag(c) === 'F'">{{ tagLabel(c) }}</div>
-                            } @else { <div class="text-xs text-ink-400">—</div><div class="text-[10px] text-ink-400">n/a</div> }
-                          </button>
-                        }
-                      </div>
+                @for (l of g.lines; track l.r.key) {
+                  <tr class="border-t border-surface-border hover:bg-surface-subtle/40">
+                    <td class="px-3 py-1.5 sticky left-0 bg-white">
+                      <span class="text-ink-800">{{ l.r.line }}</span>
+                      @if (l.r.feed; as f) { <a class="ml-1.5 text-[10px] font-bold uppercase text-brand-600 hover:underline" [routerLink]="f.kind === 'Team' ? '/contracts-budget/team-forecast' : '/contracts-budget/transaction-forecast'" title="The forecast of this line comes from the {{ f.kind }} Forecast">{{ f.kind }}</a> }
                     </td>
+                    @for (c of l.cells; track $index) {
+                      <td class="px-2.5 py-1.5 text-right whitespace-nowrap" [title]="c.source + (c.renewal ? ' · contract renewal in progress' : '')"
+                        [class.text-ink-900]="c.actual" [class.bg-brand-50]="!c.actual && c.value !== null" [class.text-brand-700]="!c.actual && !c.manual && c.value !== null" [class.text-status-amber]="c.manual" [class.font-semibold]="c.manual"
+                        [class.ed]="editable(l.r, c)" (click)="editable(l.r, c) && edit(l.r, $index)">
+                        {{ c.value === null ? '—' : (c.value | number:'1.0-0') }}
+                      </td>
+                    }
+                    <td class="px-2.5 py-1.5 text-right">{{ l.actual | number:'1.0-0' }}</td><td class="px-2.5 py-1.5 text-right text-brand-700">{{ l.forecast | number:'1.0-0' }}</td><td class="px-2.5 py-1.5 text-right font-semibold">{{ l.total | number:'1.0-0' }}</td>
                   </tr>
                 }
               } @empty {
-                <tr><td colspan="13" class="px-4 py-10 text-center text-sm text-ink-400">No forecast lines match these filters.</td></tr>
+                <tr><td colspan="16" class="px-4 py-10 text-center text-sm text-ink-400">No PO lines match these filters.</td></tr>
               }
             </tbody>
-            @if (rows().length) {
-              <tfoot><tr class="border-t-2 border-surface-border font-semibold bg-surface-subtle/50">
-                <td></td><td class="px-3 py-2.5" colspan="3">Total</td><td class="px-3 py-2.5 text-right">{{ summary().hc }}</td><td class="px-3 py-2.5 text-right" colspan="3"></td>
-                <td class="px-3 py-2.5 text-right">{{ summary().forecast | number:'1.0-0' }}</td><td class="px-3 py-2.5 text-right">{{ summary().actual | number:'1.0-0' }}</td><td class="px-3 py-2.5 text-right">{{ (summary().variance > 0 ? '+' : '') + (summary().variance | number:'1.0-0') }}</td><td colspan="2"></td>
+            @if (groups().length) {
+              <tfoot><tr class="border-t-2 border-surface-border font-bold bg-surface-subtle/50">
+                <td class="px-3 py-2.5 sticky left-0 bg-surface-subtle">Grand total</td>
+                @for (m of months; track m) { <td class="px-2.5 py-2.5 text-right">{{ totals().month[m] | number:'1.0-0' }}</td> }
+                <td class="px-2.5 py-2.5 text-right">{{ totals().actual | number:'1.0-0' }}</td><td class="px-2.5 py-2.5 text-right text-brand-700">{{ totals().forecast | number:'1.0-0' }}</td><td class="px-2.5 py-2.5 text-right">{{ totals().total | number:'1.0-0' }}</td>
               </tr></tfoot>
             }
           </table>
         </div>
-        <p class="text-xs text-ink-400 mt-3">Amounts in OMR. The forecast is kept after an invoice arrives; the actual amount is what counts. Only the current month can be edited, and only until it is locked or closed. Variance = actual − forecast.</p>
+        <p class="text-xs text-ink-400 mt-3 leading-relaxed">
+          Amounts in OMR. <b class="text-ink-700">Black</b> = actual (invoiced; a line approved in Reconciliation becomes actual at once) · <span class="text-brand-700 bg-brand-50 px-1">tinted</span> = forecast · <span class="text-status-amber font-semibold">amber</span> = typed by hand · — = outside the contract period.
+          Lines tagged <b class="text-brand-600">TEAM</b> or <b class="text-brand-600">TRANSACTION</b> take their forecast from that screen. Click a forecast cell of any other line to change it.
+        </p>
       </mat-tab>
 
-      <mat-tab label="Monthly matrix">
+      <mat-tab label="Change history ({{ history().length }})">
         <div class="surface-card overflow-x-auto mt-4">
           <table class="crc-table w-full text-sm">
-            <thead><tr class="bg-surface-subtle text-left text-xs text-ink-500 uppercase tracking-wide">
-              <th class="px-3 py-2.5 font-medium sticky left-0 bg-surface-subtle">Contract / vendor</th><th class="px-3 py-2.5 font-medium">Cost component</th>
-              @for (m of months; track m.i) { <th class="px-3 py-2.5 font-medium text-right" [class.text-brand-700]="m.i === curMonth">{{ m.short }}</th> }
-              <th class="px-3 py-2.5 font-medium text-right">Year</th>
-            </tr></thead>
+            <thead><tr class="bg-surface-subtle text-left text-xs text-ink-500 uppercase tracking-wide"><th class="px-3 py-2.5 font-medium">When</th><th class="px-3 py-2.5 font-medium">By</th><th class="px-3 py-2.5 font-medium">Line</th><th class="px-3 py-2.5 font-medium">Month</th><th class="px-3 py-2.5 font-medium">Change</th><th class="px-3 py-2.5 font-medium text-right">From</th><th class="px-3 py-2.5 font-medium text-right">To</th><th class="px-3 py-2.5 font-medium">Reason</th></tr></thead>
             <tbody>
-              @for (r of rows(); track r.line.id) {
-                @for (k of comps; track k.key; let first = $first) {
-                  <tr [class.border-t]="first" class="border-surface-border">
-                    <td class="px-3 py-1.5 sticky left-0 bg-white">@if (first) { <div class="font-medium text-ink-900">{{ r.line.vendor }}</div><div class="text-[11px] text-ink-400">{{ r.line.contract }} · {{ r.line.category }}</div> }</td>
-                    <td class="px-3 py-1.5 text-ink-600">{{ k.key === 'performance' ? svc.settings().performanceLabel : k.label }}</td>
-                    @for (m of months; track m.i) {
-                      <td class="px-3 py-1.5 text-right" [class.font-semibold]="svc.cell(r.line.id, m.i)?.actual?.[k.key] !== undefined" [class.text-ink-400]="svc.cell(r.line.id, m.i) && svc.cell(r.line.id, m.i)!.actual[k.key] === undefined" [class.italic]="svc.cell(r.line.id, m.i) && svc.cell(r.line.id, m.i)!.actual[k.key] === undefined">{{ svc.cell(r.line.id, m.i) ? (svc.shown(svc.cell(r.line.id, m.i)!, k.key) | number:'1.0-0') : '—' }}</td>
-                    }
-                    <td class="px-3 py-1.5 text-right font-medium">{{ yearComp(r.line.id, k.key) | number:'1.0-0' }}</td>
-                  </tr>
-                }
-                <tr class="bg-surface-subtle/60"><td class="px-3 py-1.5 sticky left-0 bg-surface-subtle/60"></td><td class="px-3 py-1.5 text-xs font-bold text-ink-500 uppercase">Total</td>
-                  @for (m of months; track m.i) { <td class="px-3 py-1.5 text-right font-semibold">{{ svc.cell(r.line.id, m.i) ? (svc.shownTotal(svc.cell(r.line.id, m.i)!) | number:'1.0-0') : '—' }}</td> }
-                  <td class="px-3 py-1.5 text-right font-bold text-brand-700">{{ yearTotal(r.line.id) | number:'1.0-0' }}</td></tr>
-              }
+              @for (e of history(); track e.id) {
+                <tr class="border-t border-surface-border"><td class="px-3 py-2 whitespace-nowrap">{{ e.at | date:'d MMM, HH:mm' }}</td><td class="px-3 py-2">{{ e.by }}</td><td class="px-3 py-2">{{ e.item }}</td><td class="px-3 py-2">{{ long[e.month] }}</td><td class="px-3 py-2">{{ e.field }}</td><td class="px-3 py-2 text-right">{{ e.from | number:'1.0-3' }}</td><td class="px-3 py-2 text-right font-semibold">{{ e.to | number:'1.0-3' }}</td><td class="px-3 py-2 text-ink-600">{{ e.reason }}</td></tr>
+              } @empty { <tr><td colspan="8" class="px-4 py-10 text-center text-sm text-ink-400">No forecast has been changed by hand yet.</td></tr> }
             </tbody>
-            @if (rows().length) {
-              <tfoot><tr class="border-t-2 border-surface-border font-bold"><td class="px-3 py-2.5 sticky left-0 bg-white">Monthly totals</td><td></td>
-                @for (m of months; track m.i) { <td class="px-3 py-2.5 text-right">{{ monthTotal(m.i) | number:'1.0-0' }}</td> }
-                <td class="px-3 py-2.5 text-right text-brand-700">{{ grand() | number:'1.0-0' }}</td></tr></tfoot>
-            }
           </table>
         </div>
-        <p class="text-xs text-ink-400 mt-3"><b class="text-ink-700">Bold</b> = actual invoice amount · <span class="italic text-ink-400">grey italic</span> = forecast · — = outside the contract period. Amounts in OMR.</p>
       </mat-tab>
     </mat-tab-group>
   `,
-  styles: [`.act { width: 30px; height: 30px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; color: #6b7280; } .act:hover { background: #f3f4f6; color: #111827; } .act mat-icon { font-size: 18px; width: 18px; height: 18px; line-height: 18px; }`],
+  styles: [`.ed { cursor: pointer; } .ed:hover { outline: 1px solid #fb923c; outline-offset: -1px; } .lbl { font-size: 10.5px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: .04em; }`],
 })
 export class AccrualForecastComponent {
   store = inject(CrcStore);
-  svc = inject(AccrualForecast);
+  svc = inject(ForecastService);
   private ui = inject(UiService);
-  private dialog = inject(MatDialog);
-  private router = inject(Router);
 
   field = FIELD;
   year = FY_YEAR;
-  curMonth = CUR_MONTH;
-  comps = COMPS.map((key) => ({ key, label: COMP_LABEL[key] }));
-  months = MONTH_SHORT.map((short, i) => ({ i, short, long: MONTH_LONG[i] }));
-  open = signal<Set<string>>(new Set());
+  months = MONTHS;
+  short = MONTH_SHORT;
+  long = MONTH_LONG;
+  isActual = isActual;
+  curShort = MONTH_SHORT[CUR_MONTH];
+  curLong = MONTH_LONG[CUR_MONTH];
+  lastActualShort = MONTH_SHORT[Math.max(0, CUR_MONTH - 1)];
 
-  month = signal(CUR_MONTH);
   vendor = signal('All');
   contract = signal('All');
-  contractStatus = signal('All');
-  status = signal('All');
-  category = signal('All');
-  invoice = signal('All');
-  monthName = computed(() => MONTH_LONG[this.month()]);
+  type = signal('All');
+  q = signal('');
 
-  private scoped = computed(() => this.svc.lines.filter((l) => this.svc.settings().contractTypes.includes(l.contractType)));
-  private opts = (vals: string[], all: string) => [{ value: 'All', label: all }, ...[...new Set(vals)].map((v) => ({ value: v, label: v }))];
-  selects = computed(() => [
-    { key: 'fy', label: 'Financial year', value: signal(FY_LABEL), set: () => {}, options: [{ value: FY_LABEL, label: FY_LABEL }] },
-    { key: 'month', label: 'Month', value: this.month, set: (v: string) => this.month.set(Number(v)), options: this.months.map((m) => ({ value: String(m.i), label: m.long })) },
-    { key: 'vendor', label: 'Vendor', value: this.vendor, set: (v: string) => this.vendor.set(v), options: this.opts(this.scoped().map((l) => l.vendor), 'All vendors') },
-    { key: 'contract', label: 'Contract', value: this.contract, set: (v: string) => this.contract.set(v), options: this.opts(this.scoped().map((l) => l.contract), 'All contracts') },
-    { key: 'cs', label: 'Contract status', value: this.contractStatus, set: (v: string) => this.contractStatus.set(v), options: this.opts(this.scoped().map((l) => l.contractStatus), 'All statuses') },
-    { key: 'st', label: 'Forecast status', value: this.status, set: (v: string) => this.status.set(v), options: this.opts([...ACCRUAL_STATUSES, 'Not applicable'], 'All statuses') },
-    { key: 'cat', label: 'Resource category', value: this.category, set: (v: string) => this.category.set(v), options: this.opts(this.scoped().map((l) => l.category), 'All categories') },
-    { key: 'inv', label: 'Invoice status', value: this.invoice, set: (v: string) => this.invoice.set(v), options: this.opts(['No invoice', 'Approved', 'Issued'], 'All invoice statuses') },
-  ]);
+  vendors = computed(() => [...new Set(this.svc.accrualRows().map((r) => r.vendor))]);
+  contracts = computed(() => [...new Set(this.svc.accrualRows().filter((r) => this.vendor() === 'All' || r.vendor === this.vendor()).map((r) => r.contract.reference))]);
+  types = computed(() => [...new Set(this.svc.accrualRows().map((r) => r.contract.contractType))]);
 
-  private lines = computed(() => this.scoped().filter((l) => (this.vendor() === 'All' || l.vendor === this.vendor()) && (this.contract() === 'All' || l.contract === this.contract()) && (this.contractStatus() === 'All' || l.contractStatus === this.contractStatus()) && (this.category() === 'All' || l.category === this.category())));
-
-  rows = computed<Row[]>(() => this.lines()
-    .map((line) => {
-      const m = this.month(), cell = this.svc.cell(line.id, m), applicable = this.svc.active(line, m);
-      return { line, cell, applicable, status: applicable ? this.svc.statusOf(cell) : 'Not applicable', invoice: this.svc.invoiceState(cell), t: cell ? this.svc.totals(cell) : null };
-    })
-    .filter((r) => (this.status() === 'All' || r.status === this.status()) && (this.invoice() === 'All' || r.invoice === this.invoice())));
-
-  summary = computed(() => {
-    const rs = this.rows(), withCell = rs.filter((r) => r.cell && r.t);
-    const actual = withCell.reduce((s, r) => s + (r.t!.actual ?? 0), 0), variance = withCell.reduce((s, r) => s + (r.t!.variance ?? 0), 0);
-    const actualFor = withCell.reduce((s, r) => s + (r.t!.variance !== null ? r.t!.actual! - r.t!.variance : 0), 0);
-    return {
-      forecast: withCell.reduce((s, r) => s + r.t!.forecast, 0), actual, variance,
-      flagged: actualFor > 0 && Math.abs((variance / actualFor) * 100) > this.svc.settings().varianceThreshold,
-      contracts: new Set(rs.filter((r) => r.applicable).map((r) => r.line.contract)).size, lines: withCell.length,
-      actualized: withCell.filter((r) => r.t!.actual !== null).length, manual: withCell.filter((r) => r.cell!.manual).length, hc: withCell.reduce((s, r) => s + r.cell!.hc, 0),
-    };
+  filtered = computed(() => {
+    const q = this.q().trim().toLowerCase();
+    return this.svc.accrualRows().filter((r) => (this.vendor() === 'All' || r.vendor === this.vendor()) && (this.contract() === 'All' || r.contract.reference === this.contract()) && (this.type() === 'All' || r.contract.contractType === this.type()) && (!q || r.line.toLowerCase().includes(q)));
   });
 
-  level = (s: string) => ACCRUAL_LEVEL[s];
-  tag = (c: AccrualCell) => (COMPS.every((k) => c.actual[k] !== undefined) ? 'A' : COMPS.some((k) => c.actual[k] !== undefined) ? 'P' : c.manual ? 'M' : 'F');
-  tagLabel = (c: AccrualCell) => ({ A: 'Actual', P: 'Partial', M: 'Manual', F: 'Forecast' })[this.tag(c)] + (c.closed ? ' · closed' : '');
-  toggle(id: string) { this.open.update((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; }); }
-  clear() { this.month.set(CUR_MONTH); for (const s of [this.vendor, this.contract, this.contractStatus, this.status, this.category, this.invoice]) s.set('All'); }
+  private lines = computed<Line[]>(() => this.filtered().map((r) => {
+    const cells = MONTHS.map((m) => this.svc.cell(r, m));
+    const actual = sumOf(cells, (c) => c.actual), forecast = sumOf(cells, (c) => !c.actual);
+    return { r, cells, actual, forecast, total: actual + forecast };
+  }));
 
-  yearComp = (id: string, k: (typeof COMPS)[number]) => this.months.reduce((s, m) => { const c = this.svc.cell(id, m.i); return s + (c ? this.svc.shown(c, k) : 0); }, 0);
-  yearTotal = (id: string) => this.months.reduce((s, m) => { const c = this.svc.cell(id, m.i); return s + (c ? this.svc.shownTotal(c) : 0); }, 0);
-  monthTotal = (i: number) => this.rows().reduce((s, r) => { const c = this.svc.cell(r.line.id, i); return s + (c ? this.svc.shownTotal(c) : 0); }, 0);
-  grand = () => this.rows().reduce((s, r) => s + this.yearTotal(r.line.id), 0);
+  groups = computed(() => {
+    const out: Array<{ ref: string; vendor: string; po: string; from: string; to: string; value: number; renewal: boolean; lines: Line[]; sub: number[]; actual: number; forecast: number; total: number }> = [];
+    for (const l of this.lines()) {
+      let g = out.find((x) => x.ref === l.r.contract.reference);
+      if (!g) { const c = l.r.contract; g = { ref: c.reference, vendor: l.r.vendor, po: l.r.po, from: c.startDate, to: c.endDate, value: c.amount, renewal: c.renewalStatus === 'Renewal in progress', lines: [], sub: MONTHS.map(() => 0), actual: 0, forecast: 0, total: 0 }; out.push(g); }
+      g.lines.push(l);
+      l.cells.forEach((c, m) => (g!.sub[m] += c.value ?? 0));
+      g.actual += l.actual; g.forecast += l.forecast; g.total += l.total;
+    }
+    return out;
+  });
 
-  detail(lineId: string) { this.dialog.open(AccrualDetailDialogComponent, { data: { lineId, month: this.month() }, panelClass: 'app-dialog-panel', autoFocus: false, ...DIALOG_SIZE.wide }); }
-  viewInvoice() { this.router.navigateByUrl('/invoicing/tracking'); }
+  totals = computed(() => {
+    const ls = this.lines();
+    return { month: MONTHS.map((m) => ls.reduce((s, l) => s + (l.cells[m].value ?? 0), 0)), actual: ls.reduce((s, l) => s + l.actual, 0), forecast: ls.reduce((s, l) => s + l.forecast, 0), total: ls.reduce((s, l) => s + l.total, 0) };
+  });
 
-  generate() {
-    if (!this.ui.requires('Edit Accrual Forecast')) return;
-    const run = this.svc.generate('Manual');
-    this.ui.toast(run.result === 'Success' ? `Forecast generated. ${run.note}` : `Generation failed. ${run.note}`, 6000);
-  }
+  history = computed(() => this.svc.edits().filter((e) => e.kind === 'Accrual'));
 
-  /** AF-009/010/011: change the current-month forecast; the reason is required and the system value is kept. */
-  async edit(r: Row) {
-    if (!r.cell || !this.ui.requires('Edit Accrual Forecast')) return;
-    const c = r.cell;
+  editable = (r: AccrualRow, c: AccrualCell) => !r.feed && !c.actual && c.value !== null && this.store.can('Edit Forecast');
+  clear() { this.vendor.set('All'); this.contract.set('All'); this.type.set('All'); this.q.set(''); }
+
+  async edit(r: AccrualRow, m: number) {
+    if (!this.ui.requires('Edit Forecast')) return;
+    const c = this.svc.cell(r, m);
     const v = await this.ui.form({
-      title: 'Edit current-month forecast', subtitle: `${r.line.vendor} · ${r.line.category} · ${this.monthName()} ${this.year}. The system-generated amount is kept for audit.`, icon: 'edit', submitLabel: 'Save adjustment',
-      values: { hc: c.hc, salary: c.forecast.salary, overtime: c.forecast.overtime, performance: c.forecast.performance, other: c.forecast.other, joiners: c.moves.find((x) => x.type === 'Joiner')?.count ?? 0, joinDay: c.moves.find((x) => x.type === 'Joiner')?.day ?? 1, leavers: c.moves.find((x) => x.type === 'Leaver')?.count ?? 0, leaveDay: c.moves.find((x) => x.type === 'Leaver')?.day ?? 1, total: this.svc.totals(c).forecast },
+      title: `Forecast — ${MONTH_LONG[m]} ${FY_YEAR}`, subtitle: `${r.vendor} · ${r.contract.reference} · ${r.line}. Now ${c.value?.toLocaleString('en-GB')} OMR (${c.source}).`, icon: 'edit', submitLabel: 'Save forecast',
+      values: { amount: c.manual ? c.value : '' },
       fields: [
-        { key: 'hc', label: 'Expected resource count', type: 'number', min: 0, required: true, hint: 'A new count re-prices the salary unless you type the salary yourself.' },
-        { key: 'joiners', label: 'Joiners this month', type: 'number', min: 0, hint: 'Paid from their first day.' },
-        { key: 'joinDay', label: 'Joiners start on day', type: 'number', min: 1, max: 31 },
-        { key: 'leavers', label: 'Leavers this month', type: 'number', min: 0, hint: 'Paid up to their last day.' },
-        { key: 'leaveDay', label: 'Leavers last day', type: 'number', min: 1, max: 31 },
-        { key: 'salary', label: 'Salary (OMR)', type: 'number', min: 0, required: true },
-        { key: 'overtime', label: 'Overtime (OMR)', type: 'number', min: 0, required: true },
-        { key: 'performance', label: `${this.svc.settings().performanceLabel} (OMR)`, type: 'number', min: 0, required: true },
-        { key: 'other', label: 'Other charges (OMR)', type: 'number', min: 0, required: true },
-        ...(this.svc.settings().allowTotalOverride ? [{ key: 'total', label: 'Total forecast (OMR)', type: 'number' as const, min: 0, hint: 'Typing a new total puts the difference into other charges.' }] : []),
-        { key: 'reason', label: 'Adjustment reason', type: 'textarea', required: true, hint: 'Explain the difference between the system value and your value.' },
+        { key: 'amount', label: 'Forecast amount (OMR)', type: 'number', min: 0, hint: `Leave empty to go back to the automatic forecast (${this.svc.accrualRule().toLowerCase()}).` },
+        { key: 'reason', label: 'Reason', type: 'textarea', required: true },
       ],
     });
     if (!v) return;
-    const err = this.svc.edit(r.line.id, this.month(), { hc: num(v['hc']), salary: num(v['salary']), overtime: num(v['overtime']), performance: num(v['performance']), other: num(v['other']), joiners: num(v['joiners']), joinDay: num(v['joinDay']), leavers: num(v['leavers']), leaveDay: num(v['leaveDay']), total: v['total'] === undefined || v['total'] === null || v['total'] === '' ? undefined : num(v['total']) }, v['reason'] ?? '');
-    this.ui.toast(err ?? 'Forecast updated. The original system amount is kept in the history.', err ? 5000 : 4000);
-  }
-
-  async recalc(r: Row) {
-    if (!r.cell || !this.ui.requires('Edit Accrual Forecast')) return;
-    const warn = r.cell.manual ? '\n\nThis line was adjusted by hand — the manual values will be overwritten.' : '';
-    const ok = await this.ui.confirm({ title: 'Recalculate this forecast?', message: `${r.line.vendor} · ${r.line.category} · ${this.monthName()}\n\nThe latest resource data and last month's overtime and ${this.svc.settings().performanceLabel.toLowerCase()} will be used again.${warn}`, confirmLabel: 'Recalculate', danger: r.cell.manual });
-    if (!ok) return;
-    this.svc.recalculate(r.line.id, this.month());
-    this.ui.toast('Forecast recalculated.');
-  }
-
-  async close() {
-    if (!this.ui.requires('Close Forecast Period')) return;
-    const m = this.month();
-    if (m > CUR_MONTH) { this.ui.toast('A future month cannot be closed yet.', 5000); return; }
-    if (this.svc.cells().filter((c) => c.month === m).every((c) => c.closed)) { this.ui.toast(`${MONTH_LONG[m]} is already closed.`); return; }
-    const open = this.svc.openLines(m);
-    const ok = await this.ui.confirm({ title: `Close ${MONTH_LONG[m]} ${this.year}?`, message: `Nobody except an administrator will be able to change this month.${open ? `\n\n${open} line(s) still have forecast amounts with no invoice.` : '\n\nEvery line already has its invoice amount.'}`, confirmLabel: 'Close period', danger: open > 0 });
-    if (!ok) return;
-    const err = this.svc.closePeriod(m);
-    this.ui.toast(err ?? `${MONTH_LONG[m]} closed.`, err ? 5500 : 3000);
-  }
-
-  async approve() {
-    if (!this.ui.requires('Close Forecast Period')) return;
-    const m = this.month();
-    const ok = await this.ui.confirm({ title: `Approve ${MONTH_LONG[m]} ${this.year}?`, message: 'The period is locked for editing and can then be closed.', confirmLabel: 'Approve period', icon: 'verified' });
-    if (!ok) return;
-    const err = this.svc.approvePeriod(m);
-    this.ui.toast(err ?? `${MONTH_LONG[m]} approved.`, err ? 5500 : 3000);
-  }
-
-  confirmGeneration() {
-    if (!this.ui.requires('Edit Accrual Forecast')) return;
-    const r = this.svc.confirmPending();
-    if (r) this.ui.toast(r.result === 'Success' ? `Forecast generated. ${r.note}` : `Generation failed. ${r.note}`, 6000);
-  }
-
-  exportExcel() {
-    if (!this.ui.requires('Export Forecast')) return;
-    const f = [this.vendor() !== 'All' && 'Vendor: ' + this.vendor(), this.contract() !== 'All' && 'Contract: ' + this.contract(), this.contractStatus() !== 'All' && 'Contract status: ' + this.contractStatus(), this.category() !== 'All' && 'Category: ' + this.category(), this.status() !== 'All' && 'Forecast status: ' + this.status(), this.invoice() !== 'All' && 'Invoice status: ' + this.invoice()].filter(Boolean).join('; ');
-    this.svc.exportExcel(this.rows().map((r) => r.line), f);
+    const amount = v['amount'] === '' || v['amount'] === null || v['amount'] === undefined ? null : Number(v['amount']);
+    const err = this.svc.setAccrual(r, m, amount, v['reason'] ?? '');
+    this.ui.toast(err ?? 'Forecast saved.', err ? 5000 : 3000);
   }
 }
