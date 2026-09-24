@@ -70,8 +70,8 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
             <h3 class="text-xs font-semibold uppercase tracking-wide text-ink-500 mb-3">Leave Code Legend</h3>
             <div class="flex flex-wrap gap-2">
               @for (l of legend; track l.code) {
-                <span class="text-xs bg-surface-subtle border border-surface-border rounded-full px-3 py-1">
-                  <span class="font-semibold">{{ l.code }}</span> &mdash; {{ l.meaning }}@if (l.notes) {<span class="text-ink-400"> ({{ l.notes }})</span>}
+                <span class="text-xs rounded-full px-3 py-1" [class]="style(l.code)">
+                  <span class="font-semibold">{{ l.code }}</span> &mdash; {{ l.meaning }}@if (l.notes) {<span class="opacity-70"> ({{ l.notes }})</span>}
                 </span>
               }
             </div>
