@@ -61,17 +61,22 @@ const TX_SEED: Record<string, Array<[number, number]>> = {
 
 export interface Team { name: string; po: string; budget: number[]; approvedHc: number | null; from: number }
 export interface TeamMonth { hc: number | null; amount: number | null }
-/** "Budget Forecasting By Team.xlsx" (PO 325100185): monthly approved budget, approved head count, and Jan–Aug head count / amount. */
+/**
+ * "Budget Forecasting By Team.xlsx" (PO 325100185): monthly approved budget and head count, and the head count / amount of every month
+ * exactly as in the sheet (Jan–Aug actual, Sep–Dec forecast). The sheet has no Sep–Dec for Revenue; its saving table counts those
+ * months as zero saving, so Revenue is forecast at its approved budget.
+ */
+const x4 = (v: number) => [v, v, v, v];
 const TEAM_SEED: Array<{ name: string; budget: number[]; approvedHc: number | null; hc: number[]; amount: number[]; from?: number }> = [
-  { name: 'Revenue', budget: fill([58812.909]), approvedHc: 94, hc: [96, 94, 92, 92, 90, 91, 91, 90], amount: [57575.148, 56995, 55459.52, 53941.929, 53369.552, 54768.341, 53714.294, 51659.374] },
-  { name: 'Debt Recovery', budget: fill([5522.259]), approvedHc: 9, hc: [8, 9, 9, 9, 9, 9, 9, 9], amount: [5127.381, 4986.502, 5008.895, 5585.26, 5505.26, 4857.685, 5434.507, 5334.507] },
-  { name: 'Support/Project (RTM) + Technical Team', budget: fill([4295.704]), approvedHc: 5, hc: [5, 5, 5, 5, 5, 6, 9, 11], amount: [3726.498, 4835.573, 4453.613, 4452.49, 4618.384, 5097.354, 7393.395, 7915.999] },
-  { name: 'Complaints', budget: fill([10474.073]), approvedHc: 15, hc: [17, 17, 18, 18, 19, 19, 20, 20], amount: [11156.484, 12301.211, 12313.882, 12279.585, 12774.288, 12724.29, 13257.786, 13207.786] },
-  { name: 'GM Assistant', budget: fill([572.7025]), approvedHc: 1, hc: fill([1]).slice(0, 8), amount: fill([649.053]).slice(0, 8) },
-  { name: 'Agent Experience', budget: fill([10914.439]), approvedHc: 16, hc: [9, 15, 15, 15, 15, 16, 14, 13], amount: [5955.178, 10288.229, 10311.2, 10411.2, 10446.2, 11113.037, 10064.765, 8923.139] },
-  { name: 'HR', budget: fill([611.024, 611.024, 611.024, 611.024, 611.024, 601.024]), approvedHc: null, hc: fill([1]).slice(0, 8), amount: [611.024, 611.024, 611.024, 611.024, 611.024, 601.024, 601.024, 601.024] },
-  { name: 'TRA + Hotline', budget: fill([2725.145]), approvedHc: 4, hc: [3, 4, 5, 5, 5, 4, 4, 4], amount: [2098.443, 3286, 3463.008, 3533.008, 3533.008, 2858.144, 2872.082, 2994.795] },
-  { name: 'New outsourced joined CE', budget: MONTHS.map((m) => (m >= 6 ? 20201.87 : 0)), approvedHc: null, hc: [0, 0, 0, 0, 0, 0, 29, 29], amount: [0, 0, 0, 0, 0, 0, 20201.87, 20201.87], from: 6 },
+  { name: 'Revenue', budget: fill([58812.909]), approvedHc: 94, hc: [96, 94, 92, 92, 90, 91, 91, 90, ...x4(94)], amount: [57575.148, 56995, 55459.52, 53941.929, 53369.552, 54768.341, 53714.294, 51659.374, ...x4(58812.909)] },
+  { name: 'Debt Recovery', budget: fill([5522.259]), approvedHc: 9, hc: [8, 9, 9, 9, 9, 9, 9, 9, ...x4(9)], amount: [5127.381, 4986.502, 5008.895, 5585.26, 5505.26, 4857.685, 5434.507, 5334.507, ...x4(4857.685)] },
+  { name: 'Support/Project (RTM) + Technical Team', budget: fill([4295.704]), approvedHc: 5, hc: [5, 5, 5, 5, 5, 6, 9, 11, ...x4(5)], amount: [3726.498, 4835.573, 4453.613, 4452.49, 4618.384, 5097.354, 7393.395, 7915.999, ...x4(5097.354)] },
+  { name: 'Complaints', budget: fill([10474.073]), approvedHc: 15, hc: [17, 17, 18, 18, 19, 19, 20, 20, ...x4(18)], amount: [11156.484, 12301.211, 12313.882, 12279.585, 12774.288, 12724.29, 13257.786, 13207.786, ...x4(12133.266)] },
+  { name: 'GM Assistant', budget: fill([572.7025]), approvedHc: 1, hc: fill([1]), amount: fill([649.053]) },
+  { name: 'Agent Experience', budget: fill([10914.439]), approvedHc: 16, hc: [9, 15, 15, 15, 15, 16, 14, 13, ...x4(16)], amount: [5955.178, 10288.229, 10311.2, 10411.2, 10446.2, 11113.037, 10064.765, 8923.139, ...x4(11113.037)] },
+  { name: 'HR', budget: fill([611.024, 611.024, 611.024, 611.024, 611.024, 601.024]), approvedHc: null, hc: fill([1]), amount: fill([611.024, 611.024, 611.024, 611.024, 611.024, 601.024]) },
+  { name: 'TRA + Hotline', budget: fill([2725.145]), approvedHc: 4, hc: [3, 4, 5, 5, 5, 4, 4, 4, ...x4(5)], amount: [2098.443, 3286, 3463.008, 3533.008, 3533.008, 2858.144, 2872.082, 2994.795, ...x4(3533.008)] },
+  { name: 'New outsourced joined CE', budget: MONTHS.map((m) => (m >= 6 ? 20201.87 : 0)), approvedHc: null, hc: MONTHS.map((m) => (m >= 6 ? 29 : 0)), amount: MONTHS.map((m) => (m >= 6 ? 20201.87 : 0)), from: 6 },
 ];
 const SALARY_PO = '325100185';
 
@@ -133,7 +138,7 @@ export class ForecastService {
   readonly teams = signal<Team[]>(TEAM_SEED.map((t) => ({ name: t.name, po: SALARY_PO, budget: t.budget, approvedHc: t.approvedHc, from: t.from ?? 0 })));
   /** Actual months are the seed; forecast months start empty (null) and fall back to the last actual head count × its cost per head. */
   readonly teamMonths = signal<Record<string, TeamMonth[]>>(
-    Object.fromEntries(TEAM_SEED.map((t) => [t.name, MONTHS.map((m) => (isActual(m) ? { hc: t.hc[m] ?? 0, amount: t.amount[m] ?? 0 } : { hc: null, amount: null }))])),
+    Object.fromEntries(TEAM_SEED.map((t) => [t.name, MONTHS.map((m) => ({ hc: t.hc[m] ?? 0, amount: t.amount[m] ?? 0 }))])),
   );
   private lastActual(team: string) {
     const ms = this.teamMonths()[team] ?? [];
@@ -150,7 +155,8 @@ export class ForecastService {
     const la = this.lastActual(team);
     return r3(this.teamHc(team, m) * la.perHead);
   };
-  teamManual = (team: string, m: number) => !isActual(m) && this.started(team, m) && (this.teamMonths()[team]?.[m]?.hc != null || this.teamMonths()[team]?.[m]?.amount != null);
+  readonly teamChanged = signal<Set<string>>(new Set());
+  teamManual = (team: string, m: number) => this.teamChanged().has(team + '|' + m);
   teamMonthTotal = (m: number) => this.teams().reduce((s, t) => s + this.teamAmount(t.name, m), 0);
   readonly teamSummary = computed(() => {
     const ts = this.teams();
@@ -172,6 +178,7 @@ export class ForecastService {
     const nextAmt = amount ?? r3(hc * this.lastActual(team).perHead);
     if (fromHc === hc && fromAmt === nextAmt) return 'Nothing was changed.';
     this.teamMonths.update((all) => ({ ...all, [team]: all[team].map((c, i) => (i === m ? { hc, amount: nextAmt } : c)) }));
+    this.teamChanged.update((set) => new Set(set).add(team + '|' + m));
     if (fromHc !== hc) this.record('Team', team, m, 'Head count', fromHc, hc, reason);
     if (fromAmt !== nextAmt) this.record('Team', team, m, 'Amount', fromAmt, nextAmt, reason);
     return null;
