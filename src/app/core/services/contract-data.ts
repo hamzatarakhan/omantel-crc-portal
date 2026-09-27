@@ -31,7 +31,7 @@ export const addMonths = (iso: string, n: number) => {
   return d.toISOString().slice(0, 10);
 };
 const diffDays = (a: string, b: string) => Math.round((parse(a).getTime() - parse(b).getTime()) / DAY);
-const minIso = (a: string, b: string) => (a < b ? a : b);
+export const minIso = (a: string, b: string) => (a < b ? a : b);
 
 export function hash(s: string): number {
   let h = 0;

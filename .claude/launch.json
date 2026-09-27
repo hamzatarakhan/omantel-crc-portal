@@ -4,8 +4,14 @@
     {
       "name": "omantel-crc-portal",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["start"],
-      "port": 4200
+      "runtimeArgs": [
+        "start",
+        "--",
+        "--port",
+        "4300"
+      ],
+      "port": 4300,
+      "autoPort": false
     },
     {
       "name": "omantel-crc-portal-running",

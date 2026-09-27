@@ -86,7 +86,7 @@ const TH = 'px-3 py-2.5 font-medium';
             <thead><tr class="bg-surface-subtle text-left text-xs text-ink-500 uppercase tracking-wide"><th [class]="th">When</th><th [class]="th">By</th><th [class]="th">Type</th><th [class]="th">Month</th><th [class]="th + ' text-right'">From</th><th [class]="th + ' text-right'">To</th><th [class]="th">Reason</th></tr></thead>
             <tbody>
               @for (e of history(); track e.id) {
-                <tr class="border-t border-surface-border"><td class="px-3 py-2 whitespace-nowrap">{{ e.at | date:'d MMM, HH:mm' }}</td><td class="px-3 py-2">{{ e.by }}</td><td class="px-3 py-2">{{ e.item }}</td><td class="px-3 py-2">{{ long[e.month] }}</td><td class="px-3 py-2 text-right">{{ e.from | number:'1.0-2' }}</td><td class="px-3 py-2 text-right font-semibold">{{ e.to | number:'1.0-2' }}</td><td class="px-3 py-2 text-ink-600">{{ e.reason }}</td></tr>
+                <tr class="border-t border-surface-border"><td class="px-3 py-2 whitespace-nowrap">{{ e.at | date:'d MMM, HH:mm' }}</td><td class="px-3 py-2">{{ e.by }}</td><td class="px-3 py-2">{{ e.item }}</td><td class="px-3 py-2">{{ svc.monthLabelOf(e.month) }}</td><td class="px-3 py-2 text-right">{{ e.from | number:'1.0-2' }}</td><td class="px-3 py-2 text-right font-semibold">{{ e.to | number:'1.0-2' }}</td><td class="px-3 py-2 text-ink-600">{{ e.reason }}</td></tr>
               } @empty { <tr><td colspan="7" class="px-4 py-10 text-center text-sm text-ink-400">No transaction forecast has been changed yet.</td></tr> }
             </tbody>
           </table>

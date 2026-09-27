@@ -1,7 +1,7 @@
 import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 import { CURRENT_USER, CrcStore } from './crc-store.service';
-import { UiService } from '../../shared/services/ui.service';
-import { childRecordsFor, infolineFirst } from './contract-data';
+import { UiService, XCell, XSheet } from '../../shared/services/ui.service';
+import { addDays, addMonths, childRecordsFor, infolineFirst, minIso, yearlyBudgetFor } from './contract-data';
 import { Contract } from '../models/domain';
 
 /**
@@ -23,7 +23,8 @@ export const isActual = (m: number) => m < CUR_MONTH;
 
 export type ForecastKind = 'Accrual' | 'Team' | 'Transaction';
 
-export interface ForecastEdit { id: string; at: string; by: string; kind: ForecastKind; item: string; month: number; field: string; from: number | null; to: number | null; reason: string }
+/** month: a calendar-FY index (Team/Transaction) or an ISO month-start date (Accrual — its lines run on their own contract-year, not the FY). */
+export interface ForecastEdit { id: string; at: string; by: string; kind: ForecastKind; item: string; month: number | string; field: string; from: number | null; to: number | null; reason: string }
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Seed data — the figures in Omantel's sheets (FY2026). Months after the sheet's last value repeat it.
@@ -82,19 +83,30 @@ const SALARY_PO = '325100185';
 
 // ---------------------------------------------------------------------------------------------------------------------
 export interface AccrualRow {
+  /** Shared with the Reconciliation/payable-line key (`ref|L<n>`) so an approved invoice actualizes the right line. */
   key: string;
+  /** Unique per contract-year line, for template `track` (two contract-years can share the same `key`). */
+  id: string;
   vendor: string;
   contract: Contract;
   po: string;
+  year: number;
+  yearLabel: string;
+  yearFrom: string;
+  yearTo: string;
+  lineNo: number;
   line: string;
+  scope: string;
+  /** The Yearly Budget line's approved amount (CRC override if set, else the ERP-estimated allocation). */
+  budget: number;
 }
-/** value: what the month shows (actual if invoiced, else forecast); null = outside the contract. awaiting = a past month whose invoice is not approved yet. */
-export interface AccrualCell { value: number | null; forecast: number | null; actual: boolean; awaiting: boolean; renewal: boolean; source: string }
+/** value: what the month shows (actual if invoiced, else forecast). awaiting = a past month whose invoice is not approved yet. */
+export interface AccrualCell { value: number | null; forecast: number | null; actual: boolean; awaiting: boolean; source: string }
 
 const r3 = (n: number) => Math.round(n * 1000) / 1000;
-const monthStart = (m: number) => `${FY_YEAR}-${String(m + 1).padStart(2, '0')}-01`;
-const monthEnd = (m: number) => new Date(Date.UTC(FY_YEAR, m + 1, 0)).toISOString().slice(0, 10);
 const hash = (s: string) => { let h = 0; for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) | 0; return Math.abs(h); };
+/** The ISO start-of-month date containing today, for splitting a line's real months into actual (past) vs. forecast. */
+const todayMonthStart = () => { const d = new Date(); return new Date(Date.UTC(d.getFullYear(), d.getMonth(), 1)).toISOString().slice(0, 10); };
 
 @Injectable({ providedIn: 'root' })
 export class ForecastService {
@@ -214,19 +226,43 @@ export class ForecastService {
   }
 
   // ================= Accrual =================
-  /** Every PO line of every contract running in the financial year. */
+  /** Every Yearly Budget line of every contract-year of every active contract. The UI scopes down to one contract + one year at a time. */
   readonly accrualRows = computed<AccrualRow[]>(() => {
-    const fyStart = monthStart(0), fyEnd = monthEnd(11);
+    const approvals = this.store.yearlyBudgetApprovals();
     return this.store.contracts()
-      .filter((c) => c.status !== 'Cancelled' && c.startDate <= fyEnd && (c.endDate >= fyStart || c.renewalStatus === 'Renewal in progress'))
+      .filter((c) => c.status !== 'Cancelled')
       .sort((a, b) => infolineFirst(a.vendorName, b.vendorName) || a.reference.localeCompare(b.reference))
-      .flatMap((c) => childRecordsFor(c).filter((k) => k.recordType === 'Variation Order').map((k, i) => ({ key: `${c.reference}|L${i + 1}`, vendor: c.vendorName, contract: c, po: c.poNumber ?? '', line: k.description })));
+      .flatMap((c) => yearlyBudgetFor(c, childRecordsFor(c)).flatMap((y) => y.lines.map((l): AccrualRow => ({
+        key: `${c.reference}|L${l.line}`,
+        id: `${c.reference}|Y${y.year}|L${l.line}`,
+        vendor: c.vendorName,
+        contract: c,
+        po: c.poNumber ?? '',
+        year: y.year,
+        yearLabel: y.description,
+        yearFrom: y.startDate,
+        yearTo: y.endDate,
+        lineNo: l.line,
+        line: l.description,
+        scope: l.scope,
+        budget: approvals[`${c.id}:Y${y.year}:L${l.line}`] ?? l.allocated,
+      }))));
   });
 
-  /** Actual amounts: the invoices approved so far (seeded history) plus every line approved for payment in Reconciliation. */
-  readonly actuals = signal<Record<string, Record<number, number>>>({});
-  /** The yearly forecast: entered once a year per line and month (null = not entered). */
-  readonly plan = signal<Record<string, Array<number | null>>>({});
+  /** The real calendar months (as ISO month-start dates) this line's own contract-year spans — not a fixed financial year. */
+  monthsOf(r: AccrualRow): string[] {
+    const out: string[] = [];
+    for (let s = r.yearFrom; s <= r.yearTo; s = addMonths(r.yearFrom, out.length)) out.push(s);
+    return out;
+  }
+  monthLabel(monthIso: string): string { const d = new Date(monthIso); return `${MONTH_LONG[d.getUTCMonth()]} ${d.getUTCFullYear()}`; }
+  monthShortLabel(monthIso: string): string { const d = new Date(monthIso); return `${MONTH_SHORT[d.getUTCMonth()]} ${d.getUTCFullYear()}`; }
+  monthLabelOf(month: number | string): string { return typeof month === 'number' ? MONTH_LONG[month] : this.monthLabel(month); }
+
+  /** Actual amounts: the invoices approved so far (seeded history) plus every line approved for payment in Reconciliation. Keyed by row key, then the real month-start ISO date. */
+  readonly actuals = signal<Record<string, Record<string, number>>>({});
+  /** The forecast entered for the line, keyed the same way; a missing entry means not entered yet. */
+  readonly plan = signal<Record<string, Record<string, number>>>({});
 
   constructor() {
     const rows = this.accrualRows();
@@ -239,35 +275,70 @@ export class ForecastService {
         for (const run of Object.values(runs).flat()) {
           if (run.status !== 'Approved for payment') continue;
           const d = new Date('1 ' + run.period), l = run.lines[0];
-          if (isNaN(+d) || d.getFullYear() !== FY_YEAR || !l) continue;
-          const m = d.getMonth();
-          if (this.actuals()[l.key]?.[m] === l.vendorAmount) continue;
-          this.actuals.update((a) => ({ ...a, [l.key]: { ...(a[l.key] ?? {}), [m]: l.vendorAmount } }));
-          this.store.log('Accrual Actualized', `${l.key.split('|')[0]} · ${l.label}`, `${MONTH_LONG[m]} forecast replaced by the approved invoice amount ${l.vendorAmount.toLocaleString('en-GB')} OMR.`);
+          if (isNaN(+d) || !l) continue;
+          const monthIso = new Date(Date.UTC(d.getFullYear(), d.getMonth(), 1)).toISOString().slice(0, 10);
+          if (this.actuals()[l.key]?.[monthIso] === l.vendorAmount) continue;
+          this.actuals.update((a) => ({ ...a, [l.key]: { ...(a[l.key] ?? {}), [monthIso]: l.vendorAmount } }));
+          this.store.log('Accrual Actualized', `${l.key.split('|')[0]} · ${l.label}`, `${this.monthLabel(monthIso)} forecast replaced by the approved invoice amount ${l.vendorAmount.toLocaleString('en-GB')} OMR.`);
         }
       });
     });
   }
 
-  inPeriod = (c: Contract, m: number) => c.startDate <= monthEnd(m) && c.endDate >= monthStart(m);
-  private renewal = (c: Contract, m: number) => !this.inPeriod(c, m) && c.renewalStatus === 'Renewal in progress' && c.startDate <= monthEnd(m);
-  private open = (r: AccrualRow, m: number) => this.inPeriod(r.contract, m) || this.renewal(r.contract, m);
   private monthlyShare(r: AccrualRow) {
-    const c = r.contract, months = Math.max(1, Math.round((new Date(c.endDate).getTime() - new Date(c.startDate).getTime()) / 2629800000));
-    const lines = this.accrualRows().filter((x) => x.contract.reference === c.reference).length || 1;
-    return r3(c.amount / months / lines);
+    return r3(r.budget / Math.max(1, this.monthsOf(r).length));
   }
-  private sheetBase(r: AccrualRow, m: number) {
+  /** Months from today until this contract-year line's expiry (its own end date, not the whole contract's). */
+  monthsUntilExpiry(r: AccrualRow): number {
+    const now = new Date(), end = new Date(r.yearTo);
+    return Math.max(0, (end.getFullYear() - now.getFullYear()) * 12 + (end.getMonth() - now.getMonth()));
+  }
+  /** Approved budget left for this line once actuals and forecast (or a draft override) for its months are counted. */
+  remainingWithDraft(r: AccrualRow, draft?: Record<string, number>): number {
+    let total = 0;
+    for (const m of this.monthsOf(r)) {
+      const act = this.actuals()[r.key]?.[m];
+      total += act !== undefined ? act : (draft?.[m] ?? this.forecastOf(r, m) ?? 0);
+    }
+    return r3(r.budget - total);
+  }
+  /**
+   * The line's spending pace from its history: the average of the months already invoiced, projected over the months still open,
+   * checked against the approved budget. runsOut = the first open month the budget no longer covers at that pace.
+   */
+  pace(r: AccrualRow) {
+    const months = this.monthsOf(r), acts = this.actuals()[r.key] ?? {};
+    const done = months.filter((m) => acts[m] !== undefined), open = months.filter((m) => acts[m] === undefined);
+    const spent = r3(done.reduce((t, m) => t + acts[m], 0)), left = r3(r.budget - spent);
+    if (!done.length) return { status: 'none' as const, avg: null, done: 0, open: open.length, spent, left, projected: null, gap: null, runsOut: null as string | null };
+    const avg = r3(spent / done.length), projected = r3(spent + avg * open.length), gap = r3(r.budget - projected);
+    const covered = avg > 0 ? Math.floor(Math.max(0, left) / avg) : open.length;
+    const runsOut = covered < open.length ? open[covered] : null;
+    const status = !open.length ? (left < -0.001 ? 'short' as const : 'ok' as const) : gap < -0.001 ? 'short' as const : 'ok' as const;
+    return { status, avg, done: done.length, open: open.length, spent, left, projected, gap, runsOut };
+  }
+  /** On-screen flag: projects the open months at the invoiced-so-far average and says if the approved budget is not enough. */
+  runRate(r: AccrualRow): { over: boolean; message: string } | null {
+    const p = this.pace(r);
+    if (p.avg === null || !p.open) return null;
+    const f = (n: number) => n.toLocaleString('en-GB', { maximumFractionDigits: 0 });
+    const over = p.status === 'short';
+    return { over, message: over ? `At the average pace so far (${f(p.avg)} OMR/month), the projected total is ${f(p.projected!)} OMR — ${f(-p.gap!)} OMR over the ${f(r.budget)} OMR approved budget${p.runsOut ? `; the budget runs out in ${this.monthLabel(p.runsOut)}` : ''}.` : `On track — projected ${f(p.projected!)} of ${f(r.budget)} OMR approved.` };
+  }
+  private sheetBase(r: AccrualRow, monthIso: string) {
     const sheet = r.contract.reference === INFOLINE_REF ? PER_LINE[norm(r.line)] : undefined;
-    return sheet ? fill(sheet)[m] : r.contract.reference === INFOLINE_REF ? 0 : this.monthlyShare(r);
+    const i = this.monthsOf(r).indexOf(monthIso);
+    return sheet ? fill(sheet)[i] : r.contract.reference === INFOLINE_REF ? 0 : this.monthlyShare(r);
   }
 
+  /** Two contract-years share a row `key` (see AccrualRow.id); their real months never collide, so merge rather than overwrite. */
   private seedActuals(rows: AccrualRow[]) {
-    const out: Record<string, Record<number, number>> = {};
+    const today = todayMonthStart();
+    const out: Record<string, Record<string, number>> = {};
     for (const r of rows) {
-      const hist: Record<number, number> = {};
-      for (const m of MONTHS.filter(isActual)) {
-        if (!this.open(r, m)) continue;
+      const hist: Record<string, number> = out[r.key] ?? {};
+      for (const m of this.monthsOf(r)) {
+        if (m >= today) continue;
         hist[m] = r.contract.reference === INFOLINE_REF ? this.sheetBase(r, m) : r3(this.sheetBase(r, m) * (0.94 + (hash(r.key + m) % 13) / 100));
       }
       out[r.key] = hist;
@@ -277,42 +348,60 @@ export class ForecastService {
 
   /** The forecast the team entered at the start of the year: a figure per month, rounded like a hand-made plan. */
   private seedPlan(rows: AccrualRow[]) {
-    const out: Record<string, Array<number | null>> = {};
+    const out: Record<string, Record<string, number>> = {};
     for (const r of rows) {
-      out[r.key] = MONTHS.map((m) => {
-        if (!this.open(r, m)) return null;
+      const hist: Record<string, number> = out[r.key] ?? {};
+      for (const m of this.monthsOf(r)) {
         const base = this.sheetBase(r, m), step = base >= 1000 ? 100 : 10;
-        return Math.round((base * (0.95 + (hash(r.key + 'p' + m) % 11) / 100)) / step) * step;
-      });
+        hist[m] = Math.round((base * (0.95 + (hash(r.key + 'p' + m) % 11) / 100)) / step) * step;
+      }
+      out[r.key] = hist;
     }
     return out;
   }
 
-  forecastOf(r: AccrualRow, m: number): number | null {
-    return this.plan()[r.key]?.[m] ?? null;
+  forecastOf(r: AccrualRow, monthIso: string): number | null {
+    return this.plan()[r.key]?.[monthIso] ?? null;
+  }
+
+  /** Resolves the right contract-year row for a shared key + month (two years can share a key; a real month can only ever belong to one). */
+  rowFor(key: string, monthIso: string): AccrualRow | undefined {
+    const candidates = this.accrualRows().filter((r) => r.key === key);
+    return candidates.find((r) => this.monthsOf(r).includes(monthIso)) ?? candidates[0];
   }
 
   /** What one line shows in one month: the approved invoice amount once there is one, otherwise the forecast. */
-  cell(r: AccrualRow, m: number): AccrualCell {
-    if (!this.open(r, m)) return { value: null, forecast: null, actual: false, awaiting: false, renewal: false, source: 'Outside the contract period' };
-    const renewal = this.renewal(r.contract, m), forecast = this.forecastOf(r, m), act = this.actuals()[r.key]?.[m];
+  cell(r: AccrualRow, monthIso: string): AccrualCell {
+    const forecast = this.forecastOf(r, monthIso), act = this.actuals()[r.key]?.[monthIso];
     const f = (n: number) => n.toLocaleString('en-GB', { maximumFractionDigits: 3 });
-    if (act !== undefined) return { value: act, forecast, actual: true, awaiting: false, renewal, source: `Actual — approved invoice ${f(act)} OMR` + (forecast !== null ? ` · forecast was ${f(forecast)} (${act - forecast >= 0 ? '+' : ''}${f(r3(act - forecast))})` : '') };
-    const awaiting = m < CUR_MONTH;
-    return { value: forecast ?? 0, forecast, actual: false, awaiting, renewal, source: (forecast === null ? 'No forecast entered' : 'Yearly forecast') + (awaiting ? ' · invoice not approved yet' : '') };
+    if (act !== undefined) return { value: act, forecast, actual: true, awaiting: false, source: `Actual — approved invoice ${f(act)} OMR` + (forecast !== null ? ` · forecast was ${f(forecast)} (${act - forecast >= 0 ? '+' : ''}${f(r3(act - forecast))})` : '') };
+    const awaiting = monthIso < todayMonthStart();
+    return { value: forecast ?? 0, forecast, actual: false, awaiting, source: (forecast === null ? 'No forecast entered' : 'Yearly forecast') + (awaiting ? ' · invoice not approved yet' : '') };
   }
 
   /** Saves the yearly forecast typed on the Accrual screen. Months with an approved invoice are skipped. */
-  setPlan(changes: Array<{ r: AccrualRow; m: number; value: number }>, note: string): string | null {
-    const ok = changes.filter(({ r, m }) => this.open(r, m) && this.actuals()[r.key]?.[m] === undefined);
+  setPlan(changes: Array<{ r: AccrualRow; m: string; value: number }>, note: string): string | null {
+    const ok = changes.filter(({ r, m }) => this.monthsOf(r).includes(m) && this.actuals()[r.key]?.[m] === undefined);
     if (ok.some((c) => !isFinite(c.value) || c.value < 0)) return 'Amounts cannot be negative.';
     const real = ok.filter((c) => (this.plan()[c.r.key]?.[c.m] ?? null) !== c.value);
     if (!real.length) return 'Nothing was changed.';
+    // A row key can be shared by two contract-years (see AccrualRow.id); check each year's own budget against only its own months.
+    // Blocks only edits that push the line further over its budget — a line already over budget from actuals alone can still be adjusted, just not made worse.
+    const allRows = this.accrualRows();
+    for (const key of new Set(real.map((c) => c.r.key))) {
+      const changesForKey = real.filter((c) => c.r.key === key);
+      for (const r of allRows.filter((x) => x.key === key)) {
+        const draft = Object.fromEntries(changesForKey.filter((c) => this.monthsOf(r).includes(c.m)).map((c) => [c.m, c.value]));
+        if (!Object.keys(draft).length) continue;
+        const before = this.remainingWithDraft(r), after = this.remainingWithDraft(r, draft);
+        if (after < before - 0.001 && after < -0.001) return `${r.line} (${r.yearLabel.split(' — ')[0]}) would exceed its approved budget of ${r.budget.toLocaleString('en-GB')} OMR.`;
+      }
+    }
     if (!note.trim()) return 'Enter a note for this forecast (for example "FY forecast" or the reason for the change).';
     const before = real.map((c) => this.plan()[c.r.key]?.[c.m] ?? null);
     this.plan.update((p) => {
       const n = { ...p };
-      for (const c of real) { n[c.r.key] = [...(n[c.r.key] ?? MONTHS.map(() => null))]; n[c.r.key][c.m] = c.value; }
+      for (const c of real) n[c.r.key] = { ...(n[c.r.key] ?? {}), [c.m]: c.value };
       return n;
     });
     real.forEach((c, i) => this.record('Accrual', `${c.r.contract.reference} · ${c.r.line}`, c.m, 'Forecast', before[i], c.value, note, false));
@@ -330,24 +419,116 @@ export class ForecastService {
     return changes.length;
   }
 
-  private record(kind: ForecastKind, item: string, month: number, field: string, from: number | null, to: number | null, reason: string, log = true) {
+  private record(kind: ForecastKind, item: string, month: number | string, field: string, from: number | null, to: number | null, reason: string, log = true) {
     const e: ForecastEdit = { id: this.id('FE'), at: new Date().toISOString(), by: CURRENT_USER, kind, item, month, field, from, to, reason: reason.trim() };
     this.edits.update((l) => [e, ...l]);
     const f = (n: number | null) => (n === null ? '—' : n.toLocaleString('en-GB', { maximumFractionDigits: 3 }));
-    if (log) this.store.log(`${kind} Forecast Updated`, `${item} · ${MONTH_LONG[month]}`, `${field}: ${f(from)} → ${f(to)}. Reason: ${e.reason}`);
+    if (log) this.store.log(`${kind} Forecast Updated`, `${item} · ${this.monthLabelOf(month)}`, `${field}: ${f(from)} → ${f(to)}. Reason: ${e.reason}`);
   }
 
   // ================= Excel exports (same layout as the sheets) =================
+  /**
+   * Excel export in the layout of Omantel's own accrual sheet ("Per Line"): gold header, supplier / contract / PO merged per contract,
+   * dated month columns, actual months plain and forecast months tinted. Adds the pace indicator: at the average of the invoiced
+   * months, is the approved budget enough for the months still open, and in which month does it run out.
+   */
   exportAccrual(rows: AccrualRow[]) {
-    const money = (n: number | null) => (n === null ? '' : r3(n));
-    const head = (r: AccrualRow) => ({ Vendor: r.vendor, Contract: r.contract.reference, 'Contract type': r.contract.contractType, 'Scope of work': r.line, 'PO no.': r.po, From: r.contract.startDate, To: r.contract.endDate, 'Contract value': r.contract.amount });
-    const out = rows.map((r) => {
-      const cells = MONTHS.map((m) => this.cell(r, m));
-      const actual = cells.filter((c) => c.actual).reduce((s, c) => s + (c.value ?? 0), 0), remaining = cells.filter((c) => !c.actual).reduce((s, c) => s + (c.value ?? 0), 0);
-      return { ...head(r), ...Object.fromEntries(MONTHS.map((m) => [`${MONTH_SHORT[m]} ${FY_YEAR}${cells[m].actual ? '' : ' (F)'}`, money(cells[m].value)])), 'Yearly forecast': r3(cells.reduce((s, c) => s + (c.forecast ?? 0), 0)), 'Actual (approved)': r3(actual), 'Expected year total': r3(actual + remaining) };
-    });
-    const plan = rows.map((r) => ({ ...head(r), ...Object.fromEntries(MONTHS.map((m) => [`${MONTH_SHORT[m]} ${FY_YEAR}`, money(this.cell(r, m).forecast)])) }));
-    return this.save('Accrual_Forecast', 'Accrual Forecast', out, 'Each month shows the approved invoice amount, or the forecast (F) until the invoice is approved. The Yearly Forecast sheet keeps the forecast of every month.', [{ name: 'Yearly Forecast', rows: plan }]);
+    if (!rows.length) { this.ui.toast('Nothing to export.'); return undefined; }
+    const f0 = (n: number) => n.toLocaleString('en-GB', { maximumFractionDigits: 0 });
+    const months = [...new Set(rows.flatMap((r) => this.monthsOf(r)))].sort();
+    const yr = (r: AccrualRow) => r.yearLabel.split(' — ')[0];
+    const lead = ['SUPPLIER NAME', 'CONTRACT', 'PO NO.', 'CONTRACT TYPE', 'SCOPE OF WORK', 'YEAR OF BUDGET', 'FROM', 'TO', 'APPROVED BUDGET'];
+    const tail = ['ACTUAL (APPROVED INVOICES)', 'FORECAST (OPEN MONTHS)', 'EXPECTED TOTAL', 'REMAINING BUDGET', 'AVG MONTHLY SPEND (HISTORY)', 'PROJECTED TOTAL AT THIS PACE', 'BUDGET RUNS OUT IN', 'INDICATOR — IS THE BUDGET ENOUGH AT THE CURRENT PACE?'];
+    const monthHead: XCell[] = months.map((m) => ({ v: m, s: 'headDate', date: true }));
+    const indicator = (r: AccrualRow): XCell => {
+      const p = this.pace(r);
+      if (p.avg === null) return { v: 'No invoice yet — no history to project from.', s: 'none' };
+      if (!p.open) return p.left < -0.001 ? { v: `Year complete — over the approved budget by ${f0(-p.left)} OMR.`, s: 'short' } : { v: `Year complete — within budget (${f0(p.left)} OMR unused).`, s: 'ok' };
+      if (p.left < -0.001) return { v: `NOT ENOUGH — the budget is already used up (${f0(-p.left)} OMR over); at ${f0(p.avg)} OMR/month the ${p.open} open month(s) add ${f0(p.avg * p.open)} OMR more.`, s: 'short' };
+      if (p.status === 'short') return { v: `NOT ENOUGH — at ${f0(p.avg)} OMR/month (average of ${p.done} invoiced month(s)) the budget runs out in ${this.monthShortLabel(p.runsOut!)}; short by ${f0(-p.gap!)} OMR for the ${p.open} open month(s).`, s: 'short' };
+      return { v: `Enough — at ${f0(p.avg)} OMR/month the budget covers the ${p.open} open month(s), ${f0(p.gap!)} OMR left.`, s: 'ok' };
+    };
+
+    const build = (kind: 'main' | 'plan'): XSheet => {
+      const head = [...lead.map((v): XCell => ({ v, s: 'head' })), ...monthHead, ...(kind === 'main' ? tail : ['YEARLY FORECAST TOTAL']).map((v): XCell => ({ v, s: 'head' }))];
+      const width = head.length;
+      const out: XCell[][] = [
+        [{ v: `Accrual Forecast — ${rows[0].vendor} · ${rows[0].contract.reference} · ${yr(rows[0])}`, s: 'title' }],
+        [{ v: kind === 'main' ? 'Amounts in OMR. White = actual (approved invoice) · blue = forecast · yellow = past month still waiting for its invoice approval. The indicator projects the open months at the average of the invoiced months.' : 'The forecast entered for every month of the year (kept after the invoice is approved, for comparison).', s: 'note' }],
+        [],
+        head,
+      ];
+      const merges: string[] = [];
+      const col = (i: number) => (i >= 26 ? String.fromCharCode(64 + Math.floor(i / 26)) : '') + String.fromCharCode(65 + (i % 26));
+      const groups = [...new Set(rows.map((r) => r.contract.reference + '|' + r.year))];
+      const grand = new Array(width).fill(0);
+      for (const g of groups) {
+        const gr = rows.filter((r) => r.contract.reference + '|' + r.year === g), first = out.length + 1, sums = new Array(width).fill(0);
+        for (const r of gr) {
+          const cells = months.map((m) => (this.monthsOf(r).includes(m) ? this.cell(r, m) : null));
+          const nums: number[] = [];
+          const monthCells: XCell[] = cells.map((c) => {
+            if (!c) return { v: null, s: 'money' };
+            const v = kind === 'main' ? c.value ?? 0 : c.forecast ?? 0;
+            nums.push(v);
+            return { v, s: kind === 'plan' ? 'moneyF' : c.actual ? 'money' : c.awaiting ? 'moneyA' : 'moneyF' };
+          });
+          const real = cells.filter((c): c is AccrualCell => !!c);
+          const actual = r3(real.filter((c) => c.actual).reduce((t, c) => t + (c.value ?? 0), 0));
+          const forecast = r3(real.filter((c) => !c.actual).reduce((t, c) => t + (c.value ?? 0), 0));
+          const p = this.pace(r);
+          const tailCells: XCell[] = kind === 'main'
+            ? [{ v: actual, s: 'money' }, { v: forecast, s: 'moneyF' }, { v: r3(actual + forecast), s: 'money' }, { v: r3(r.budget - actual - forecast), s: 'money' }, { v: p.avg, s: 'money' }, { v: p.projected, s: 'money' }, { v: p.avg === null ? '' : p.open && p.left < -0.001 ? 'Already used up' : p.runsOut ? this.monthShortLabel(p.runsOut) : '—', s: p.open && (p.runsOut || p.left < -0.001) ? 'short' : 'text' }, indicator(r)]
+            : [{ v: r3(real.reduce((t, c) => t + (c.forecast ?? 0), 0)), s: 'money' }];
+          const row: XCell[] = [
+            { v: r.vendor, s: 'group' }, { v: r.contract.reference, s: 'group' }, { v: r.po, s: 'group' }, { v: r.contract.contractType, s: 'group' },
+            { v: r.line, s: 'text' }, { v: yr(r), s: 'group' }, { v: r.yearFrom, s: 'group' }, { v: r.yearTo, s: 'group' }, { v: r.budget, s: 'money' },
+            ...monthCells, ...tailCells,
+          ];
+          row.forEach((c, i) => { if (typeof c.v === 'number' && i >= 8 && c.s !== 'text') sums[i] += c.v; });
+          out.push(row);
+        }
+        const last = out.length;
+        if (last > first) for (const i of [0, 1, 2, 3, 5, 6, 7]) merges.push(`${col(i)}${first}:${col(i)}${last}`);
+        const short = gr.filter((r) => this.pace(r).status === 'short').length;
+        const sub: XCell[] = [{ v: `Total — ${gr[0].contract.reference} · ${yr(gr[0])}`, s: 'subText' }, ...Array.from({ length: 7 }, (): XCell => ({ v: null, s: 'subText' })), ...sums.slice(8).map((v, i): XCell => ({ v: i + 8 === width - 2 && kind === 'main' ? '' : r3(v), s: 'subMoney' }))];
+        if (kind === 'main') sub[width - 1] = short ? { v: `${short} of ${gr.length} line(s) will NOT have enough budget at the current pace.`, s: 'short' } : { v: `All ${gr.length} line(s) have enough budget at the current pace.`, s: 'ok' };
+        out.push(sub);
+        merges.push(`A${out.length}:H${out.length}`);
+        sums.forEach((v, i) => (grand[i] += v));
+      }
+      if (groups.length > 1) {
+        out.push([{ v: 'GRAND TOTAL', s: 'totText' }, ...Array.from({ length: 7 }, (): XCell => ({ v: null, s: 'totText' })), ...grand.slice(8).map((v): XCell => ({ v: r3(v), s: 'totMoney' }))]);
+        merges.push(`A${out.length}:H${out.length}`);
+      }
+      return {
+        name: kind === 'main' ? 'Accrual Forecast' : 'Yearly Forecast', rows: out, merges, freeze: { row: 4, col: 5 }, heights: { 1: 24, 4: 44 },
+        widths: [26, 17, 12, 20, 34, 13, 11, 11, 15, ...months.map(() => 13), ...(kind === 'main' ? [15, 15, 15, 15, 15, 16, 13, 62] : [16])],
+      };
+    };
+
+    const stamp = new Date();
+    const info: XSheet = {
+      name: 'Report Info', widths: [26, 90],
+      rows: [
+        [{ v: 'Accrual Forecast — export information', s: 'title' }], [],
+        ...([['Contract', `${rows[0].vendor} · ${rows[0].contract.reference} (PO ${rows[0].po})`], ['Year of budget', `${yr(rows[0])}: ${rows[0].yearFrom} → ${rows[0].yearTo}`], ['Exported by', CURRENT_USER], ['Export date and time', stamp.toLocaleString('en-GB')], ['Amounts', 'OMR']] as Array<[string, string]>).map(([k, v]): XCell[] => [{ v: k, s: 'key' }, { v, s: 'plain' }]),
+        [],
+        [{ v: 'Colours', s: 'key' }, { v: 'Actual — the approved invoice amount of the month', s: 'text' }],
+        [{ v: '', s: 'key' }, { v: 'Forecast — no approved invoice yet', s: 'moneyF' }],
+        [{ v: '', s: 'key' }, { v: 'Past month still on forecast — its invoice is not approved yet', s: 'moneyA' }],
+        [],
+        [{ v: 'Indicator', s: 'key' }, { v: 'Average monthly spend = total of the invoiced months ÷ their number (the history). Projected total = invoiced so far + that average × the months still open.', s: 'plain' }],
+        [{ v: '', s: 'key' }, { v: 'Enough — the approved budget covers the open months at that pace.', s: 'ok' }],
+        [{ v: '', s: 'key' }, { v: 'NOT ENOUGH — at that pace the budget runs out before the end of the year (the month is shown), and by how much it falls short.', s: 'short' }],
+      ],
+    };
+    const file = `Accrual_Forecast_${rows[0].contract.reference}_${yr(rows[0]).replace(/\s+/g, '_')}`;
+    const name = this.ui.xlsxStyled(file, [build('main'), build('plan'), info]);
+    const short = rows.filter((r) => this.pace(r).status === 'short').length;
+    this.store.log('Forecast Exported', name, `Accrual forecast exported (${rows.length} line(s)); ${short} line(s) will not have enough budget at the current pace.`);
+    this.ui.toast(`Downloaded ${name}.`);
+    return name;
   }
 
   exportTeam() {
