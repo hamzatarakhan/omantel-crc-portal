@@ -18,11 +18,11 @@ import { parseAnnexure } from '../../../core/services/annexure-import';
       <mat-icon class="!text-brand-600">upload_file</mat-icon>
       <div class="flex-1 min-w-[240px]">
         @if (store.importInfo(); as info) {
-          <div class="text-sm font-semibold text-ink-900">Loaded <span class="text-brand-700">{{ info.fileName }}</span></div>
-          <div class="text-xs text-ink-500">{{ info.employees }} employees &middot; {{ info.days }} attendance days &middot; {{ info.resignations }} resignation(s) &middot; billing month {{ info.period }}</div>
+          <div class="text-sm font-semibold text-ink-900">Compared against <span class="text-brand-700">{{ info.fileName }}</span></div>
+          <div class="text-xs text-ink-500">{{ info.employees }} employees &middot; {{ info.days }} attendance days &middot; {{ info.resignations }} resignation(s) &middot; billing month {{ info.period }} &middot; our own agent, payroll and attendance data (synced daily from the WFO) is unchanged</div>
         } @else {
-          <div class="text-sm font-semibold text-ink-900">Showing sample data</div>
-          <div class="text-xs text-ink-500">Import the vendor's monthly annexure workbook (.xlsx) to see the real employees, rates and attendance. The file is read in your browser only — nothing is uploaded or stored.</div>
+          <div class="text-sm font-semibold text-ink-900">No annexure imported yet</div>
+          <div class="text-xs text-ink-500">Import the vendor's monthly annexure workbook (.xlsx) to compare their claimed amount against our WFO calculation below. The file is read in your browser only — nothing is uploaded or stored, and it never changes our own data.</div>
         }
       </div>
       <label class="inline-flex items-center gap-2 px-3.5 py-2 text-sm font-semibold rounded-lg border border-brand-600 text-brand-600 hover:bg-brand-50 cursor-pointer transition-colors" appRequires="Validate Invoice">
@@ -35,9 +35,29 @@ import { parseAnnexure } from '../../../core/services/annexure-import';
       <div class="status-chip status-chip--info mb-4">Reading the workbook…</div>
     }
 
+    @if (claim(); as c) {
+      <div class="surface-card px-4 py-4 mb-4">
+        <h3 class="text-[13.5px] font-bold text-ink-900 mb-3">Vendor's claim vs. our calculation</h3>
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
+          <div><div class="text-[10.5px] font-bold text-ink-400 uppercase tracking-wide">Our calculation</div><div class="text-lg font-bold text-ink-900 mt-1">{{ calc().subtotal | number:'1.2-2' }} OMR</div></div>
+          <div><div class="text-[10.5px] font-bold text-ink-400 uppercase tracking-wide">Vendor's claim</div><div class="text-lg font-bold text-ink-900 mt-1">{{ c.total | number:'1.2-2' }} OMR</div></div>
+          <div><div class="text-[10.5px] font-bold text-ink-400 uppercase tracking-wide">Difference</div><div class="text-lg font-bold mt-1" [class.text-status-red]="claimDiff() > 0.005 || claimDiff() < -0.005">{{ claimDiff() > 0 ? '+' : '' }}{{ claimDiff() | number:'1.2-2' }} OMR</div></div>
+        </div>
+        <table class="crc-table w-full">
+          <thead><tr class="text-left"><th>Component</th><th class="text-right">Our calculation</th><th class="text-right">Vendor's claim</th><th class="text-right">Difference</th></tr></thead>
+          <tbody>
+            @for (row of claimRows(); track row.label) {
+              <tr><td>{{ row.label }}</td><td class="text-right">{{ row.ours | number:'1.2-2' }}</td><td class="text-right">{{ row.theirs | number:'1.2-2' }}</td><td class="text-right" [class.text-status-red]="row.diff > 0.005 || row.diff < -0.005">{{ row.diff > 0 ? '+' : '' }}{{ row.diff | number:'1.2-2' }}</td></tr>
+            }
+          </tbody>
+        </table>
+        <p class="text-[11px] text-ink-400 mt-2">The vendor's claim comes from their own file's billing rate × their own attendance (Salary) and "Additional" column (Overtime); Performance and the 3 Clicks incentive are ours to calculate and are not on their file.</p>
+      </div>
+    }
+
     <div class="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-4">
       <div class="surface-card overflow-x-auto">
-        <div class="px-4 pt-3.5"><h3 class="text-[13.5px] font-bold text-ink-900">Total billing</h3><p class="text-xs text-ink-400 mt-0.5">{{ store.period() }} &middot; {{ vendor() }}</p></div>
+        <div class="px-4 pt-3.5"><h3 class="text-[13.5px] font-bold text-ink-900">Our calculation &middot; total billing</h3><p class="text-xs text-ink-400 mt-0.5">{{ store.period() }} &middot; {{ vendor() }} &middot; from the WFO</p></div>
         <table class="crc-table w-full mt-3">
           <thead><tr class="text-left"><th>Category</th><th class="text-right">Amount (OMR)</th></tr></thead>
           <tbody>
@@ -91,6 +111,19 @@ export class AnnexureComponent {
   existingCount = computed(() => this.calc().existing.length);
   totalPayroll = computed(() => this.calc().tiers.reduce((s, t) => s + t.payroll, 0));
   totalFee = computed(() => this.calc().tiers.reduce((s, t) => s + t.fee, 0));
+
+  /** The vendor's own annexure claim, read once for comparison — never a source for our own figures above. */
+  claim = computed(() => this.store.vendorAnnexures()[this.vendor()]);
+  claimDiff = computed(() => { const c = this.claim(); return c ? Math.round((c.total - this.calc().subtotal) * 1000) / 1000 : 0; });
+  claimRows = computed(() => {
+    const c = this.claim(), k = this.calc();
+    if (!c) return [];
+    const rows: Array<{ label: string; ours: number; theirs?: number }> = [
+      { label: 'Salary (incl. new joiners & resignations)', ours: k.salaryBase + k.newJoining.amount + k.resignation.amount, theirs: c.claim.salary },
+      { label: 'Overtime', ours: k.overtimeBase, theirs: c.claim.overtime },
+    ];
+    return rows.filter((r) => r.theirs !== undefined).map((r) => ({ ...r, theirs: r.theirs as number, diff: Math.round(((r.theirs as number) - r.ours) * 1000) / 1000 }));
+  });
 
   private line(a: { name: string; queue: string; employeeId: string; degree: string; nationality?: string; joinDate: string; id: string }) {
     const pay = this.store.payroll()[a.id] ?? this.store.payrollFor(a as any);

@@ -60,8 +60,8 @@ const TX_SEED: Record<string, Array<[number, number]>> = {
   'Live Chat': [[72431.05, 92997], [67579.99, 77561], [74415.096, 85773], [69897.204, 80259], [66383.1, 73759], [69268.5, 76965], [78877.17, 87641.3], [82239.885, 91377.65], [74945.7, 83273], [83769.48, 93077.2], [80471.232, 89412.48], [81625.14, 90694.6]],
 };
 
-export interface Team { name: string; po: string; budget: number[]; approvedHc: number | null; from: number }
-export interface TeamMonth { hc: number | null; amount: number | null }
+export interface Team { name: string; po: string; approvedHc: number | null }
+export interface TeamMonth { hc: number; amount: number; budget: number }
 /**
  * "Budget Forecasting By Team.xlsx" (PO 325100185): monthly approved budget and head count, and the head count / amount of every month
  * exactly as in the sheet (Jan–Aug actual, Sep–Dec forecast). The sheet has no Sep–Dec for Revenue; its saving table counts those
@@ -118,108 +118,143 @@ export class ForecastService {
   readonly edits = signal<ForecastEdit[]>([]);
 
   // ================= Transaction =================
-  readonly txRates = signal<Record<string, number>>({ Voice: 1.071, 'Live Chat': 0.9 });
-  readonly txBudget = signal(2623730.632);
-  /** Actual months hold the invoiced amount and transactions; forecast months hold the expected transactions only. */
-  readonly txMonths = signal<Record<string, Array<{ amount: number; tx: number }>>>(
-    Object.fromEntries(TX_TYPES.map((t) => [t.type, TX_SEED[t.type].map(([amount, tx]) => ({ amount, tx }))])),
-  );
-  txAmount = (type: string, m: number) => { const c = this.txMonths()[type][m]; return isActual(m) ? c.amount : r3(c.tx * (this.txRates()[type] ?? 0)); };
-  txCount = (type: string, m: number) => this.txMonths()[type][m].tx;
-  readonly txSummary = computed(() => {
-    const types = TX_TYPES.map((t) => t.type);
-    const actual = types.reduce((s, t) => s + MONTHS.filter(isActual).reduce((x, m) => x + this.txAmount(t, m), 0), 0);
-    const forecast = types.reduce((s, t) => s + MONTHS.filter((m) => !isActual(m)).reduce((x, m) => x + this.txAmount(t, m), 0), 0);
-    const tx = types.reduce((s, t) => s + MONTHS.reduce((x, m) => x + this.txCount(t, m), 0), 0);
-    const budget = this.txBudget(), total = actual + forecast;
-    return { budget, actual, forecast, total, tx, saving: budget - total, pct: budget ? ((budget - total) / budget) * 100 : 0 };
-  });
+  /** Approved budget and per-transaction rates belong to a contract (the salary PO's is the only one seeded today). */
+  readonly txSettings = signal<Record<string, { budget: number; rates: Record<string, number> }>>({});
+  txBudgetOf = (contractRef: string) => this.txSettings()[contractRef]?.budget ?? 0;
+  txRatesOf = (contractRef: string) => this.txSettings()[contractRef]?.rates ?? Object.fromEntries(TX_TYPES.map((t) => [t.type, 0]));
+  /** Actual months hold the invoiced amount and transactions; forecast months hold the expected transactions only. Keyed by type, then the real ISO month-start date. */
+  readonly txMonths = signal<Record<string, Record<string, { amount: number; tx: number }>>>({});
+  txAmount = (type: string, monthIso: string, contractRef: string) => { const c = this.txMonths()[type]?.[monthIso]; if (!c) return 0; return this.isClosedMonth(monthIso) ? c.amount : r3(c.tx * (this.txRatesOf(contractRef)[type] ?? 0)); };
+  txCount = (type: string, monthIso: string) => this.txMonths()[type]?.[monthIso]?.tx ?? 0;
 
-  setTransactions(type: string, m: number, tx: number, reason: string): string | null {
-    if (isActual(m)) return `${MONTH_LONG[m]} is closed with its actual figures.`;
+  private seedTxSettings(): Record<string, { budget: number; rates: Record<string, number> }> {
+    const c = this.teamContract();
+    return c ? { [c.reference]: { budget: 2623730.632, rates: { Voice: 1.071, 'Live Chat': 0.9 } } } : {};
+  }
+
+  private seedTxMonths(): Record<string, Record<string, { amount: number; tx: number }>> {
+    const years = this.teamYears();
+    const out: Record<string, Record<string, { amount: number; tx: number }>> = {};
+    for (const t of TX_TYPES) {
+      const hist: Record<string, { amount: number; tx: number }> = {};
+      for (const y of years) {
+        this.monthsBetween(y.from, y.to).forEach((m, i) => {
+          const seed = TX_SEED[t.type][Math.min(i, TX_SEED[t.type].length - 1)];
+          hist[m] = { amount: seed[0], tx: seed[1] };
+        });
+      }
+      out[t.type] = hist;
+    }
+    return out;
+  }
+
+  setTransactions(type: string, monthIso: string, tx: number, reason: string): string | null {
+    if (this.isClosedMonth(monthIso)) return `${this.monthLabel(monthIso)} is closed with its actual figures.`;
     if (!isFinite(tx) || tx < 0) return 'Transactions cannot be negative.';
     if (!reason.trim()) return 'Enter the reason for the change.';
-    const from = this.txCount(type, m);
+    const from = this.txCount(type, monthIso);
     if (from === tx) return 'Nothing was changed.';
-    this.txMonths.update((all) => ({ ...all, [type]: all[type].map((c, i) => (i === m ? { ...c, tx } : c)) }));
-    this.record('Transaction', type, m, 'Transactions', from, tx, reason);
+    this.txMonths.update((all) => ({ ...all, [type]: { ...(all[type] ?? {}), [monthIso]: { ...(all[type]?.[monthIso] ?? { amount: 0, tx: 0 }), tx } } }));
+    this.record('Transaction', type, monthIso, 'Transactions', from, tx, reason);
     return null;
   }
 
   // ================= Team =================
-  readonly teams = signal<Team[]>(TEAM_SEED.map((t) => ({ name: t.name, po: SALARY_PO, budget: t.budget, approvedHc: t.approvedHc, from: t.from ?? 0 })));
-  /** Actual months are the seed; forecast months start empty (null) and fall back to the last actual head count × its cost per head. */
-  readonly teamMonths = signal<Record<string, TeamMonth[]>>(
-    Object.fromEntries(TEAM_SEED.map((t) => [t.name, MONTHS.map((m) => ({ hc: t.hc[m] ?? 0, amount: t.amount[m] ?? 0 }))])),
-  );
-  private lastActual(team: string) {
-    const ms = this.teamMonths()[team] ?? [];
-    for (let m = CUR_MONTH - 1; m >= 0; m--) if (ms[m]?.hc) return { hc: ms[m].hc!, perHead: (ms[m].amount ?? 0) / ms[m].hc! };
+  readonly teams = signal<Team[]>(TEAM_SEED.map((t) => ({ name: t.name, po: SALARY_PO, approvedHc: t.approvedHc })));
+  /** hc/amount/budget per team, keyed by the real ISO month-start date; a missing month means the team hasn't joined yet. */
+  readonly teamMonths = signal<Record<string, Record<string, TeamMonth>>>({});
+  readonly teamChanged = signal<Set<string>>(new Set());
+
+  /** Contracts backing Team Forecast (currently just the salary PO's), for the vendor/contract/type filters. */
+  teamContracts(): Contract[] {
+    return this.store.contracts().filter((c) => c.poNumber === SALARY_PO);
+  }
+  /** The salary contract (PO 325100185) — the default/only one Team Forecast is tracked against. */
+  teamContract(): Contract | undefined {
+    return this.teamContracts()[0];
+  }
+  /** Any contract's Yearly Budget years (Year 1 of 2, ...) — used for the Team/Transaction contract/year selectors, including in Forecast Settings where the contract may not be team-tracked yet. */
+  teamYearsOf(contractRef: string): Array<{ year: number; label: string; from: string; to: string }> {
+    const c = this.store.contracts().find((x) => x.reference === contractRef);
+    if (!c) return [];
+    return yearlyBudgetFor(c, childRecordsFor(c)).map((y) => ({ year: y.year, label: y.description.split(' — ')[0], from: y.startDate, to: y.endDate }));
+  }
+  /** The default team contract's Yearly Budget years. */
+  teamYears(): Array<{ year: number; label: string; from: string; to: string }> {
+    const c = this.teamContract();
+    return c ? this.teamYearsOf(c.reference) : [];
+  }
+  /** Every real month across all of the salary contract's years, chronologically (it follows the contract, so years and their lengths can differ). */
+  teamContractMonths(): string[] {
+    return this.teamYears().flatMap((y) => this.monthsBetween(y.from, y.to));
+  }
+
+  private seedTeamMonths(): Record<string, Record<string, TeamMonth>> {
+    const years = this.teamYears();
+    const out: Record<string, Record<string, TeamMonth>> = {};
+    for (const t of TEAM_SEED) {
+      const hist: Record<string, TeamMonth> = {};
+      for (const y of years) {
+        this.monthsBetween(y.from, y.to).forEach((m, i) => {
+          if (i < (t.from ?? 0)) return;
+          hist[m] = { hc: t.hc[i] ?? 0, amount: t.amount[i] ?? 0, budget: t.budget[i] ?? 0 };
+        });
+      }
+      out[t.name] = hist;
+    }
+    return out;
+  }
+
+  /** A team has joined by this month once it has a seeded or edited entry there. */
+  started = (team: string, monthIso: string) => this.teamMonths()[team]?.[monthIso] !== undefined;
+  teamHc = (team: string, monthIso: string) => this.teamMonths()[team]?.[monthIso]?.hc ?? 0;
+  teamAmount = (team: string, monthIso: string) => this.teamMonths()[team]?.[monthIso]?.amount ?? 0;
+  teamBudget = (team: string, monthIso: string) => this.teamMonths()[team]?.[monthIso]?.budget ?? 0;
+  teamManual = (team: string, monthIso: string) => this.teamChanged().has(team + '|' + monthIso);
+  /** The most recent month (before today) with a head count, for pricing a new head count at the team's cost per head. */
+  private lastActualTeam(team: string) {
+    const today = todayMonthStart();
+    const months = Object.keys(this.teamMonths()[team] ?? {}).filter((m) => m < today).sort().reverse();
+    for (const m of months) { const rec = this.teamMonths()[team][m]; if (rec.hc) return { hc: rec.hc, perHead: rec.amount / rec.hc }; }
     return { hc: 0, perHead: 0 };
   }
-  private started = (team: string, m: number) => m >= (this.teams().find((t) => t.name === team)?.from ?? 0);
-  teamHc = (team: string, m: number) => (!this.started(team, m) ? 0 : this.teamMonths()[team]?.[m]?.hc ?? (isActual(m) ? 0 : this.lastActual(team).hc));
-  teamAmount = (team: string, m: number) => {
-    if (!this.started(team, m)) return 0;
-    const c = this.teamMonths()[team]?.[m];
-    if (c?.amount != null) return c.amount;
-    if (isActual(m)) return 0;
-    const la = this.lastActual(team);
-    return r3(this.teamHc(team, m) * la.perHead);
-  };
-  readonly teamChanged = signal<Set<string>>(new Set());
-  teamManual = (team: string, m: number) => this.teamChanged().has(team + '|' + m);
-  teamMonthTotal = (m: number) => this.teams().reduce((s, t) => s + this.teamAmount(t.name, m), 0);
-  readonly teamSummary = computed(() => {
-    const ts = this.teams();
-    const budget = ts.reduce((s, t) => s + t.budget.reduce((a, b) => a + b, 0), 0);
-    const actual = ts.reduce((s, t) => s + MONTHS.filter(isActual).reduce((x, m) => x + this.teamAmount(t.name, m), 0), 0);
-    const forecast = ts.reduce((s, t) => s + MONTHS.filter((m) => !isActual(m)).reduce((x, m) => x + this.teamAmount(t.name, m), 0), 0);
-    const total = actual + forecast;
-    return { budget, actual, forecast, total, saving: budget - total, pct: budget ? ((budget - total) / budget) * 100 : 0, hc: ts.reduce((s, t) => s + this.teamHc(t.name, CUR_MONTH), 0), approvedHc: ts.reduce((s, t) => s + (t.approvedHc ?? 0), 0) };
-  });
 
   /** A forecast month of one team: a new head count re-prices the amount at the team's cost per head unless an amount is typed. */
-  setTeamMonth(team: string, m: number, hc: number, amount: number | null, reason: string): string | null {
-    if (isActual(m)) return `${MONTH_LONG[m]} is closed with its actual figures.`;
-    if (!this.started(team, m)) return `${team} only starts in ${MONTH_LONG[this.teams().find((t) => t.name === team)!.from]}.`;
+  setTeamMonth(team: string, monthIso: string, hc: number, amount: number | null, reason: string): string | null {
+    if (monthIso < todayMonthStart()) return `${this.monthLabel(monthIso)} is closed with its actual figures.`;
     if (!Number.isInteger(hc) || hc < 0) return 'The head count must be a whole number, 0 or more.';
     if (amount !== null && (!isFinite(amount) || amount < 0)) return 'The amount cannot be negative.';
     if (!reason.trim()) return 'Enter the reason for the change.';
-    const fromHc = this.teamHc(team, m), fromAmt = this.teamAmount(team, m);
-    const nextAmt = amount ?? r3(hc * this.lastActual(team).perHead);
+    const fromHc = this.teamHc(team, monthIso), fromAmt = this.teamAmount(team, monthIso);
+    const nextAmt = amount ?? r3(hc * this.lastActualTeam(team).perHead);
     if (fromHc === hc && fromAmt === nextAmt) return 'Nothing was changed.';
-    this.teamMonths.update((all) => ({ ...all, [team]: all[team].map((c, i) => (i === m ? { hc, amount: nextAmt } : c)) }));
-    this.teamChanged.update((set) => new Set(set).add(team + '|' + m));
-    if (fromHc !== hc) this.record('Team', team, m, 'Head count', fromHc, hc, reason);
-    if (fromAmt !== nextAmt) this.record('Team', team, m, 'Amount', fromAmt, nextAmt, reason);
+    this.teamMonths.update((all) => ({ ...all, [team]: { ...(all[team] ?? {}), [monthIso]: { hc, amount: nextAmt, budget: this.teamBudget(team, monthIso) } } }));
+    this.teamChanged.update((set) => new Set(set).add(team + '|' + monthIso));
+    if (fromHc !== hc) this.record('Team', team, monthIso, 'Head count', fromHc, hc, reason);
+    if (fromAmt !== nextAmt) this.record('Team', team, monthIso, 'Amount', fromAmt, nextAmt, reason);
     return null;
   }
 
-  /** A team that joins during the year (like "New outsourced joined CE"): budget, head count and cost from its first month. */
-  addTeam(v: { name: string; from: number; budget: number; approvedHc: number | null; hc: number; amount: number }): string | null {
-    const name = v.name.trim();
-    if (!name) return 'Enter the team name.';
-    if (this.teams().some((t) => norm(t.name) === norm(name))) return 'A team with this name already exists.';
-    if (v.from < CUR_MONTH) return 'A new team can only start in the current month or later.';
-    this.teams.update((l) => [...l, { name, po: SALARY_PO, budget: MONTHS.map((m) => (m >= v.from ? v.budget : 0)), approvedHc: v.approvedHc, from: v.from }]);
-    this.teamMonths.update((all) => ({ ...all, [name]: MONTHS.map((m) => (m >= v.from ? { hc: v.hc, amount: v.amount } : { hc: 0, amount: 0 })) }));
-    this.store.log('Team Added to Forecast', name, `From ${MONTH_LONG[v.from]}: ${v.hc} head count, ${v.amount.toLocaleString('en-GB')} OMR a month, approved budget ${v.budget.toLocaleString('en-GB')} OMR a month.`);
-    return null;
-  }
-
-  /** Each team's approved budget month by month (it follows the contract, so months can differ) and its approved head count. */
-  saveTeamBudgets(next: Array<{ name: string; budget: number[]; approvedHc: number | null }>) {
+  /** Each team's approved budget for the months given (it follows the contract, so months can differ) and its approved head count. */
+  saveTeamBudgets(next: Array<{ name: string; budget: Record<string, number>; approvedHc: number | null }>) {
     const changes: string[] = [];
     const f = (n: number) => n.toLocaleString('en-GB', { maximumFractionDigits: 3 });
     this.teams.update((l) => l.map((t) => {
       const n = next.find((x) => x.name === t.name);
       if (!n) return t;
-      const budget = t.budget.map((b, m) => (m >= t.from ? n.budget[m] : b));
-      const months = MONTHS.filter((m) => budget[m] !== t.budget[m]);
-      if (!months.length && n.approvedHc === t.approvedHc) return t;
-      changes.push(`${t.name}: ${months.map((m) => `${MONTH_SHORT[m]} ${f(t.budget[m])} → ${f(budget[m])}`).join(', ')}${n.approvedHc !== t.approvedHc ? `${months.length ? ', ' : ''}head count ${t.approvedHc ?? '—'} → ${n.approvedHc ?? '—'}` : ''}`);
-      return { ...t, budget, approvedHc: n.approvedHc };
+      const monthChanges: string[] = [];
+      this.teamMonths.update((all) => {
+        const rec = { ...(all[t.name] ?? {}) };
+        for (const [monthIso, budget] of Object.entries(n.budget)) {
+          const before = rec[monthIso]?.budget ?? 0;
+          if (before !== budget) monthChanges.push(`${this.monthShortLabel(monthIso)} ${f(before)} → ${f(budget)}`);
+          rec[monthIso] = { ...(rec[monthIso] ?? { hc: 0, amount: 0 }), budget };
+        }
+        return { ...all, [t.name]: rec };
+      });
+      if (!monthChanges.length && n.approvedHc === t.approvedHc) return t;
+      changes.push(`${t.name}: ${monthChanges.join(', ')}${n.approvedHc !== t.approvedHc ? `${monthChanges.length ? ', ' : ''}head count ${t.approvedHc ?? '—'} → ${n.approvedHc ?? '—'}` : ''}`);
+      return { ...t, approvedHc: n.approvedHc };
     }));
     if (changes.length) this.store.log('Forecast Settings Changed', 'Team approved budgets', changes.join('; '));
     return changes.length;
@@ -249,14 +284,16 @@ export class ForecastService {
       }))));
   });
 
-  /** The real calendar months (as ISO month-start dates) this line's own contract-year spans — not a fixed financial year. */
-  monthsOf(r: AccrualRow): string[] {
+  /** The real calendar months (as ISO month-start dates) between two dates — a contract-year's own span, not a fixed financial year. */
+  monthsBetween(from: string, to: string): string[] {
     const out: string[] = [];
-    for (let s = r.yearFrom; s <= r.yearTo; s = addMonths(r.yearFrom, out.length)) out.push(s);
+    for (let s = from; s <= to; s = addMonths(from, out.length)) out.push(s);
     return out;
   }
+  monthsOf(r: AccrualRow): string[] { return this.monthsBetween(r.yearFrom, r.yearTo); }
   monthLabel(monthIso: string): string { const d = new Date(monthIso); return `${MONTH_LONG[d.getUTCMonth()]} ${d.getUTCFullYear()}`; }
   monthShortLabel(monthIso: string): string { const d = new Date(monthIso); return `${MONTH_SHORT[d.getUTCMonth()]} ${d.getUTCFullYear()}`; }
+  isClosedMonth(monthIso: string): boolean { return monthIso < todayMonthStart(); }
   monthLabelOf(month: number | string): string { return typeof month === 'number' ? MONTH_LONG[month] : this.monthLabel(month); }
 
   /** Actual amounts: the invoices approved so far (seeded history) plus every line approved for payment in Reconciliation. Keyed by row key, then the real month-start ISO date. */
@@ -268,6 +305,9 @@ export class ForecastService {
     const rows = this.accrualRows();
     this.actuals.set(this.seedActuals(rows));
     this.plan.set(this.seedPlan(rows));
+    this.teamMonths.set(this.seedTeamMonths());
+    this.txSettings.set(this.seedTxSettings());
+    this.txMonths.set(this.seedTxMonths());
     // An approved line in Reconciliation replaces that month's forecast with the invoiced amount; the forecast is kept for comparison.
     effect(() => {
       const runs = this.store.invoiceRuns();
@@ -410,11 +450,11 @@ export class ForecastService {
     return null;
   }
 
-  setTxSettings(budget: number, rates: Record<string, number>) {
-    const changes = [budget !== this.txBudget() && `Approved budget ${this.txBudget().toLocaleString('en-GB')} → ${budget.toLocaleString('en-GB')} OMR`, ...Object.keys(rates).filter((k) => rates[k] !== this.txRates()[k]).map((k) => `${k} rate ${this.txRates()[k]} → ${rates[k]} OMR`)].filter(Boolean);
+  setTxSettings(contractRef: string, budget: number, rates: Record<string, number>) {
+    const before = this.txSettings()[contractRef] ?? { budget: 0, rates: Object.fromEntries(TX_TYPES.map((t) => [t.type, 0])) };
+    const changes = [budget !== before.budget && `Approved budget ${before.budget.toLocaleString('en-GB')} → ${budget.toLocaleString('en-GB')} OMR`, ...Object.keys(rates).filter((k) => rates[k] !== before.rates[k]).map((k) => `${k} rate ${before.rates[k]} → ${rates[k]} OMR`)].filter(Boolean);
     if (!changes.length) return 0;
-    this.txBudget.set(budget);
-    this.txRates.set({ ...rates });
+    this.txSettings.update((all) => ({ ...all, [contractRef]: { budget, rates: { ...rates } } }));
     this.store.log('Forecast Settings Changed', 'Transaction forecast', changes.join('; '));
     return changes.length;
   }
@@ -531,22 +571,124 @@ export class ForecastService {
     return name;
   }
 
-  exportTeam() {
-    const out = this.teams().flatMap((t) => MONTHS.map((m) => ({
-      PO: t.po, Team: t.name, Month: `${MONTH_SHORT[m]} ${FY_YEAR}`, Type: isActual(m) ? 'Actual' : 'Forecast', 'Approved budget': t.budget[m], 'Approved head count': t.approvedHc ?? '', 'Head count': this.teamHc(t.name, m), Amount: r3(this.teamAmount(t.name, m)), Saving: r3(t.budget[m] - this.teamAmount(t.name, m)),
-    })));
-    const s = this.teamSummary();
-    return this.save('Team_Forecast', 'Team Forecast', out, `Approved budget ${r3(s.budget)} · Accrual ${r3(s.actual)} · Forecast ${r3(s.forecast)} · Total ${r3(s.total)} · Saving ${r3(s.saving)} (${s.pct.toFixed(2)}%) OMR.`);
+  /** Excel export in the layout of Omantel's own "Budget Forecasting By Team.xlsx": one row per team, dated month columns, actual months plain and forecast months tinted. `months` is the year currently shown on screen. */
+  exportTeam(months: string[], contractRef?: string) {
+    if (!months.length) { this.ui.toast('Nothing to export.'); return undefined; }
+    const c = (contractRef ? this.teamContracts().find((x) => x.reference === contractRef) : undefined) ?? this.teamContract();
+    const yearLabel = (c ? this.teamYearsOf(c.reference) : []).find((y) => months[0] >= y.from && months[0] <= y.to)?.label ?? '';
+    const monthHead: XCell[] = months.map((m): XCell => ({ v: m, s: 'headDate', date: true }));
+    const head: XCell[] = [
+      { v: 'TEAM', s: 'head' }, { v: 'APPROVED HC', s: 'head' }, { v: 'HEAD COUNT', s: 'head' }, ...monthHead,
+      { v: 'APPROVED BUDGET', s: 'head' }, { v: 'ACCRUAL', s: 'head' }, { v: 'FORECAST', s: 'head' }, { v: 'TOTAL', s: 'head' }, { v: 'SAVING', s: 'head' }, { v: 'SAVING %', s: 'head' },
+    ];
+    const width = head.length;
+    const out: XCell[][] = [
+      [{ v: `Team Forecast — PO ${c?.poNumber ?? ''} · ${yearLabel}`, s: 'title' }],
+      [{ v: 'Amounts in OMR. White = actual (the month is closed) · blue = forecast (the month is still open). Saving = approved budget − (accrual + forecast).', s: 'note' }],
+      [],
+      head,
+    ];
+    const grand = new Array(width).fill(0);
+    for (const t of this.teams()) {
+      const cells = months.map((m) => ({ closed: this.isClosedMonth(m), amount: this.teamAmount(t.name, m) }));
+      const accrual = r3(cells.filter((x) => x.closed).reduce((s, x) => s + x.amount, 0));
+      const forecast = r3(cells.filter((x) => !x.closed).reduce((s, x) => s + x.amount, 0));
+      const budget = r3(months.reduce((s, m) => s + this.teamBudget(t.name, m), 0));
+      const total = r3(accrual + forecast), saving = r3(budget - total), pct = budget ? r3((saving / budget) * 100) : 0;
+      const asOf = [...months].reverse().find((m) => this.started(t.name, m)) ?? months[0];
+      const monthCells: XCell[] = cells.map((x): XCell => ({ v: x.amount, s: x.closed ? 'money' : 'moneyF' }));
+      const row: XCell[] = [
+        { v: t.name, s: 'text' }, { v: t.approvedHc ?? '', s: 'int' }, { v: this.teamHc(t.name, asOf), s: 'int' }, ...monthCells,
+        { v: budget, s: 'money' }, { v: accrual, s: 'money' }, { v: forecast, s: 'moneyF' }, { v: total, s: 'money' }, { v: saving, s: saving < -0.001 ? 'short' : 'ok' }, { v: pct, s: 'text' },
+      ];
+      row.forEach((cell, i) => { if (typeof cell.v === 'number' && i >= 3) grand[i] += cell.v; });
+      out.push(row);
+    }
+    const totalBudget = r3(grand[width - 5]), totalAccrual = r3(grand[width - 4]), totalForecast = r3(grand[width - 3]), totalSaving = r3(grand[width - 2]);
+    out.push([
+      { v: 'GRAND TOTAL', s: 'totText' }, { v: null, s: 'totText' }, { v: null, s: 'totText' }, ...months.map((_, i): XCell => ({ v: r3(grand[3 + i]), s: 'totMoney' })),
+      { v: totalBudget, s: 'totMoney' }, { v: totalAccrual, s: 'totMoney' }, { v: totalForecast, s: 'totMoney' }, { v: r3(totalAccrual + totalForecast), s: 'totMoney' }, { v: totalSaving, s: 'totMoney' }, { v: totalBudget ? r3((totalSaving / totalBudget) * 100) : 0, s: 'totMoney' },
+    ]);
+
+    const stamp = new Date();
+    const info: XSheet = {
+      name: 'Report Info', widths: [26, 90],
+      rows: [
+        [{ v: 'Team Forecast — export information', s: 'title' }], [],
+        ...([['Contract', c ? `${c.vendorName} · ${c.reference} (PO ${c.poNumber})` : '—'], ['Year of budget', yearLabel], ['Exported by', CURRENT_USER], ['Export date and time', stamp.toLocaleString('en-GB')], ['Amounts', 'OMR']] as Array<[string, string]>).map(([k, v]): XCell[] => [{ v: k, s: 'key' }, { v, s: 'plain' }]),
+        [],
+        [{ v: 'Colours', s: 'key' }, { v: 'Actual — the month is closed with its accrual amount', s: 'text' }],
+        [{ v: '', s: 'key' }, { v: 'Forecast — the month is still open', s: 'moneyF' }],
+      ],
+    };
+    const file = `Team_Forecast_${c?.reference ?? 'PO'}_${yearLabel.replace(/\s+/g, '_')}`;
+    const name = this.ui.xlsxStyled(file, [
+      { name: 'Team Forecast', rows: out, merges: [], freeze: { row: 4, col: 3 }, heights: { 1: 24, 4: 32 }, widths: [26, 12, 12, ...months.map(() => 12), 15, 13, 13, 13, 13, 11] },
+      info,
+    ]);
+    this.store.log('Forecast Exported', name, `Team forecast exported (${this.teams().length} team(s), ${months.length} month(s)).`);
+    this.ui.toast(`Downloaded ${name}.`);
+    return name;
   }
 
-  exportTransactions() {
-    const out = TX_TYPES.map((t) => ({
-      'Reported to': t.reportedTo, 'Contract state': t.state, Type: t.type,
-      ...Object.fromEntries(MONTHS.flatMap((m) => [[`${MONTH_SHORT[m]} amount${isActual(m) ? '' : ' (F)'}`, r3(this.txAmount(t.type, m))], [`${MONTH_SHORT[m]} transactions`, this.txCount(t.type, m)]])),
-      'Total amount': r3(MONTHS.reduce((s, m) => s + this.txAmount(t.type, m), 0)), 'Total transactions': r3(MONTHS.reduce((s, m) => s + this.txCount(t.type, m), 0)),
-    }));
-    const s = this.txSummary();
-    return this.save('Transaction_Forecast', 'Transaction Forecast', out, `Forecast amount = transactions × unit rate (${TX_TYPES.map((t) => `${t.type} ${this.txRates()[t.type]} OMR`).join(', ')}). Approved budget ${r3(s.budget)} · Total ${r3(s.total)} · Saving ${r3(s.saving)} (${s.pct.toFixed(2)}%) OMR.`);
+  /** Excel export in the layout of Omantel's own "Actual Forecast Spending per month - Transaction.xlsx": one row per month, actual rows plain and forecast rows tinted. `months` is the year currently shown on screen. */
+  exportTransactions(months: string[], contractRef?: string) {
+    if (!months.length) { this.ui.toast('Nothing to export.'); return undefined; }
+    const c = (contractRef ? this.teamContracts().find((x) => x.reference === contractRef) : undefined) ?? this.teamContract();
+    const ref = c?.reference ?? '';
+    const yearLabel = (c ? this.teamYearsOf(c.reference) : []).find((y) => months[0] >= y.from && months[0] <= y.to)?.label ?? '';
+    const head: XCell[] = [
+      { v: 'MONTH', s: 'head' },
+      ...TX_TYPES.flatMap((t): XCell[] => [{ v: `${t.type.toUpperCase()} — TRANSACTIONS`, s: 'head' }, { v: `${t.type.toUpperCase()} — AMOUNT`, s: 'head' }, { v: `${t.type.toUpperCase()} — OMR/TX`, s: 'head' }]),
+      { v: 'TOTAL AMOUNT', s: 'head' },
+    ];
+    const out: XCell[][] = [
+      [{ v: `Transaction Forecast — ${c ? c.vendorName + ' · ' + c.reference : ''} · ${yearLabel}`, s: 'title' }],
+      [{ v: 'Amounts in OMR. White = actual (invoiced) · blue = forecast (expected transactions × unit rate).', s: 'note' }],
+      [],
+      head,
+    ];
+    for (const m of months) {
+      const closed = this.isClosedMonth(m);
+      const cells = TX_TYPES.map((t) => { const tx = this.txCount(t.type, m), amount = this.txAmount(t.type, m, ref); return { tx, amount, rate: tx ? r3(amount / tx) : 0 }; });
+      const total = r3(cells.reduce((s, x) => s + x.amount, 0));
+      out.push([
+        { v: m, s: 'headDate', date: true },
+        ...cells.flatMap((x): XCell[] => [{ v: x.tx, s: 'int' }, { v: x.amount, s: closed ? 'money' : 'moneyF' }, { v: x.rate, s: 'text' }]),
+        { v: total, s: closed ? 'money' : 'moneyF' },
+      ]);
+    }
+    const totalsByType = TX_TYPES.map((t) => {
+      const tx = r3(months.reduce((s, m) => s + this.txCount(t.type, m), 0));
+      const amount = r3(months.reduce((s, m) => s + this.txAmount(t.type, m, ref), 0));
+      return { tx, amount, rate: tx ? r3(amount / tx) : 0 };
+    });
+    const grandTotal = r3(totalsByType.reduce((s, t) => s + t.amount, 0));
+    out.push([
+      { v: 'GRAND TOTAL', s: 'totText' },
+      ...totalsByType.flatMap((t): XCell[] => [{ v: t.tx, s: 'totMoney' }, { v: t.amount, s: 'totMoney' }, { v: t.rate, s: 'totMoney' }]),
+      { v: grandTotal, s: 'totMoney' },
+    ]);
+
+    const stamp = new Date();
+    const info: XSheet = {
+      name: 'Report Info', widths: [26, 90],
+      rows: [
+        [{ v: 'Transaction Forecast — export information', s: 'title' }], [],
+        ...([['Contract', c ? `${c.vendorName} · ${c.reference} (PO ${c.poNumber})` : '—'], ['Year of budget', yearLabel], ['Approved budget', `${r3(this.txBudgetOf(ref))} OMR`], ...TX_TYPES.map((t) => [`${t.type} rate`, `${this.txRatesOf(ref)[t.type]} OMR per transaction`]), ['Exported by', CURRENT_USER], ['Export date and time', stamp.toLocaleString('en-GB')], ['Amounts', 'OMR']] as Array<[string, string]>).map(([k, v]): XCell[] => [{ v: k, s: 'key' }, { v, s: 'plain' }]),
+        [],
+        [{ v: 'Colours', s: 'key' }, { v: 'Actual — the month is closed with its invoiced amount', s: 'text' }],
+        [{ v: '', s: 'key' }, { v: 'Forecast — expected transactions × unit rate', s: 'moneyF' }],
+      ],
+    };
+    const file = `Transaction_Forecast_${c?.reference ?? 'PO'}_${yearLabel.replace(/\s+/g, '_')}`;
+    const name = this.ui.xlsxStyled(file, [
+      { name: 'Transaction Forecast', rows: out, freeze: { row: 4, col: 1 }, heights: { 1: 24, 4: 32 }, widths: [14, ...TX_TYPES.flatMap(() => [14, 13, 11]), 14] },
+      info,
+    ]);
+    this.store.log('Forecast Exported', name, `Transaction forecast exported (${months.length} month(s)).`);
+    this.ui.toast(`Downloaded ${name}.`);
+    return name;
   }
 
   private save(stem: string, title: string, rows: Array<Record<string, any>>, note: string, extra: Array<{ name: string; rows: Array<Record<string, any>> }> = []) {

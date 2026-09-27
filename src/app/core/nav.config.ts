@@ -36,7 +36,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Contracts & Budget',
     icon: 'description',
     basePath: '/contracts-budget',
-    sections: { Monitoring: 'fact_check', Synchronization: 'sync', Budget: 'account_balance_wallet', Forecast: 'query_stats' },
+    sections: { Monitoring: 'fact_check', Synchronization: 'sync', Budget: 'account_balance_wallet', 'CSR Forecast': 'query_stats' },
     items: [
       { label: 'Contract Dashboard', path: 'dashboard', icon: 'dashboard', perms: ['View Dashboards'] },
       { label: 'Contract Trends', path: 'trends', icon: 'show_chart', perms: ['View Dashboards'] },
@@ -56,10 +56,10 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: 'Cost & Petty Cash', path: 'forecast', icon: 'trending_up', perms: ['View Budget'], section: 'Budget' },
       { label: 'Budget Settings', path: 'budget-settings', icon: 'settings', perms: ['Manage Budget Cycle'], section: 'Budget' },
       { label: 'Project Requests', path: 'projects', icon: 'rocket_launch', perms: ['Submit Project Requests', 'Approve Projects', 'View Budget'], section: 'Budget' },
-      { label: 'Accrual Forecast', path: 'accrual-forecast', icon: 'receipt_long', perms: ['View Accrual Forecast'], section: 'Forecast' },
-      { label: 'Team Forecast', path: 'team-forecast', icon: 'groups', perms: ['View Team Forecast'], section: 'Forecast' },
-      { label: 'Transaction Forecast', path: 'transaction-forecast', icon: 'support_agent', perms: ['View Transaction Forecast'], section: 'Forecast' },
-      { label: 'Forecast Settings', path: 'forecast-settings', icon: 'tune', perms: ['Configure Forecast'], section: 'Forecast' },
+      { label: 'Accrual Forecast', path: 'accrual-forecast', icon: 'receipt_long', perms: ['View Accrual Forecast'], section: 'CSR Forecast' },
+      { label: 'Team Forecast', path: 'team-forecast', icon: 'groups', perms: ['View Team Forecast'], section: 'CSR Forecast' },
+      { label: 'Transaction Forecast', path: 'transaction-forecast', icon: 'support_agent', perms: ['View Transaction Forecast'], section: 'CSR Forecast' },
+      { label: 'Forecast Settings', path: 'forecast-settings', icon: 'tune', perms: ['Configure Forecast'], section: 'CSR Forecast' },
     ],
   },
   {

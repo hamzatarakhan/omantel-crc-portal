@@ -41,6 +41,8 @@ export interface PayableLineItem {
   basis?: string;
   note?: string;
 }
+/** The vendor's own annexure file, read once for comparison: what they claim per component, never a replacement for our WFO data. */
+export interface VendorAnnexureClaim { fileName: string; importedAt: string; period: string; employees: number; days: number; resignations: number; claim: Partial<Record<WfoComponent, number>>; total: number }
 const addMonthsIso = (iso: string, n: number) => { const [y, m] = iso.split('-').map(Number); const d = new Date(Date.UTC(y, m - 1 + n, 1)); return d.toISOString().slice(0, 10); };
 /** The contract's flat management fee per employee per month (OMR). */
 export const FLAT_MANAGEMENT_FEE = 116;
@@ -201,11 +203,13 @@ export class CrcStore {
   readonly movementRequests = signal<MovementRequest[]>(this.seedMovementRequests());
 
   readonly payableRates: PayableLine[] = this.mock.getPayableLines();
-  /** First day of the billing month; the workbook import sets it from the invoice date. */
+  /** First day of the billing month. Our own agents, payroll and attendance are the WFO's (synced daily); an annexure import never changes them. */
   readonly periodStart = signal(new Date().toISOString().slice(0, 7) + '-01');
   readonly payroll = signal<Record<string, PayrollLine>>(this.seedPayroll());
   readonly resignations = signal<ResignationRecord[]>(this.seedResignations());
   readonly importInfo = signal<{ fileName: string; employees: number; days: number; resignations: number; period: string } | null>(null);
+  /** The vendor's claimed amount per payable component, read from their annexure file — compared against our WFO calculation, never replacing it. */
+  readonly vendorAnnexures = signal<Record<string, VendorAnnexureClaim>>({});
   readonly payrollRules = signal<PayrollRules>({ omaniMinScore: 90, nonOmaniMinScore: 95, overtimePremium: 1.25, overtimeDays: 30, overtimeHoursPerDay: 8 });
   /** Performance rates set by an admin on Performance Settings, replacing the seeded ones. */
   readonly performanceRates = signal<Record<string, number>>({});
@@ -818,34 +822,39 @@ export class CrcStore {
     return rec;
   }
 
-  /** Replaces the sample data with the vendor's real monthly annexure (parsed in the browser). */
+  /**
+   * Reads the vendor's annexure file purely for comparison — it is never a replacement for our own data. Our agents, payroll and
+   * attendance come from the WFO (synced daily) and are untouched by an import; only the vendor's claimed amount per component,
+   * from their own file's billing rates and attendance, is kept, so it can be diffed against our WFO calculation.
+   */
   importAnnexure(d: AnnexureImport) {
-    const vendor: Agent['vendor'] = 'Infoline';
-    const agents: Agent[] = [];
-    const payroll: Record<string, PayrollLine> = {};
-    const att: Record<string, string[]> = {};
-    const last = d.attendance.days.length - 1;
+    const vendorName = 'Infoline LLC';
+    const claim = this.claimFromAnnexure(d);
+    const total = Object.values(claim).reduce((s, v) => s + (v ?? 0), 0);
+    this.vendorAnnexures.update((m) => ({ ...m, [vendorName]: { fileName: d.fileName, importedAt: new Date().toISOString(), period: this.period(), employees: d.employees.length, days: d.attendance.days.length, resignations: d.resignations.length, claim, total } }));
+    this.importInfo.set({ fileName: d.fileName, employees: d.employees.length, days: d.attendance.days.length, resignations: d.resignations.length, period: this.period() });
+    this.log('Annexure Imported', d.fileName, `${d.employees.length} employee line(s), ${d.attendance.days.length} attendance days and ${d.resignations.length} resignation(s) compared against our WFO calculation for ${this.period()}. Our own agent, payroll and attendance data is unchanged.`);
+    this.notify(`${d.fileName} loaded — comparing the vendor's claimed amount against our calculation for ${this.period()}.`, 'Invoicing & Payments', 'green', '/invoicing/reconciliation');
+  }
+
+  /** The vendor's claimed Salary (their billing rate × their own attendance factor, plus their resignations) and Overtime ("Additional") from their file. */
+  private claimFromAnnexure(d: AnnexureImport): Partial<Record<WfoComponent, number>> {
+    let salary = 0, overtime = 0;
     for (const e of d.employees) {
-      const id = 'AG-' + e.employeeId;
-      const codes = d.attendance.rows[e.employeeId] ?? d.attendance.days.map(() => 'P');
-      const code = codes[last] ?? 'P';
-      const status: Agent['status'] = code === 'P' ? 'Present' : code === 'OFF' ? 'Off' : code === 'A' ? 'Absent' : 'On Leave';
-      agents.push({ id, employeeId: e.employeeId, name: e.name, queue: e.queue || 'Unassigned', vendor, degree: e.degree, nationality: e.nationality, joinDate: e.joinDate, status, leaveType: status === 'On Leave' ? LEAVE_TYPE_BY_CODE[code] : undefined });
-      payroll[id] = e.pay;
-      att[id] = codes;
+      const codes = d.attendance.rows[e.employeeId] ?? [];
+      const expected = codes.filter((c) => c !== 'OFF').length;
+      const billable = codes.filter((c) => c !== 'OFF' && c !== 'A').length;
+      const factor = expected ? billable / expected : 1;
+      salary += e.pay.billingRate * factor;
+      overtime += e.pay.additional;
     }
-    this.agents.set(agents);
-    this.payroll.set(payroll);
-    this.attendanceDays.set(d.attendance.days);
-    this.attendance.set(att);
-    this.resignations.set(d.resignations.map((r) => ({ ...r, id: 'RES-' + this.next(), vendor })));
-    this.periodStart.set(d.periodStart);
-    this.idDocs.set({});
-    this.movementRequests.set([]);
-    this.invoiceRuns.set({});
-    this.importInfo.set({ fileName: d.fileName, employees: agents.length, days: d.attendance.days.length, resignations: d.resignations.length, period: this.period() });
-    this.log('Annexure Imported', d.fileName, `${agents.length} employees, ${d.attendance.days.length} attendance days and ${d.resignations.length} resignation(s) loaded for ${this.period()}.`);
-    this.notify(`Annexure loaded: ${agents.length} employees for ${this.period()}.`, 'Invoicing & Payments', 'green', '/invoicing/reconciliation');
+    const resignation = d.resignations.reduce((s, r) => s + r.total, 0);
+    return { salary: Math.round((salary + resignation) * 1000) / 1000, overtime: Math.round(overtime * 1000) / 1000 };
+  }
+
+  /** The vendor's claimed amount for one payable component, from their imported annexure file — undefined until one is imported. */
+  vendorClaim(vendorName: string, component?: WfoComponent): number | undefined {
+    return component ? this.vendorAnnexures()[vendorName]?.claim[component] : undefined;
   }
 
   /** The latest validation of one payable line this period, if any (each run covers exactly one line). */
@@ -918,7 +927,12 @@ export class CrcStore {
   }
 
   period(): string {
-    const [y, m] = this.periodStart().split('-').map(Number);
+    return this.periodLabel(this.periodStart().slice(0, 7));
+  }
+
+  /** Formats any 'YYYY-MM' as "September 2026" — for the current period (period()) or a month picked from payrollMonths(). */
+  periodLabel(monthPrefix: string): string {
+    const [y, m] = monthPrefix.split('-').map(Number);
     return new Date(y, m - 1, 1).toLocaleString('en-GB', { month: 'long', year: 'numeric' });
   }
 

@@ -39,7 +39,7 @@ const totalsOf = (ls: Line[]): Totals => {
     <app-page-header
       title="Accrual Forecast"
       subtitle="The yearly forecast of every contract PO line, month by month. A month switches to the actual amount as soon as its invoice is approved."
-      [breadcrumbs]="[{ label: 'Contracts & Budget', link: '/contracts-budget/dashboard' }, { label: 'Forecast' }, { label: 'Accrual Forecast' }]"
+      [breadcrumbs]="[{ label: 'Contracts & Budget', link: '/contracts-budget/dashboard' }, { label: 'CSR Forecast' }, { label: 'Accrual Forecast' }]"
     >
       @if (!editing()) {
         <button mat-stroked-button (click)="startEdit()" appRequires="Edit Forecast"><mat-icon class="!text-base !mr-1">edit_calendar</mat-icon>Enter / change yearly forecast</button>

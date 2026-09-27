@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -8,7 +8,7 @@ import { KpiCardComponent } from '../../../shared/components/kpi-card/kpi-card.c
 import { RequiresDirective } from '../../../shared/directives/requires.directive';
 import { CrcStore } from '../../../core/services/crc-store.service';
 import { UiService } from '../../../shared/services/ui.service';
-import { CUR_MONTH, FY_YEAR, ForecastService, MONTHS, MONTH_LONG, MONTH_SHORT, isActual } from '../../../core/services/forecast.service';
+import { ForecastService } from '../../../core/services/forecast.service';
 
 const FIELD = 'w-full px-2.5 py-2 text-xs font-semibold rounded-lg border border-surface-border bg-white text-ink-700 focus:outline-none focus:border-brand-400';
 const TH = 'px-3 py-2.5 font-medium';
@@ -21,35 +21,57 @@ const TH = 'px-3 py-2.5 font-medium';
   template: `
     <app-page-header
       title="Team Forecast"
-      subtitle="The salary PO split by team: approved budget and head count against the actual and forecast cost. Closed months are actual; from {{ long[cur] }} on, forecast."
-      [breadcrumbs]="[{ label: 'Contracts & Budget', link: '/contracts-budget/dashboard' }, { label: 'Forecast' }, { label: 'Team Forecast' }]"
+      subtitle="The salary PO split by team: approved budget and head count against the actual and forecast cost. Closed months are actual; open months are forecast."
+      [breadcrumbs]="[{ label: 'Contracts & Budget', link: '/contracts-budget/dashboard' }, { label: 'CSR Forecast' }, { label: 'Team Forecast' }]"
     >
-      <button mat-stroked-button (click)="addTeam()" appRequires="Configure Forecast"><mat-icon class="!text-base !mr-1">group_add</mat-icon>Add team</button>
-      <button mat-flat-button color="primary" (click)="svc.exportTeam()" appRequires="Export Forecast"><mat-icon class="!text-base !mr-1">download</mat-icon>Export to Excel</button>
+      <button mat-flat-button color="primary" (click)="svc.exportTeam(monthCols(), contract())" appRequires="Export Forecast"><mat-icon class="!text-base !mr-1">download</mat-icon>Export to Excel</button>
     </app-page-header>
 
-    <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-2">
-      <app-kpi-card label="Approved budget" [value]="s().budget | number:'1.0-0'" unit="OMR" icon="account_balance_wallet"></app-kpi-card>
-      <app-kpi-card [label]="'Accrual — Jan to ' + short[lastActual]" [value]="s().actual | number:'1.0-0'" unit="OMR" icon="receipt_long" level="normal"></app-kpi-card>
-      <app-kpi-card [label]="'Forecast — ' + short[cur] + ' to Dec'" [value]="s().forecast | number:'1.0-0'" unit="OMR" icon="query_stats" level="info"></app-kpi-card>
-      <app-kpi-card label="Total with forecast" [value]="s().total | number:'1.0-0'" unit="OMR" icon="functions"></app-kpi-card>
-      <app-kpi-card label="Saving amount" [value]="s().saving | number:'1.0-0'" unit="OMR" icon="savings" [level]="s().saving < 0 ? 'red' : 'normal'"></app-kpi-card>
-      <app-kpi-card label="Saving %" [value]="(s().pct | number:'1.2-2') + '%'" icon="percent" [level]="s().saving < 0 ? 'red' : 'normal'"></app-kpi-card>
+    <div class="surface-card px-4 py-3.5 mb-4">
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+        <label class="block"><span class="lbl">Vendor</span>
+          <select [class]="field + ' mt-1'" (change)="vendor.set($any($event.target).value)">
+            <option value="All" [selected]="vendor() === 'All'">All vendors</option>
+            @for (v of vendors(); track v) { <option [value]="v" [selected]="v === vendor()">{{ v }}</option> }
+          </select></label>
+        <label class="block"><span class="lbl">Contract</span>
+          <select [class]="field + ' mt-1'" (change)="contract.set($any($event.target).value)">
+            @for (c of contracts(); track c) { <option [value]="c" [selected]="c === contract()">{{ c }}</option> }
+          </select></label>
+        <label class="block"><span class="lbl">Year of budget</span>
+          <select [class]="field + ' mt-1'" (change)="yearFilter.set(+$any($event.target).value)">
+            @for (y of years(); track y.year) { <option [value]="y.year" [selected]="y.year === yearFilter()">{{ y.label }}</option> }
+          </select></label>
+        <label class="block"><span class="lbl">Contract type</span>
+          <select [class]="field + ' mt-1'" (change)="type.set($any($event.target).value)">
+            <option value="All">All types</option>
+            @for (t of types(); track t) { <option [value]="t" [selected]="t === type()">{{ t }}</option> }
+          </select></label>
+      </div>
     </div>
-    <p class="text-xs text-ink-500 mb-4 px-1">PO {{ po }} · head count in {{ long[cur] }}: <b class="text-ink-700">{{ s().hc }}</b> against <b class="text-ink-700">{{ s().approvedHc }}</b> approved · saving = approved budget − (accrual + forecast).</p>
+
+    <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-2">
+      <app-kpi-card label="Approved budget" [value]="summary().budget | number:'1.0-0'" unit="OMR" icon="account_balance_wallet"></app-kpi-card>
+      <app-kpi-card [label]="accrualLabel()" [value]="summary().actual | number:'1.0-0'" unit="OMR" icon="receipt_long" level="normal"></app-kpi-card>
+      <app-kpi-card [label]="forecastLabel()" [value]="summary().forecast | number:'1.0-0'" unit="OMR" icon="query_stats" level="info"></app-kpi-card>
+      <app-kpi-card label="Total with forecast" [value]="summary().total | number:'1.0-0'" unit="OMR" icon="functions"></app-kpi-card>
+      <app-kpi-card label="Saving amount" [value]="summary().saving | number:'1.0-0'" unit="OMR" icon="savings" [level]="summary().saving < 0 ? 'red' : 'normal'"></app-kpi-card>
+      <app-kpi-card label="Saving %" [value]="(summary().pct | number:'1.2-2') + '%'" icon="percent" [level]="summary().saving < 0 ? 'red' : 'normal'"></app-kpi-card>
+    </div>
+    <p class="text-xs text-ink-500 mb-4 px-1">PO {{ po() }} · head count as of {{ hcAsOfLabel() }}: <b class="text-ink-700">{{ summary().hc }}</b> against <b class="text-ink-700">{{ summary().approvedHc }}</b> approved · saving = approved budget − (accrual + forecast).</p>
 
     <mat-tab-group [selectedIndex]="tab()" (selectedIndexChange)="tab.set($event)">
       <mat-tab label="By team">
         <div class="surface-card overflow-x-auto mt-4">
           <table class="crc-table w-full text-sm">
             <thead><tr class="bg-surface-subtle text-left text-xs text-ink-500 uppercase tracking-wide">
-              <th [class]="th">Team</th><th [class]="th + ' text-right'">Approved HC</th><th [class]="th + ' text-right'">HC {{ short[cur] }}</th><th [class]="th + ' text-right'">Approved budget</th>
+              <th [class]="th">Team</th><th [class]="th + ' text-right'">Approved HC</th><th [class]="th + ' text-right'">HC {{ hcAsOfLabel() }}</th><th [class]="th + ' text-right'">Approved budget</th>
               <th [class]="th + ' text-right'">Accrual</th><th [class]="th + ' text-right'">Forecast</th><th [class]="th + ' text-right'">Total</th><th [class]="th + ' text-right'">Saving</th><th [class]="th + ' text-right'">Saving %</th><th [class]="th"></th>
             </tr></thead>
             <tbody>
               @for (t of byTeam(); track t.name) {
                 <tr class="border-t border-surface-border hover:bg-surface-subtle/60 cursor-pointer" (click)="open(t.name)">
-                  <td class="px-3 py-2.5 font-medium text-ink-900">{{ t.name }}@if (t.from > 0) { <span class="ml-1 text-[11px] text-ink-400">from {{ short[t.from] }}</span> }</td>
+                  <td class="px-3 py-2.5 font-medium text-ink-900">{{ t.name }}@if (joinLabel(t.name); as jl) { <span class="ml-1 text-[11px] text-ink-400">from {{ jl }}</span> }</td>
                   <td class="px-3 py-2.5 text-right">{{ t.approvedHc ?? '—' }}</td>
                   <td class="px-3 py-2.5 text-right" [class.text-status-red]="t.approvedHc !== null && t.hc > t.approvedHc" [class.font-semibold]="t.approvedHc !== null && t.hc > t.approvedHc">{{ t.hc }}</td>
                   <td class="px-3 py-2.5 text-right">{{ t.budget | number:'1.0-0' }}</td>
@@ -63,9 +85,9 @@ const TH = 'px-3 py-2.5 font-medium';
               }
             </tbody>
             <tfoot><tr class="border-t-2 border-surface-border font-bold bg-surface-subtle/50">
-              <td class="px-3 py-2.5">Total</td><td class="px-3 py-2.5 text-right">{{ s().approvedHc }}</td><td class="px-3 py-2.5 text-right">{{ s().hc }}</td><td class="px-3 py-2.5 text-right">{{ s().budget | number:'1.0-0' }}</td>
-              <td class="px-3 py-2.5 text-right">{{ s().actual | number:'1.0-0' }}</td><td class="px-3 py-2.5 text-right text-brand-700">{{ s().forecast | number:'1.0-0' }}</td><td class="px-3 py-2.5 text-right">{{ s().total | number:'1.0-0' }}</td>
-              <td class="px-3 py-2.5 text-right" [class.text-status-red]="s().saving < 0">{{ s().saving | number:'1.0-0' }}</td><td class="px-3 py-2.5 text-right">{{ s().pct | number:'1.1-1' }}%</td><td></td>
+              <td class="px-3 py-2.5">Total</td><td class="px-3 py-2.5 text-right">{{ summary().approvedHc }}</td><td class="px-3 py-2.5 text-right">{{ summary().hc }}</td><td class="px-3 py-2.5 text-right">{{ summary().budget | number:'1.0-0' }}</td>
+              <td class="px-3 py-2.5 text-right">{{ summary().actual | number:'1.0-0' }}</td><td class="px-3 py-2.5 text-right text-brand-700">{{ summary().forecast | number:'1.0-0' }}</td><td class="px-3 py-2.5 text-right">{{ summary().total | number:'1.0-0' }}</td>
+              <td class="px-3 py-2.5 text-right" [class.text-status-red]="summary().saving < 0">{{ summary().saving | number:'1.0-0' }}</td><td class="px-3 py-2.5 text-right">{{ summary().pct | number:'1.1-1' }}%</td><td></td>
             </tr></tfoot>
           </table>
         </div>
@@ -88,14 +110,14 @@ const TH = 'px-3 py-2.5 font-medium';
             <tbody>
               @for (r of monthly(); track r.m) {
                 <tr class="border-t border-surface-border" [class.bg-brand-50]="!r.actual">
-                  <td class="px-3 py-2 font-medium text-ink-900">{{ long[r.m] }} {{ year }}</td>
+                  <td class="px-3 py-2 font-medium text-ink-900">{{ svc.monthLabel(r.m) }}</td>
                   <td class="px-3 py-2"><span class="text-[11px] font-bold uppercase" [class.text-ink-500]="r.actual" [class.text-brand-700]="!r.actual" [class.text-status-amber]="r.manual">{{ r.actual ? 'Actual' : r.manual ? 'Forecast · changed' : 'Forecast' }}</span></td>
                   <td class="px-3 py-2 text-right">{{ r.budget | number:'1.0-3' }}</td>
                   <td class="px-3 py-2 text-right">{{ r.approvedHc ?? '—' }}</td>
                   <td class="px-3 py-2 text-right">{{ r.hc }}</td>
                   <td class="px-3 py-2 text-right font-semibold">{{ r.amount | number:'1.0-3' }}</td>
                   <td class="px-3 py-2 text-right" [class.text-status-red]="r.saving < 0" [class.text-status-green]="r.saving > 0">{{ r.saving | number:'1.0-3' }}</td>
-                  <td class="px-3 py-2 text-right">@if (!r.actual && r.started && store.can('Edit Forecast')) { <button class="act" title="Change the forecast" (click)="edit(r.m)"><mat-icon>edit</mat-icon></button> }</td>
+                  <td class="px-3 py-2 text-right">@if (!r.actual && store.can('Edit Forecast')) { <button class="act" title="Change the forecast" (click)="edit(r.m)"><mat-icon>edit</mat-icon></button> }</td>
                 </tr>
               }
             </tbody>
@@ -116,9 +138,9 @@ const TH = 'px-3 py-2.5 font-medium';
               <th [class]="th + ' text-right'">Total</th>
             </tr></thead>
             <tbody>
-              @for (m of months; track m) {
-                <tr class="border-t border-surface-border" [class.bg-brand-50]="!isActual(m)">
-                  <td class="px-3 py-2 font-medium whitespace-nowrap">{{ short[m] }} {{ year }}@if (!isActual(m)) {<span class="ml-1 text-[10px] font-bold text-brand-700">F</span>}</td>
+              @for (m of monthCols(); track m) {
+                <tr class="border-t border-surface-border" [class.bg-brand-50]="!svc.isClosedMonth(m)">
+                  <td class="px-3 py-2 font-medium whitespace-nowrap">{{ svc.monthShortLabel(m) }}@if (!svc.isClosedMonth(m)) {<span class="ml-1 text-[10px] font-bold text-brand-700">F</span>}</td>
                   @for (t of svc.teams(); track t.name) { <td class="px-2.5 py-2 text-right" [class.text-status-red]="saving(t.name, m) < 0">{{ saving(t.name, m) | number:'1.0-0' }}</td> }
                   <td class="px-3 py-2 text-right font-semibold" [class.text-status-red]="monthSaving(m) < 0">{{ monthSaving(m) | number:'1.0-0' }}</td>
                 </tr>
@@ -127,7 +149,7 @@ const TH = 'px-3 py-2.5 font-medium';
             <tfoot><tr class="border-t-2 border-surface-border font-bold bg-surface-subtle/50">
               <td class="px-3 py-2.5">Total</td>
               @for (t of byTeam(); track t.name) { <td class="px-2.5 py-2.5 text-right" [class.text-status-red]="t.saving < 0">{{ t.saving | number:'1.0-0' }}</td> }
-              <td class="px-3 py-2.5 text-right" [class.text-status-red]="s().saving < 0">{{ s().saving | number:'1.0-0' }}</td>
+              <td class="px-3 py-2.5 text-right" [class.text-status-red]="summary().saving < 0">{{ summary().saving | number:'1.0-0' }}</td>
             </tr></tfoot>
           </table>
         </div>
@@ -157,48 +179,93 @@ export class TeamForecastComponent {
 
   field = FIELD;
   th = TH;
-  year = FY_YEAR;
-  cur = CUR_MONTH;
-  lastActual = Math.max(0, CUR_MONTH - 1);
-  months = MONTHS;
-  short = MONTH_SHORT;
-  long = MONTH_LONG;
-  isActual = isActual;
-  po = '325100185';
 
+  vendor = signal('All');
+  contract = signal('');
+  yearFilter = signal<number | null>(null);
+  type = signal('All');
   tab = signal(0);
   team = signal(this.svc.teams()[0].name);
-  s = this.svc.teamSummary;
 
-  byTeam = computed(() => this.svc.teams().map((t) => {
-    const budget = t.budget.reduce((a, b) => a + b, 0);
-    const actual = MONTHS.filter(isActual).reduce((x, m) => x + this.svc.teamAmount(t.name, m), 0);
-    const forecast = MONTHS.filter((m) => !isActual(m)).reduce((x, m) => x + this.svc.teamAmount(t.name, m), 0);
+  po = computed(() => this.contractsAll().find((c) => c.reference === this.contract())?.poNumber ?? '');
+  contractsAll = computed(() => this.svc.teamContracts());
+  vendors = computed(() => [...new Set(this.contractsAll().map((c) => c.vendorName))]);
+  types = computed(() => [...new Set(this.contractsAll().map((c) => c.contractType))]);
+  contracts = computed(() => this.contractsAll().filter((c) => (this.vendor() === 'All' || c.vendorName === this.vendor()) && (this.type() === 'All' || c.contractType === this.type())).map((c) => c.reference));
+  years = computed(() => this.svc.teamYearsOf(this.contract()));
+
+  constructor() {
+    effect(() => { const list = this.contracts(); if (!list.includes(this.contract())) this.contract.set(list[0] ?? ''); }, { allowSignalWrites: true });
+    // No "all years" option — default to the year running today, else the most recent one.
+    effect(() => {
+      const list = this.years();
+      if (list.some((y) => y.year === this.yearFilter())) return;
+      const today = new Date().toISOString().slice(0, 10);
+      const current = list.find((y) => y.from <= today && y.to >= today);
+      this.yearFilter.set(current?.year ?? list[list.length - 1]?.year ?? null);
+    }, { allowSignalWrites: true });
+  }
+
+  /** The real calendar months of the selected (contract, year). */
+  monthCols = computed(() => {
+    const y = this.years().find((x) => x.year === this.yearFilter());
+    return y ? this.svc.monthsBetween(y.from, y.to) : [];
+  });
+  closedMonths = computed(() => this.monthCols().filter((m) => this.svc.isClosedMonth(m)));
+  openMonths = computed(() => this.monthCols().filter((m) => !this.svc.isClosedMonth(m)));
+  hcAsOf = computed(() => { const closed = this.closedMonths(); return closed.length ? closed[closed.length - 1] : this.monthCols()[0]; });
+  hcAsOfLabel = computed(() => (this.hcAsOf() ? this.svc.monthShortLabel(this.hcAsOf()) : '—'));
+  accrualLabel = computed(() => { const c = this.closedMonths(); return c.length ? `Accrual — through ${this.svc.monthShortLabel(c[c.length - 1])}` : 'Accrual'; });
+  forecastLabel = computed(() => { const o = this.openMonths(); return o.length ? `Forecast — from ${this.svc.monthShortLabel(o[0])}` : 'Forecast'; });
+
+  byTeam = computed(() => {
+    const closed = this.closedMonths(), open = this.openMonths(), cols = this.monthCols();
+    return this.svc.teams().map((t) => {
+      const budget = cols.reduce((s, m) => s + this.svc.teamBudget(t.name, m), 0);
+      const actual = closed.reduce((x, m) => x + this.svc.teamAmount(t.name, m), 0);
+      const forecast = open.reduce((x, m) => x + this.svc.teamAmount(t.name, m), 0);
+      const total = actual + forecast;
+      const hcMonth = [...cols].reverse().find((m) => this.svc.started(t.name, m)) ?? cols[0];
+      return { name: t.name, approvedHc: t.approvedHc, hc: hcMonth ? this.svc.teamHc(t.name, hcMonth) : 0, budget, actual, forecast, total, saving: budget - total, pct: budget ? ((budget - total) / budget) * 100 : 0 };
+    });
+  });
+
+  summary = computed(() => {
+    const t = this.byTeam();
+    const budget = t.reduce((s, x) => s + x.budget, 0);
+    const actual = t.reduce((s, x) => s + x.actual, 0);
+    const forecast = t.reduce((s, x) => s + x.forecast, 0);
     const total = actual + forecast;
-    return { name: t.name, from: t.from, approvedHc: t.approvedHc, hc: this.svc.teamHc(t.name, CUR_MONTH), budget, actual, forecast, total, saving: budget - total, pct: budget ? ((budget - total) / budget) * 100 : 0 };
-  }));
+    return { budget, actual, forecast, total, saving: budget - total, pct: budget ? ((budget - total) / budget) * 100 : 0, hc: t.reduce((s, x) => s + x.hc, 0), approvedHc: t.reduce((s, x) => s + (x.approvedHc ?? 0), 0) };
+  });
 
   monthly = computed(() => {
-    const t = this.svc.teams().find((x) => x.name === this.team())!;
-    return MONTHS.map((m) => {
-      const amount = this.svc.teamAmount(t.name, m);
-      return { m, actual: isActual(m), manual: this.svc.teamManual(t.name, m), started: m >= t.from, budget: t.budget[m], approvedHc: m >= t.from ? t.approvedHc : null, hc: this.svc.teamHc(t.name, m), amount, saving: t.budget[m] - amount };
+    const t = this.team();
+    const approvedHc = this.svc.teams().find((x) => x.name === t)?.approvedHc ?? null;
+    return this.monthCols().map((m) => {
+      const amount = this.svc.teamAmount(t, m), budget = this.svc.teamBudget(t, m);
+      return { m, actual: this.svc.isClosedMonth(m), manual: this.svc.teamManual(t, m), budget, approvedHc, hc: this.svc.teamHc(t, m), amount, saving: budget - amount };
     });
   });
   monthlyTotal = computed(() => this.monthly().reduce((s, r) => ({ budget: s.budget + r.budget, amount: s.amount + r.amount, saving: s.saving + r.saving }), { budget: 0, amount: 0, saving: 0 }));
 
   history = computed(() => this.svc.edits().filter((e) => e.kind === 'Team'));
 
-  saving = (team: string, m: number) => (this.svc.teams().find((t) => t.name === team)?.budget[m] ?? 0) - this.svc.teamAmount(team, m);
-  monthSaving = (m: number) => this.svc.teams().reduce((s, t) => s + this.saving(t.name, m), 0);
+  joinLabel(team: string): string | null {
+    const cols = this.monthCols();
+    const first = cols.find((m) => this.svc.started(team, m));
+    return first && first !== cols[0] ? this.svc.monthShortLabel(first) : null;
+  }
+  saving = (team: string, m: string) => this.svc.teamBudget(team, m) - this.svc.teamAmount(team, m);
+  monthSaving = (m: string) => this.svc.teams().reduce((s, t) => s + this.saving(t.name, m), 0);
   open(name: string) { this.team.set(name); this.tab.set(1); }
 
-  async edit(m: number) {
+  async edit(m: string) {
     if (!this.ui.requires('Edit Forecast')) return;
     const team = this.team();
     const hc = this.svc.teamHc(team, m), amount = this.svc.teamAmount(team, m);
     const v = await this.ui.form({
-      title: `${team} — ${MONTH_LONG[m]} ${FY_YEAR}`, subtitle: `Now ${hc} head count, ${amount.toLocaleString('en-GB')} OMR.`, icon: 'edit', submitLabel: 'Save forecast',
+      title: `${team} — ${this.svc.monthLabel(m)}`, subtitle: `Now ${hc} head count, ${amount.toLocaleString('en-GB')} OMR.`, icon: 'edit', submitLabel: 'Save forecast',
       values: { hc, amount: '' },
       fields: [
         { key: 'hc', label: 'Head count', type: 'number', min: 0, required: true },
@@ -210,26 +277,5 @@ export class TeamForecastComponent {
     const typed = v['amount'] === '' || v['amount'] === null || v['amount'] === undefined ? null : Number(v['amount']);
     const err = this.svc.setTeamMonth(team, m, Number(v['hc']), typed, v['reason'] ?? '');
     this.ui.toast(err ?? 'Team forecast saved.', err ? 5000 : 3000);
-  }
-
-  async addTeam() {
-    if (!this.ui.requires('Configure Forecast')) return;
-    const v = await this.ui.form({
-      title: 'Add a team', subtitle: `A team that joins PO ${this.po} during ${FY_YEAR}. It counts from its first month.`, icon: 'group_add', submitLabel: 'Add team',
-      values: { from: String(CUR_MONTH) },
-      fields: [
-        { key: 'name', label: 'Team name', required: true },
-        { key: 'from', label: 'First month', type: 'select', required: true, options: MONTHS.filter((m) => !isActual(m)).map((m) => ({ value: String(m), label: `${MONTH_LONG[m]} ${FY_YEAR}` })) },
-        { key: 'budget', label: 'Approved budget per month (OMR)', type: 'number', min: 0, required: true },
-        { key: 'approvedHc', label: 'Approved head count', type: 'number', min: 0 },
-        { key: 'hc', label: 'Head count', type: 'number', min: 0, required: true },
-        { key: 'amount', label: 'Cost per month (OMR)', type: 'number', min: 0, required: true },
-      ],
-    });
-    if (!v) return;
-    const err = this.svc.addTeam({ name: v['name'] ?? '', from: Number(v['from']), budget: Number(v['budget']) || 0, approvedHc: v['approvedHc'] === '' || v['approvedHc'] == null ? null : Number(v['approvedHc']), hc: Number(v['hc']) || 0, amount: Number(v['amount']) || 0 });
-    if (err) { this.ui.toast(err, 5000); return; }
-    this.ui.toast(`${v['name']} added.`);
-    this.open(String(v['name']).trim());
   }
 }

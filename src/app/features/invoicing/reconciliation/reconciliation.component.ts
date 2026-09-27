@@ -31,16 +31,22 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Not validated': 'neutra
       subtitle="Check what a vendor invoiced on a contract against our calculation, line by line — approve what matches, query the rest with the vendor"
       [breadcrumbs]="[{ label: 'Invoicing & Payments', link: '/invoicing/reconciliation' }, { label: 'Reconciliation Workspace' }]"
     >
-      <span class="status-chip status-chip--neutral">{{ store.period() }}</span>
-      <app-status-chip [label]="status()" [level]="statusLevel()"></app-status-chip>
+      <span class="status-chip status-chip--neutral">{{ periodLabel(period()) }}</span>
+      @if (isCurrentPeriod()) { <app-status-chip [label]="status()" [level]="statusLevel()"></app-status-chip> }
+      @else { <span class="status-chip status-chip--neutral">History &middot; read-only</span> }
     </app-page-header>
 
     <!-- 1. Filters — labelled dropdowns, same pattern as the Contract List -->
     <div class="surface-card px-4 py-3.5 mb-4">
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+      <div class="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
         <label class="block"><span class="text-[10.5px] font-bold text-ink-400 uppercase tracking-wide">Vendor</span>
           <select [class]="field + ' mt-1'" (change)="vendor.set($any($event.target).value)">
             @for (v of vendors; track v) { <option [value]="v" [selected]="v === vendor()">{{ v }}</option> }
+          </select>
+        </label>
+        <label class="block"><span class="text-[10.5px] font-bold text-ink-400 uppercase tracking-wide">Month</span>
+          <select [class]="field + ' mt-1'" (change)="period.set($any($event.target).value)">
+            @for (m of periods(); track m) { <option [value]="m" [selected]="m === period()">{{ periodLabel(m) }}</option> }
           </select>
         </label>
         <label class="block sm:col-span-2"><span class="text-[10.5px] font-bold text-ink-400 uppercase tracking-wide">Contract</span>
@@ -53,7 +59,33 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Not validated': 'neutra
       </div>
     </div>
 
-    @if (view() === 'annexure') {
+    @if (!isCurrentPeriod()) {
+      <!-- Read-only history: past months show whatever was already validated/approved, from the invoice-run history. Our WFO figures
+           are only ever calculated for the current month, so a past month cannot be recalculated here — see importAnnexure(). -->
+      <div class="surface-card overflow-hidden">
+        <div class="px-4 py-3.5 border-b border-surface-border">
+          <h3 class="text-[13.5px] font-bold text-ink-900">Reconciliation history &middot; {{ vendor() }} &middot; {{ periodLabel(period()) }}</h3>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="crc-table w-full">
+            <thead><tr class="text-left"><th>Line</th><th class="text-right">Calculated (OMR)</th><th class="text-right">Vendor invoice (OMR)</th><th class="text-right">Difference</th><th>Status</th></tr></thead>
+            <tbody>
+              @for (r of historicalRuns(); track $index) {
+                <tr>
+                  <td class="font-semibold text-ink-900">{{ r.lines[0].label }}</td>
+                  <td class="text-right tabular-nums">{{ r.calculatedTotal | number:'1.2-2' }}</td>
+                  <td class="text-right tabular-nums">{{ r.vendorInvoiceAmount | number:'1.2-2' }}</td>
+                  <td class="text-right tabular-nums" [class.text-status-red]="r.status === 'Flagged for review'">{{ (r.vendorInvoiceAmount - r.calculatedTotal) > 0 ? '+' : '' }}{{ r.vendorInvoiceAmount - r.calculatedTotal | number:'1.2-2' }}</td>
+                  <td><app-status-chip [label]="r.status" [level]="r.status === 'Approved for payment' ? 'info' : r.status === 'Flagged for review' ? 'red' : 'normal'"></app-status-chip></td>
+                </tr>
+              } @empty {
+                <tr><td colspan="5" class="!text-center text-sm text-ink-400 !py-8">No reconciliation was recorded for {{ vendor() }} in {{ periodLabel(period()) }}.</td></tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    } @else if (view() === 'annexure') {
       <button type="button" class="inline-flex items-center gap-1 mb-3 text-xs font-semibold text-brand-700 hover:underline" (click)="view.set('calc')"><mat-icon class="!text-base !w-4 !h-4">arrow_back</mat-icon>Back to payable lines</button>
       <app-annexure [vendor]="vendor()"></app-annexure>
     } @else if (!contract()) {
@@ -111,7 +143,10 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Not validated': 'neutra
                   <div class="text-[11px] mt-0.5" [class]="l.source === 'wfo' ? 'text-brand-700' : 'text-ink-400'">{{ l.source === 'wfo' ? 'Calculated from WFO attendance' : 'Contract monthly share' }}@if (l.note) { <span class="text-ink-400"> &middot; {{ l.note }}</span> }</div>
                 </td>
                 <td class="text-right font-medium text-ink-900 tabular-nums">{{ l.calculated | number:'1.2-2' }}</td>
-                <td class="text-right"><input type="number" step="0.01" min="0" class="w-32 h-8 text-right text-sm font-medium tabular-nums bg-white border border-surface-border rounded-lg px-2.5 focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 disabled:bg-surface-subtle disabled:text-ink-500 disabled:border-transparent" [ngModel]="vendorAmount(l.key)" (ngModelChange)="setVendorAmount(l.key, +$event)" [disabled]="isApproved(l.key)" /></td>
+                <td class="text-right">
+                  <input type="number" step="0.01" min="0" class="w-32 h-8 text-right text-sm font-medium tabular-nums bg-white border border-surface-border rounded-lg px-2.5 focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 disabled:bg-surface-subtle disabled:text-ink-500 disabled:border-transparent" [ngModel]="vendorAmount(l.key)" (ngModelChange)="setVendorAmount(l.key, +$event)" [disabled]="isApproved(l.key)" />
+                  @if (fromAnnexure(l.key)) { <div class="text-[11px] text-brand-600 mt-0.5">From the vendor's annexure</div> }
+                </td>
                 <td class="text-right">
                   <div class="font-semibold tabular-nums" [class]="diffClass(l)">{{ lineDiff(l) > 0 ? '+' : '' }}{{ lineDiff(l) | number:'1.2-2' }}</div>
                   @if (!same(l)) { <div class="text-[11px] text-ink-400">{{ lineDiff(l) > 0 ? 'Higher' : 'Lower' }} than ours &middot; {{ lineVariance(l) > 0 ? '+' : '' }}{{ lineVariance(l) | number:'1.1-1' }}%</div> }
@@ -207,10 +242,17 @@ export class ReconciliationComponent {
 
   vendor = signal(VENDORS[0]);
   view = signal<'calc' | 'annexure'>('calc');
+  /** 'YYYY-MM', defaults to the current month; a past month shows read-only history instead of a live calculation. */
+  period = signal(this.store.periodStart().slice(0, 7));
   private contractByVendor = signal<Record<string, string>>({});
   private selectedBy = signal<Record<string, Set<string>>>({});
   private typed = signal<Record<string, number>>({});
   private expandedKeys = signal<Set<string>>(new Set());
+
+  periods = computed(() => this.store.payrollMonths());
+  isCurrentPeriod = computed(() => this.period() === this.store.periodStart().slice(0, 7));
+  periodLabel = (m: string) => this.store.periodLabel(m);
+  historicalRuns = computed(() => (this.store.invoiceRuns()[this.vendor()] ?? []).filter((r) => r.period === this.periodLabel(this.period())));
 
   contracts = computed(() => this.store.payableContracts(this.vendor()));
   contract = computed(() => { const list = this.contracts(); return list.find((c) => c.reference === this.contractByVendor()[this.vendor()]) ?? list[0]; });
@@ -285,12 +327,23 @@ export class ReconciliationComponent {
     this.expandedKeys.set(next);
   }
 
+  /** Approved (locked) > manually typed (override) > the vendor's own claim from their imported annexure > our calculation (assumed to match until told otherwise). */
   vendorAmount(key: string): number {
     const run = this.store.lineRun(this.vendor(), key);
     if (run?.status === 'Approved for payment') return run.lines[0].vendorAmount;
     const typed = this.typed()[key];
     if (typed !== undefined) return typed;
-    return this.lines().find((l) => l.key === key)?.calculated ?? 0;
+    const line = this.lines().find((l) => l.key === key);
+    const claimed = this.store.vendorClaim(this.vendor(), line?.component);
+    if (claimed !== undefined) return claimed;
+    return line?.calculated ?? 0;
+  }
+
+  /** True once the vendor invoice field on screen reflects their imported annexure and hasn't been overridden. */
+  fromAnnexure(key: string): boolean {
+    if (this.typed()[key] !== undefined || this.store.lineRun(this.vendor(), key)?.status === 'Approved for payment') return false;
+    const line = this.lines().find((l) => l.key === key);
+    return this.store.vendorClaim(this.vendor(), line?.component) !== undefined;
   }
 
   setVendorAmount(key: string, v: number) {
