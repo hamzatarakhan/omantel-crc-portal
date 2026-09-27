@@ -71,7 +71,7 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
             <div class="flex flex-wrap gap-2">
               @for (l of legend; track l.code) {
                 <span class="text-xs rounded-full px-3 py-1" [class]="style(l.code)">
-                  <span class="font-semibold">{{ l.code }}</span> &mdash; {{ l.meaning }}@if (l.notes) {<span class="opacity-70"> ({{ l.notes }})</span>}
+                  <span class="font-semibold">{{ l.code }}</span> &mdash; {{ l.meaning }}
                 </span>
               }
             </div>
