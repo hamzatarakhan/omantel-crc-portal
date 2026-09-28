@@ -1,4 +1,4 @@
-import { AnnexureCompareRow, CURRENT_USER } from '../../../core/services/crc-store.service';
+import { AnnexureCompareRow, CURRENT_USER, EmployeeCompareRow } from '../../../core/services/crc-store.service';
 
 /** One invoice line that does not match, with everything needed to see where the difference is. */
 export interface QueryLine {
@@ -14,10 +14,12 @@ export interface QueryLine {
   note?: string;
   /** Our figure against the vendor's imported annexure, part by part — only when their annexure is loaded. */
   compare?: { fileName: string; rows: AnnexureCompareRow[] };
+  /** Employee by employee against the vendor's annexure (Salary): only the people who differ, biggest first. */
+  employees?: { fileName: string; total: number; rows: EmployeeCompareRow[] };
 }
 export interface QueryDialogData { vendor: string; contract: string; contractName: string; period: string; to: string; tolerancePct: number; lines: QueryLine[]; selected: string[] }
 export interface QueryDialogResult { to: string; subject: string; keys: string[]; comment: string }
-export interface DetailsDialogData { vendor: string; contract: string; period: string; tolerancePct: number; line: QueryLine }
+export interface DetailsDialogData { vendor: string; contract: string; period: string; tolerancePct: number; line: QueryLine; /** Opens the full employee comparison (only offered from the Reconciliation table). */ openComparison?: () => void }
 
 export const f2 = (n: number) => n.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 export const signed = (n: number) => (Math.abs(n) < 0.005 ? '' : n > 0 ? '+' : '−') + f2(Math.abs(n));
@@ -52,6 +54,15 @@ export function explainByParts(l: QueryLine): { kept: string[]; left: Array<{ la
   return { kept: kept.map((p) => shortLabel(p.label)), left: left.map((p) => ({ label: shortLabel(p.label), amount: p.amount })) };
 }
 
+/** A short, plain sentence for one person that differs. */
+export function employeeText(r: EmployeeCompareRow): string {
+  const who = `${r.name} (ID ${r.employeeId}, ${r.degree})`;
+  if (r.status === 'Only on vendor annexure') return `${who}: you billed ${f2(r.theirs)}, but ${r.kind === 'Resignation' ? 'we have no such resignation' : 'this person is not an active agent in our records'}`;
+  if (r.status === 'Only in our WFO') return `${who}: we calculate ${f2(r.ours)}, but you did not bill ${r.kind === 'Resignation' ? 'this resignation' : 'this person'}`;
+  const days = r.days.length ? `; attendance differs on day${r.days.length > 1 ? 's' : ''} ${r.days.slice(0, 6).map((d) => `${d.day} (you ${d.vendor}, we ${d.ours})`).join(', ')}${r.days.length > 6 ? ' …' : ''}` : '';
+  return `${who}: you billed ${f2(r.theirs)}, we calculate ${f2(r.ours)} → ${signed(r.diff)} — ${r.reasons.join('; ')}${days}`;
+}
+
 /** The email exactly as the vendor receives it. */
 export function emailBody(d: { vendor: string; contract: string; contractName: string; period: string; tolerancePct: number }, lines: QueryLine[], comment: string): string {
   const out: string[] = [];
@@ -63,7 +74,12 @@ export function emailBody(d: { vendor: string; contract: string; contractName: s
     out.push(`   Difference:        ${signed(df)} OMR (${pctText(l)}) — you invoiced ${f2(Math.abs(df))} OMR ${df < 0 ? 'less' : 'more'} than we calculated`);
     out.push(`   Allowed:           ±${f2(toleranceOf(l, d.tolerancePct))} OMR — the difference is outside it by ${f2(outsideOf(l, d.tolerancePct))} OMR`);
     const where = differing(l);
-    if (l.compare) {
+    if (l.employees) {
+      const e = l.employees, shown = e.rows.slice(0, 15);
+      out.push(`   Where the difference is — employee by employee, your annexure ${e.fileName} against our calculation (${e.total} difference${e.total === 1 ? '' : 's'}):`);
+      shown.forEach((r) => out.push(`     - ${employeeText(r)}`));
+      if (e.rows.length > shown.length) out.push(`     … and ${e.rows.length - shown.length} more (the full list is attached to our record).`);
+    } else if (l.compare) {
       out.push(`   Where the difference is (your annexure ${l.compare.fileName} against our calculation):`);
       if (where.length) where.forEach((r) => out.push(`     - ${r.label}: yours ${f2(r.theirs)} (${r.theirsDetail}), ours ${f2(r.ours)} (${r.oursDetail}) → ${signed(r.diff)}`));
       else out.push('     - no difference in any part of the annexure.');

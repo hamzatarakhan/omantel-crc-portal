@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { AnnexureCompareRow } from '../../../core/services/crc-store.service';
-import { DetailsDialogData, QueryLine, differing, diffOf, explainByParts, f2, outsideOf, pctText, signed, toleranceOf } from './mismatch';
+import { DetailsDialogData, QueryLine, differing, diffOf, employeeText, explainByParts, f2, outsideOf, pctText, signed, toleranceOf } from './mismatch';
 
 /** The full story of one mismatched line: the numbers, the tolerance, where the difference is, and how our figure is built. */
 @Component({
@@ -34,6 +34,32 @@ import { DetailsDialogData, QueryLine, differing, diffOf, explainByParts, f2, ou
             <div><div class="k">Outside the allowance by</div><div class="v text-status-red">{{ f2(out) }}</div></div>
           </div>
         </div>
+
+        <!-- who: employee by employee -->
+        @if (line.employees; as e) {
+          <section>
+            <h3 class="text-[13.5px] font-bold text-ink-900 flex items-center gap-1.5"><mat-icon class="!text-lg text-brand-600">groups</mat-icon>Employee by employee</h3>
+            <p class="text-xs text-ink-500 mt-1 mb-2.5">The vendor's annexure <b class="text-ink-700">{{ e.fileName }}</b> against our calculation: <b class="text-status-red">{{ e.total }}</b> {{ e.total === 1 ? 'difference' : 'differences' }}{{ e.rows.length ? ', biggest first' : '' }}.</p>
+            @if (!e.rows.length) { <p class="text-xs text-status-green font-medium">Every employee matches.</p> }
+            <div class="rounded-lg border border-surface-border overflow-hidden text-xs">
+              @for (r of e.rows.slice(0, 8); track r.key) {
+                <div class="px-3 py-2.5 border-b border-surface-border last:border-0">
+                  <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0"><div class="font-semibold text-ink-900">{{ r.name }} <span class="font-normal text-ink-400">· ID {{ r.employeeId }} · {{ r.degree }}{{ r.kind === 'Resignation' ? ' · resignation' : '' }}</span></div>
+                      <div class="text-ink-500">Vendor billed <b class="text-ink-800">{{ f2(r.theirs) }}</b> · we calculate <b class="text-ink-800">{{ f2(r.ours) }}</b></div></div>
+                    <div class="font-bold text-status-red tabular-nums whitespace-nowrap">{{ signed(r.diff) }}</div>
+                  </div>
+                  <div class="flex flex-wrap gap-1 mt-1.5">
+                    @for (why of r.reasons; track why) { <span class="px-1.5 py-0.5 rounded bg-red-50 text-status-red font-medium">{{ why }}</span> }
+                    @if (r.days.length) { <span class="px-1.5 py-0.5 rounded bg-amber-50 text-status-amber font-medium">Attendance differs on day{{ r.days.length > 1 ? 's' : '' }} {{ dayList(r) }}</span> }
+                  </div>
+                </div>
+              }
+              @if (e.rows.length > 8) { <div class="px-3 py-2 bg-surface-subtle text-ink-500">and {{ e.rows.length - 8 }} more employee{{ e.rows.length - 8 === 1 ? '' : 's' }}.</div> }
+            </div>
+            @if (data.openComparison && e.rows.length) { <button type="button" class="mt-2 text-xs font-semibold text-brand-700 hover:underline" (click)="ref.close(); data.openComparison()">Open the full employee comparison</button> }
+          </section>
+        }
 
         <!-- where -->
         <section>
@@ -134,6 +160,8 @@ export class MismatchDetailsDialogComponent {
     this.biggest = this.rows[0] ? { ...this.rows[0], share: this.gap ? Math.round((Math.abs(this.rows[0].diff) / this.gap) * 100) : 0 } : null;
   }
 
+  dayList = (r: { days: Array<{ day: number; vendor: string; ours: string }> }) => r.days.slice(0, 6).map((d) => `${d.day} (vendor ${d.vendor}, ours ${d.ours})`).join(', ') + (r.days.length > 6 ? ' …' : '');
+  employeeText = employeeText;
   isBiggest = (label: string) => this.biggest?.label === label && this.rows.length > 1;
   share = (d: number) => (this.gap ? (Math.abs(d) / this.gap) * 100 : 0);
 }

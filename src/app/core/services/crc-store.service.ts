@@ -48,7 +48,22 @@ export interface VendorAnnexureClaim {
   tiers: Array<{ degree: string; agents: number; fte: number; salary: number; overtime: number }>;
   joiners: { agents: number; salary: number };
   resignationTotal: number;
+  /** One row per employee on the vendor's annexure, so their bill can be compared with ours employee by employee. */
+  people: VendorPerson[];
+  resignationRows: Array<{ employeeId: string; name: string; queue: string; degree: string; total: number; resignDate: string }>;
 }
+export interface VendorPerson { employeeId: string; name: string; queue: string; degree: string; joinDate: string; rate: number; expected: number; billable: number; absent: number; codes: string[]; amount: number; overtime: number; joiner: boolean }
+/** One employee (or resignation) on the vendor's annexure against our calculation. */
+export interface EmployeeCompareRow {
+  key: string; employeeId: string; name: string; queue: string; degree: string;
+  kind: 'Salary' | 'Resignation';
+  status: 'Matches' | 'Different' | 'Only on vendor annexure' | 'Only in our WFO';
+  ours: number; theirs: number; diff: number;
+  reasons: string[];
+  /** Days where the attendance code differs (only when both files cover the same number of days). */
+  days: Array<{ day: number; vendor: string; ours: string }>;
+}
+export interface AgentBillRow { agent: Agent; kind: 'existing' | 'joiner'; rate: number; expected: number; billable: number; absent: number; amount: number; codes: string[] }
 /** One part of a Salary / Overtime figure: what we calculated against what the vendor's annexure says. */
 export interface AnnexureCompareRow { label: string; ours: number; theirs: number; oursDetail: string; theirsDetail: string }
 export const WFO_COMPONENTS: WfoComponent[] = ['salary', 'overtime', 'performance', 'incentive', 'fee'];
@@ -720,6 +735,7 @@ export class CrcStore {
     const joiners = all.filter((a) => a.joinDate.startsWith(monthPrefix));
     const existing = all.filter((a) => !a.joinDate.startsWith(monthPrefix));
 
+    const agentRows: AgentBillRow[] = [];
     const absentees: Array<{ agent: Agent; absentDays: number; rate: number; deduction: number }> = [];
     let absentDays = 0;
     const tiers = (['Bachelor', 'Diploma', 'Non-Diploma'] as const).map((degree) => {
@@ -734,6 +750,7 @@ export class CrcStore {
         const factor = expected ? billable / expected : 0;
         const flatFee = Math.min(pay.managementFee, FLAT_MANAGEMENT_FEE);
         gross += pay.billingRate; amount += pay.billingRate * factor; factorSum += factor;
+        agentRows.push({ agent: a, kind: 'existing', rate: pay.billingRate, expected, billable, absent, amount: pay.billingRate * factor, codes });
         const ot = this.overtimeFor(a), perf = this.performanceFor(a);
         overtime += ot.amount; overtimeHours += ot.hours; performance += perf.amount; if (perf.eligible) qualified++; fee += flatFee; payroll += pay.billingRate - flatFee;
         if (absent) {
@@ -756,6 +773,7 @@ export class CrcStore {
       const daysBilled = daysInMonth - day + 1;
       return { agent: a, pay, daysBilled, prorated: (pay.billingRate * daysBilled) / daysInMonth };
     });
+    for (const j of newJoiners) agentRows.push({ agent: j.agent, kind: 'joiner', rate: j.pay.billingRate, expected: daysInMonth, billable: j.daysBilled, absent: 0, amount: j.prorated, codes: att[j.agent.id] ?? [] });
     const newJoining = { units: newJoiners.length, amount: newJoiners.reduce((s, j) => s + j.prorated, 0) };
 
     const resignationRecords = this.resignations().filter((r) => r.vendor === key && r.resignDate.startsWith(monthPrefix));
@@ -769,7 +787,7 @@ export class CrcStore {
     const incentiveIncluded = this.payableRules().includeIncentive;
     const subtotal = base + overtimeBase + performanceBase + newJoining.amount + resignation.amount + (incentiveIncluded ? incentive : 0);
     const vat = subtotal * 0.05;
-    return { vendorName, existing, tiers, gross, base, salaryBase, overtimeBase, performanceBase, absenceDeduction, absentDays, absentees, newJoiners, newJoining, resignationRecords, resignation, sampleCalls, excludedCalls, eligibleCalls, incentive, incentiveIncluded, subtotal, vat, total: subtotal + vat, threshold };
+    return { vendorName, existing, agentRows, tiers, gross, base, salaryBase, overtimeBase, performanceBase, absenceDeduction, absentDays, absentees, newJoiners, newJoining, resignationRecords, resignation, sampleCalls, excludedCalls, eligibleCalls, incentive, incentiveIncluded, subtotal, vat, total: subtotal + vat, threshold };
   }
 
   /** The vendor's contracts that run in the billing month, the one its agents are billed on (the active contract ending last) first. */
@@ -899,16 +917,63 @@ export class CrcStore {
     const monthPrefix = d.periodStart.slice(0, 7);
     const tiers = ['Bachelor', 'Diploma', 'Non-Diploma'].map((degree) => ({ degree, agents: 0, fte: 0, salary: 0, overtime: 0 }));
     const joiners = { agents: 0, salary: 0 };
+    const people: VendorPerson[] = [];
     for (const e of d.employees) {
       const codes = d.attendance.rows[e.employeeId] ?? [];
       const expected = codes.filter((c) => c !== 'OFF').length, billable = codes.filter((c) => c !== 'OFF' && c !== 'A').length;
       const factor = expected ? billable / expected : 1, salary = e.pay.billingRate * factor;
+      const joiner = e.joinDate.startsWith(monthPrefix);
+      people.push({ employeeId: String(e.employeeId).trim(), name: e.name, queue: e.queue, degree: e.degree, joinDate: e.joinDate, rate: e.pay.billingRate, expected, billable, absent: codes.filter((c) => c === 'A').length, codes, amount: Math.round(salary * 1000) / 1000, overtime: e.pay.additional, joiner });
       const t = tiers.find((x) => x.degree === e.degree);
       if (t) t.overtime += e.pay.additional;
-      if (e.joinDate.startsWith(monthPrefix)) { joiners.agents++; joiners.salary += salary; continue; }
+      if (joiner) { joiners.agents++; joiners.salary += salary; continue; }
       if (t) { t.agents++; t.fte += factor; t.salary += salary; }
     }
-    return { tiers, joiners, resignationTotal: d.resignations.reduce((sum, r) => sum + r.total, 0) };
+    const resignationRows = d.resignations.map((r) => ({ employeeId: String(r.employeeId).trim(), name: r.name, queue: r.queue, degree: r.degree, total: r.total, resignDate: r.resignDate }));
+    return { tiers, joiners, people, resignationRows, resignationTotal: d.resignations.reduce((sum, r) => sum + r.total, 0) };
+  }
+
+  /**
+   * Employee by employee: what the vendor's annexure bills for each person against what we calculate, matched on employee ID.
+   * Says who differs, by how much, and why (billing rate, absent days, joining) — plus people on only one side. Null until an annexure is imported.
+   */
+  annexureEmployees(vendorName: string): { fileName: string; rows: EmployeeCompareRow[] } | null {
+    const a = this.vendorAnnexures()[vendorName];
+    if (!a?.people) return null;
+    const calc = this.calculateInvoice(vendorName);
+    const r3 = (n: number) => Math.round(n * 1000) / 1000, f3 = (n: number) => n.toFixed(3);
+    const ours = new Map(calc.agentRows.map((r) => [String(r.agent.employeeId).trim(), r]));
+    const rows: EmployeeCompareRow[] = [];
+    const seen = new Set<string>();
+    for (const v of a.people) {
+      seen.add(v.employeeId);
+      const o = ours.get(v.employeeId);
+      if (!o) { rows.push({ key: 'S|' + v.employeeId, employeeId: v.employeeId, name: v.name, queue: v.queue, degree: v.degree, kind: 'Salary', status: 'Only on vendor annexure', ours: 0, theirs: v.amount, diff: v.amount, reasons: ["Billed by the vendor, but not an active agent in our WFO this month"], days: [] }); continue; }
+      const diff = r3(v.amount - o.amount), reasons: string[] = [];
+      const days: EmployeeCompareRow['days'] = [];
+      if (v.codes.length && v.codes.length === o.codes.length) o.codes.forEach((c, i) => { if (c !== v.codes[i]) days.push({ day: i + 1, vendor: v.codes[i], ours: c }); });
+      if (Math.abs(diff) >= 0.005) {
+        if (Math.abs(v.rate - o.rate) >= 0.0005) reasons.push(`Billing rate: vendor ${f3(v.rate)}, ours ${f3(o.rate)}`);
+        if (v.absent !== o.absent) reasons.push(`Absent days: vendor ${v.absent}, ours ${o.absent}`);
+        if (v.expected !== o.expected) reasons.push(`Working days: vendor ${v.expected}, ours ${o.expected}`);
+        if (v.joiner !== (o.kind === 'joiner')) reasons.push(v.joiner ? 'The vendor bills a new joiner; we bill a full month' : 'We bill a new joiner pro-rata; the vendor bills a full month');
+        if (!reasons.length) reasons.push('The amounts differ');
+      }
+      rows.push({ key: 'S|' + v.employeeId, employeeId: v.employeeId, name: v.name || o.agent.name, queue: v.queue || o.agent.queue, degree: v.degree, kind: 'Salary', status: Math.abs(diff) >= 0.005 ? 'Different' : 'Matches', ours: r3(o.amount), theirs: v.amount, diff, reasons, days });
+    }
+    for (const [id, o] of ours) if (!seen.has(id)) rows.push({ key: 'S|' + id, employeeId: id, name: o.agent.name, queue: o.agent.queue, degree: o.agent.degree, kind: 'Salary', status: 'Only in our WFO', ours: r3(o.amount), theirs: 0, diff: -r3(o.amount), reasons: ['In our WFO, but missing from the vendor annexure — not billed'], days: [] });
+    // resignations
+    const oursRes = new Map(calc.resignationRecords.map((r) => [String(r.employeeId).trim(), r]));
+    const seenRes = new Set<string>();
+    for (const v of a.resignationRows) {
+      seenRes.add(v.employeeId);
+      const o = oursRes.get(v.employeeId);
+      const oursTotal = o ? r3(o.total) : 0, diff = r3(v.total - oursTotal);
+      rows.push({ key: 'R|' + v.employeeId, employeeId: v.employeeId, name: v.name, queue: v.queue, degree: v.degree, kind: 'Resignation', status: !o ? 'Only on vendor annexure' : Math.abs(diff) >= 0.005 ? 'Different' : 'Matches', ours: oursTotal, theirs: r3(v.total), diff, reasons: !o ? ['A resignation the vendor bills, that is not in our records'] : Math.abs(diff) >= 0.005 ? ['Pro-rata days or leave encashment differ'] : [], days: [] });
+    }
+    for (const [id, o] of oursRes) if (!seenRes.has(id)) rows.push({ key: 'R|' + id, employeeId: id, name: o.name, queue: o.queue, degree: o.degree, kind: 'Resignation', status: 'Only in our WFO', ours: r3(o.total), theirs: 0, diff: -r3(o.total), reasons: ['A resignation in our records that the vendor did not bill'], days: [] });
+    rows.sort((x, y) => Number(y.status !== 'Matches') - Number(x.status !== 'Matches') || Math.abs(y.diff) - Math.abs(x.diff) || x.name.localeCompare(y.name));
+    return { fileName: a.fileName, rows };
   }
 
   /** Where a Salary or Overtime difference sits: our figure and the vendor's annexure figure, part by part. Null until their annexure is imported. */

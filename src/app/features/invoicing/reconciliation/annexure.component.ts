@@ -85,7 +85,58 @@ import { parseAnnexure } from '../../../core/services/annexure-import';
       </div>
     </div>
 
-    <mat-tab-group>
+    <mat-tab-group [(selectedIndex)]="tab">
+      <mat-tab [label]="'Employee comparison' + (cmp() ? ' (' + cmpMismatches() + ' differ)' : '')">
+        <div class="pt-4">
+          @if (!cmp()) {
+            <div class="rounded-xl border border-dashed border-surface-border bg-white p-8 text-center text-sm text-ink-500">Import the vendor's annexure above to compare it with our calculation employee by employee.</div>
+          } @else {
+            <div class="rounded-xl border border-surface-border bg-white">
+              <div class="p-3 flex flex-wrap items-center gap-2 border-b border-surface-border">
+                @for (f of cmpFilters; track f) {
+                  <button type="button" class="h-8 px-3 rounded-full text-xs font-semibold border border-solid" [class]="filter() === f ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-ink-700 border-surface-border hover:bg-surface-subtle'" (click)="filter.set(f); page.set(0)">{{ f }} <span class="opacity-70">{{ countOf(f) }}</span></button>
+                }
+                <input class="ml-auto h-8 w-56 rounded-lg border border-solid border-surface-border px-2.5 text-sm" placeholder="Search name or ID" [value]="search()" (input)="search.set($any($event.target).value); page.set(0)" />
+              </div>
+              <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                  <thead><tr class="text-left text-xs text-ink-500 bg-surface-subtle">
+                    <th class="px-3 py-2">Employee</th><th class="px-3 py-2">Queue</th><th class="px-3 py-2 text-right">Vendor annexure</th><th class="px-3 py-2 text-right">Our calculation</th><th class="px-3 py-2 text-right">Difference</th><th class="px-3 py-2">Where it differs</th>
+                  </tr></thead>
+                  <tbody>
+                    @for (r of pageRows(); track r.key) {
+                      <tr class="border-t border-surface-border align-top">
+                        <td class="px-3 py-2"><div class="font-semibold text-ink-900">{{ r.name }}</div><div class="text-xs text-ink-500">ID {{ r.employeeId }} · {{ r.degree }}{{ r.kind === 'Resignation' ? ' · resignation' : '' }}</div></td>
+                        <td class="px-3 py-2 text-ink-700">{{ r.queue }}</td>
+                        <td class="px-3 py-2 text-right tabular-nums">{{ r.theirs | number:'1.2-2' }}</td>
+                        <td class="px-3 py-2 text-right tabular-nums">{{ r.ours | number:'1.2-2' }}</td>
+                        <td class="px-3 py-2 text-right tabular-nums font-semibold" [class]="r.status === 'Matches' ? 'text-status-green' : 'text-status-red'">{{ r.status === 'Matches' ? 'Matches' : (r.diff > 0 ? '+' : '−') + (abs(r.diff) | number:'1.2-2') }}</td>
+                        <td class="px-3 py-2">
+                          @if (r.status === 'Matches') { <span class="text-ink-400">—</span> } @else {
+                            <div class="flex flex-wrap gap-1">
+                              <span class="px-1.5 py-0.5 rounded bg-surface-subtle text-ink-700 text-xs font-medium">{{ r.status }}</span>
+                              @for (why of r.reasons; track why) { <span class="px-1.5 py-0.5 rounded bg-red-50 text-status-red text-xs font-medium">{{ why }}</span> }
+                            </div>
+                            @if (r.days.length) { <div class="text-xs text-status-amber mt-1">Attendance differs on day{{ r.days.length > 1 ? 's' : '' }} {{ dayText(r) }}</div> }
+                          }
+                        </td>
+                      </tr>
+                    } @empty { <tr><td colspan="6" class="px-3 py-8 text-center text-ink-500">Nothing to show for this filter.</td></tr> }
+                  </tbody>
+                </table>
+              </div>
+              <div class="p-3 flex items-center justify-between text-xs text-ink-500 border-t border-surface-border">
+                <span>{{ filtered().length }} employee{{ filtered().length === 1 ? '' : 's' }} · annexure {{ cmp()!.fileName }}</span>
+                <span class="flex items-center gap-2">
+                  <button type="button" class="h-7 px-2.5 rounded border border-solid border-surface-border disabled:opacity-40" [disabled]="page() === 0" (click)="page.set(page() - 1)">Previous</button>
+                  Page {{ page() + 1 }} of {{ pages() }}
+                  <button type="button" class="h-7 px-2.5 rounded border border-solid border-surface-border disabled:opacity-40" [disabled]="page() + 1 >= pages()" (click)="page.set(page() + 1)">Next</button>
+                </span>
+              </div>
+            </div>
+          }
+        </div>
+      </mat-tab>
       <mat-tab [label]="'Employee billing rates (' + employeeRows().length + ')'">
         <div class="pt-4"><app-data-table title="Monthly billing rate per employee" [columns]="employeeColumns" [rows]="employeeRows()" [pageSize]="10"></app-data-table></div>
       </mat-tab>
@@ -106,6 +157,24 @@ export class AnnexureComponent {
   private ui = inject(UiService);
   vendor = input.required<string>();
   loading = signal(false);
+
+  tab = signal(0);
+  filter = signal('Mismatches');
+  search = signal('');
+  page = signal(0);
+  readonly cmpFilters = ['Mismatches', 'Only on vendor annexure', 'Only in our WFO', 'Matches', 'All'];
+  cmp = computed(() => this.store.annexureEmployees(this.vendor()));
+  cmpMismatches = computed(() => this.cmp()?.rows.filter((r) => r.status !== 'Matches').length ?? 0);
+  countOf(f: string) { const rows = this.cmp()?.rows ?? []; return f === 'All' ? rows.length : rows.filter((r) => this.inFilter(r.status, f)).length; }
+  private inFilter(status: string, f: string) { return f === 'All' || (f === 'Mismatches' ? status !== 'Matches' : status === f); }
+  filtered = computed(() => {
+    const q = this.search().trim().toLowerCase(), f = this.filter();
+    return (this.cmp()?.rows ?? []).filter((r) => this.inFilter(r.status, f) && (!q || r.name.toLowerCase().includes(q) || r.employeeId.toLowerCase().includes(q)));
+  });
+  pages = computed(() => Math.max(1, Math.ceil(this.filtered().length / 15)));
+  pageRows = computed(() => this.filtered().slice(this.page() * 15, this.page() * 15 + 15));
+  abs = Math.abs;
+  dayText(r: { days: Array<{ day: number; vendor: string; ours: string }> }) { return r.days.slice(0, 8).map((d) => d.day + ' (vendor ' + d.vendor + ', ours ' + d.ours + ')').join(', ') + (r.days.length > 8 ? ' …' : ''); }
 
   calc = computed(() => this.store.calculateInvoice(this.vendor()));
   existingCount = computed(() => this.calc().existing.length);

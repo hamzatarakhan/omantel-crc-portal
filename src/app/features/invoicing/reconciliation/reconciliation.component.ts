@@ -23,8 +23,8 @@ const VENDOR_CONTACT: Record<string, string> = { 'Infoline LLC': 'accounts@infol
 const FIELD = 'w-full px-2.5 py-2 text-xs font-semibold rounded-lg border border-surface-border bg-white text-ink-700 focus:outline-none focus:border-brand-400';
 
 /** Where a line is in its journey: validate it, then approve it if it matches — or email the vendor if it does not. */
-type LineStatus = 'Not validated' | 'Matches' | 'Does not match' | 'Queried with vendor' | 'Approved for payment';
-const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Not validated': 'neutral', Matches: 'normal', 'Does not match': 'red', 'Queried with vendor': 'amber', 'Approved for payment': 'info' };
+type LineStatus = 'Annexure needed' | 'Not validated' | 'Matches' | 'Does not match' | 'Queried with vendor' | 'Approved for payment';
+const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Annexure needed': 'amber', 'Not validated': 'neutral', Matches: 'normal', 'Does not match': 'red', 'Queried with vendor': 'amber', 'Approved for payment': 'info' };
 
 @Component({
   selector: 'app-reconciliation',
@@ -150,8 +150,18 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Not validated': 'neutra
                 </td>
                 <td class="text-right font-medium text-ink-900 tabular-nums">{{ l.calculated | number:'1.2-2' }}</td>
                 <td class="text-right">
+                  @if (isSalary(l)) {
+                    @if (annexureClaim(l) !== undefined) {
+                      <div class="inline-block w-32 h-8 leading-8 text-right text-sm font-semibold tabular-nums text-ink-900 bg-surface-subtle rounded-lg px-2.5">{{ vendorAmount(l.key) | number:'1.2-2' }}</div>
+                      <div class="text-[11px] text-brand-600 mt-0.5">From the vendor's annexure</div>
+                    } @else {
+                      <button type="button" class="inline-flex items-center gap-1 h-8 px-2.5 text-xs font-semibold rounded-lg border border-solid border-brand-200 text-brand-700 bg-white hover:bg-brand-50" (click)="view.set('annexure')"><mat-icon class="!text-base">upload_file</mat-icon>Import annexure</button>
+                      <div class="text-[11px] text-status-amber mt-0.5">Needed to check Salary</div>
+                    }
+                  } @else {
                   <input type="number" step="0.01" min="0" class="w-32 h-8 text-right text-sm font-medium tabular-nums bg-white border border-surface-border rounded-lg px-2.5 focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 disabled:bg-surface-subtle disabled:text-ink-500 disabled:border-transparent" [ngModel]="vendorAmount(l.key)" (ngModelChange)="setVendorAmount(l.key, +$event)" [disabled]="isApproved(l.key)" />
                   @if (fromAnnexure(l.key)) { <div class="text-[11px] text-brand-600 mt-0.5">From the vendor's annexure</div> }
+                  }
                 </td>
                 <td class="text-right">
                   <div class="font-semibold tabular-nums" [class]="diffClass(l)">{{ lineDiff(l) > 0 ? '+' : '' }}{{ lineDiff(l) | number:'1.2-2' }}</div>
@@ -169,6 +179,7 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Not validated': 'neutra
                       @case ('Matches') { <button type="button" [class]="rowBtn + ' text-white bg-brand-600 hover:bg-brand-700'" (click)="approve([l.key])" appRequires="Validate Invoice"><mat-icon [class]="icoSm">task_alt</mat-icon>Approve</button> }
                       @case ('Does not match') { <button type="button" [class]="rowBtn + ' text-white bg-status-red hover:bg-red-700'" (click)="emailVendor(l.key)" appRequires="Validate Invoice"><mat-icon [class]="icoSm">mail</mat-icon>Email vendor</button> }
                       @case ('Queried with vendor') { <button type="button" [class]="rowBtn + ' text-status-red border border-solid border-red-200 bg-white hover:bg-red-50'" (click)="emailVendor(l.key)" appRequires="Validate Invoice"><mat-icon [class]="icoSm">forward_to_inbox</mat-icon>Email again</button> }
+                      @case ('Annexure needed') { <button type="button" [class]="rowBtn + ' text-brand-700 border border-solid border-brand-200 bg-white hover:bg-brand-50'" (click)="view.set('annexure')"><mat-icon [class]="icoSm">upload_file</mat-icon>Import annexure</button> }
                       @default { <button type="button" [class]="rowBtn + ' text-brand-700 border border-solid border-brand-200 bg-white hover:bg-brand-50'" (click)="validate([l.key])" appRequires="Validate Invoice"><mat-icon [class]="icoSm">fact_check</mat-icon>Validate</button> }
                     }
                     <button type="button" [class]="iconBtn" (click)="toggleExpand(l.key)" [title]="isExpanded(l.key) ? 'Hide how it was calculated' : 'Show how it was calculated'"><mat-icon class="!text-lg !w-[18px] !h-[18px] transition-transform" [class.rotate-180]="isExpanded(l.key)">expand_more</mat-icon></button>
@@ -274,7 +285,7 @@ export class ReconciliationComponent {
   openLines = computed(() => this.lines().filter((l) => !this.isApproved(l.key)));
   selected = computed(() => this.selectedBy()[this.ctx()] ?? new Set(this.openLines().map((l) => l.key)));
   allSelected = computed(() => this.openLines().length > 0 && this.openLines().every((l) => this.selected().has(l.key)));
-  validatable = computed(() => this.openLines().filter((l) => this.isSelected(l.key)).map((l) => l.key));
+  validatable = computed(() => this.openLines().filter((l) => this.isSelected(l.key) && !this.needsAnnexure(l)).map((l) => l.key));
   approvable = computed(() => this.validatable().filter((k) => this.lineStatus(k) === 'Matches'));
   queryable = computed(() => this.lines().filter((l) => this.lineStatus(l.key) === 'Does not match' || this.lineStatus(l.key) === 'Queried with vendor'));
   approvedCount = computed(() => this.lines().length - this.openLines().length);
@@ -340,13 +351,19 @@ export class ReconciliationComponent {
   vendorAmount(key: string): number {
     const run = this.store.lineRun(this.vendor(), key);
     if (run?.status === 'Approved for payment') return run.lines[0].vendorAmount;
+    const line = this.lines().find((l) => l.key === key);
+    if (line && this.isSalary(line)) return this.annexureClaim(line) ?? line.calculated;
     const typed = this.typed()[key];
     if (typed !== undefined) return typed;
-    const line = this.lines().find((l) => l.key === key);
     const claimed = this.store.vendorClaim(this.vendor(), line?.component);
     if (claimed !== undefined) return claimed;
     return line?.calculated ?? 0;
   }
+
+  isSalary(l: PayableLineItem) { return l.component === 'salary'; }
+  annexureClaim(l: PayableLineItem) { return this.store.vendorClaim(this.vendor(), l.component); }
+  /** The Salary line is checked against the vendor's annexure — nothing to compare until one is imported. */
+  needsAnnexure(l: PayableLineItem) { return this.isSalary(l) && this.annexureClaim(l) === undefined; }
 
   /** True once the vendor invoice field on screen reflects their imported annexure and hasn't been overridden. */
   fromAnnexure(key: string): boolean {
@@ -379,6 +396,8 @@ export class ReconciliationComponent {
   /** A validation only counts while the amounts it checked are still the ones on screen. */
   lineStatus(key: string): LineStatus {
     const run = this.store.lineRun(this.vendor(), key);
+    const own = this.lines().find((x) => x.key === key);
+    if (own && this.needsAnnexure(own) && run?.status !== 'Approved for payment') return 'Annexure needed';
     if (!run) return 'Not validated';
     if (run.status === 'Approved for payment') return run.status;
     const checked = run.lines[0], now = this.lines().find((x) => x.key === key);
@@ -453,15 +472,17 @@ export class ReconciliationComponent {
   /** Everything the vendor needs to see where a line's difference is: both amounts, what the line is linked to, and how our figure is built. */
   private queryLine(l: PayableLineItem): QueryLine {
     const parts = l.source === 'wfo' ? this.breakdown(l).filter((x) => Math.abs(x.amount) >= 0.005 || l.calculated === 0) : [];
+    const emp = l.component === 'salary' ? this.store.annexureEmployees(this.vendor()) : null;
+    const employees = emp ? { fileName: emp.fileName, total: emp.rows.filter((r) => r.status !== 'Matches').length, rows: emp.rows.filter((r) => r.status !== 'Matches') } : undefined;
     const compare = this.store.annexureCompare(this.vendor(), l.component, this.lines().some((x) => x.component === 'fee')) ?? undefined;
-    return { key: l.key, label: l.label, linkedTo: l.component ? WFO_LABEL[l.component] : null, calculated: l.calculated, vendorAmount: this.vendorAmount(l.key), parts, basis: l.basis, note: l.note, compare };
+    return { key: l.key, label: l.label, linkedTo: l.component ? WFO_LABEL[l.component] : null, calculated: l.calculated, vendorAmount: this.vendorAmount(l.key), parts, basis: l.basis, note: l.note, compare, employees };
   }
 
   /** The full explanation of one mismatched line, without sending anything. */
   showDetails(l: PayableLineItem) {
     const c = this.contract();
     if (!c) return;
-    this.dialog.open(MismatchDetailsDialogComponent, { data: { vendor: this.vendor(), contract: c.reference, period: this.store.period(), tolerancePct: this.store.payableRules().deviationPct, line: this.queryLine(l) }, panelClass: 'app-dialog-panel', autoFocus: false, width: 'min(860px, 94vw)', maxWidth: '94vw' });
+    this.dialog.open(MismatchDetailsDialogComponent, { data: { vendor: this.vendor(), contract: c.reference, period: this.store.period(), tolerancePct: this.store.payableRules().deviationPct, line: this.queryLine(l), openComparison: () => this.view.set('annexure') }, panelClass: 'app-dialog-panel', autoFocus: false, width: 'min(860px, 94vw)', maxWidth: '94vw' });
   }
 
   /** One email to the vendor: each chosen line with the exact difference and how we calculated it, then the user's comment. */
