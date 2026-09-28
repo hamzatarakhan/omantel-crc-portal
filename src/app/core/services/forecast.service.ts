@@ -165,6 +165,49 @@ export class ForecastService {
   readonly teamMonths = signal<Record<string, Record<string, TeamMonth>>>({});
   readonly teamChanged = signal<Set<string>>(new Set());
 
+  /**
+   * The rows above ("Revenue", "Complaints", ...) are GROUPS of teams; the teams themselves are the agents' queues (RTM, Project, Hotline, ...).
+   * This says which group each team belongs to — set on the Group of Teams screen. A team with no entry has no group yet.
+   * The starting links are the obvious ones by name; the rest are left for the user to place.
+   */
+  readonly teamGroup = signal<Record<string, string>>({
+    Complaints: 'Complaints', 'Agent Experience': 'Agent Experience', 'Debt Recovery': 'Debt Recovery',
+    RTM: 'Support/Project (RTM) + Technical Team', Project: 'Support/Project (RTM) + Technical Team',
+    Hotline: 'TRA + Hotline', 'TRA Complaint': 'TRA + Hotline',
+  });
+  /** Groups created on the Group of Teams screen (they start with no forecast figures, so they can be deleted while empty). */
+  private readonly customGroups = signal<Set<string>>(new Set());
+  /** Every team (queue) the workforce has — the pool the Group of Teams screen links from. */
+  readonly allTeams = computed(() => [...new Set([...this.store.agents().map((a) => a.queue), ...Object.keys(this.teamGroup())])].sort((a, b) => a.localeCompare(b)));
+  teamsOf = (group: string) => this.allTeams().filter((t) => this.teamGroup()[t] === group);
+  agentsIn = (team: string) => this.store.agents().filter((a) => a.queue === team).length;
+  canRemoveGroup = (group: string) => this.customGroups().has(group) && !this.teamsOf(group).length;
+
+  setTeamGroup(team: string, group: string | null) {
+    const from = this.teamGroup()[team] ?? null;
+    if (from === group) return;
+    this.teamGroup.update((m) => { const n = { ...m }; if (group) n[team] = group; else delete n[team]; return n; });
+    this.store.log('Group of Teams Changed', team, group ? (from ? `Moved from "${from}" to "${group}".` : `Linked to "${group}".`) : `Unlinked from "${from}".`);
+  }
+  addGroup(name: string): string | null {
+    const n = name.trim();
+    if (!n) return 'Enter a name for the group.';
+    if (this.teams().some((t) => t.name.toLowerCase() === n.toLowerCase())) return `A group called "${n}" already exists.`;
+    this.teams.update((l) => [...l, { name: n, po: SALARY_PO, approvedHc: null }]);
+    this.teamMonths.update((all) => ({ ...all, [n]: {} }));
+    this.customGroups.update((s) => new Set(s).add(n));
+    this.store.log('Group of Teams Created', n, 'New group. Its approved budget is set in Forecast Settings.');
+    return null;
+  }
+  removeGroup(name: string): string | null {
+    if (!this.canRemoveGroup(name)) return 'Only a group you created, with no teams in it, can be deleted.';
+    this.teams.update((l) => l.filter((t) => t.name !== name));
+    this.teamMonths.update((all) => { const { [name]: _gone, ...rest } = all; return rest; });
+    this.customGroups.update((s) => { const n = new Set(s); n.delete(name); return n; });
+    this.store.log('Group of Teams Deleted', name, 'The empty group was deleted.');
+    return null;
+  }
+
   /** Contracts backing Team Forecast (currently just the salary PO's), for the vendor/contract/type filters. */
   teamContracts(): Contract[] {
     return this.store.contracts().filter((c) => c.poNumber === SALARY_PO);

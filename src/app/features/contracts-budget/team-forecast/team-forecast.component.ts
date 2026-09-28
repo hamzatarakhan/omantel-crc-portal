@@ -1,5 +1,6 @@
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { RouterModule } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTabsModule } from '@angular/material/tabs';
@@ -17,11 +18,11 @@ const TH = 'px-3 py-2.5 font-medium';
 @Component({
   selector: 'app-team-forecast',
   standalone: true,
-  imports: [CommonModule, MatButtonModule, MatIconModule, MatTabsModule, PageHeaderComponent, KpiCardComponent, RequiresDirective],
+  imports: [CommonModule, RouterModule, MatButtonModule, MatIconModule, MatTabsModule, PageHeaderComponent, KpiCardComponent, RequiresDirective],
   template: `
     <app-page-header
       title="Team Forecast"
-      subtitle="The salary PO split by team: approved budget and head count against the actual and forecast cost. Closed months are actual; open months are forecast."
+      subtitle="The salary PO split by group of teams: approved budget and head count against the actual and forecast cost. Closed months are actual; open months are forecast."
       [breadcrumbs]="[{ label: 'Contracts & Budget', link: '/contracts-budget/dashboard' }, { label: 'CSR Forecast' }, { label: 'Team Forecast' }]"
     >
       <button mat-flat-button color="primary" (click)="svc.exportTeam(monthCols(), contract())" appRequires="Export Forecast"><mat-icon class="!text-base !mr-1">download</mat-icon>Export to Excel</button>
@@ -61,11 +62,11 @@ const TH = 'px-3 py-2.5 font-medium';
     <p class="text-xs text-ink-500 mb-4 px-1">PO {{ po() }} · head count as of {{ hcAsOfLabel() }}: <b class="text-ink-700">{{ summary().hc }}</b> against <b class="text-ink-700">{{ summary().approvedHc }}</b> approved · saving = approved budget − (accrual + forecast).</p>
 
     <mat-tab-group [selectedIndex]="tab()" (selectedIndexChange)="tab.set($event)">
-      <mat-tab label="By team">
+      <mat-tab label="By group of teams">
         <div class="surface-card overflow-x-auto mt-4">
           <table class="crc-table w-full text-sm">
             <thead><tr class="bg-surface-subtle text-left text-xs text-ink-500 uppercase tracking-wide">
-              <th [class]="th">Team</th><th [class]="th + ' text-right'">Approved HC</th><th [class]="th + ' text-right'">HC {{ hcAsOfLabel() }}</th><th [class]="th + ' text-right'">Approved budget</th>
+              <th [class]="th">Group of teams</th><th [class]="th + ' text-right'">Approved HC</th><th [class]="th + ' text-right'">HC {{ hcAsOfLabel() }}</th><th [class]="th + ' text-right'">Approved budget</th>
               <th [class]="th + ' text-right'">Accrual</th><th [class]="th + ' text-right'">Forecast</th><th [class]="th + ' text-right'">Total</th><th [class]="th + ' text-right'">Saving</th><th [class]="th + ' text-right'">Saving %</th><th [class]="th"></th>
             </tr></thead>
             <tbody>
@@ -91,16 +92,22 @@ const TH = 'px-3 py-2.5 font-medium';
             </tr></tfoot>
           </table>
         </div>
-        <p class="text-xs text-ink-400 mt-3">Amounts in OMR. Click a team to see and change its months.</p>
+        <p class="text-xs text-ink-400 mt-3">Amounts in OMR. Click a group to see and change its months.</p>
       </mat-tab>
 
-      <mat-tab label="Monthly by team">
+      <mat-tab label="Monthly by group of teams">
         <div class="surface-card px-4 py-3.5 mt-4 mb-4 flex flex-wrap items-end gap-3">
-          <label class="block w-72"><span class="lbl">Team</span>
+          <label class="block w-72"><span class="lbl">Group of teams</span>
             <select [class]="field + ' mt-1'" (change)="team.set($any($event.target).value)">
               @for (t of svc.teams(); track t.name) { <option [value]="t.name" [selected]="t.name === team()">{{ t.name }}</option> }
             </select></label>
-          <span class="text-xs text-ink-400 pb-2">Forecast head count defaults to the last actual month; the amount follows at that month's cost per head unless you type it.</span>
+          <div class="pb-1.5 flex flex-wrap items-center gap-1.5 text-xs text-ink-500">
+            <span class="font-semibold">Teams in this group:</span>
+            @for (t of svc.teamsOf(team()); track t) { <span class="px-2 py-0.5 rounded-md bg-brand-50 text-brand-700 font-semibold">{{ t }}</span> }
+            @empty { <span class="text-ink-400">none linked yet</span> }
+            <a class="text-brand-600 font-semibold hover:underline ml-1" routerLink="/contracts-budget/team-groups">Link teams</a>
+          </div>
+          <span class="basis-full text-xs text-ink-400">Forecast head count defaults to the last actual month; the amount follows at that month's cost per head unless you type it.</span>
         </div>
         <div class="surface-card overflow-x-auto">
           <table class="crc-table w-full text-sm">
@@ -153,17 +160,17 @@ const TH = 'px-3 py-2.5 font-medium';
             </tr></tfoot>
           </table>
         </div>
-        <p class="text-xs text-ink-400 mt-3">Saving = the team's approved budget for the month − its actual or forecast amount. Negative (red) = over budget.</p>
+        <p class="text-xs text-ink-400 mt-3">Saving = the group's approved budget for the month − its actual or forecast amount. Negative (red) = over budget.</p>
       </mat-tab>
 
       <mat-tab label="Change history ({{ history().length }})">
         <div class="surface-card overflow-x-auto mt-4">
           <table class="crc-table w-full text-sm">
-            <thead><tr class="bg-surface-subtle text-left text-xs text-ink-500 uppercase tracking-wide"><th [class]="th">When</th><th [class]="th">By</th><th [class]="th">Team</th><th [class]="th">Month</th><th [class]="th">Change</th><th [class]="th + ' text-right'">From</th><th [class]="th + ' text-right'">To</th><th [class]="th">Reason</th></tr></thead>
+            <thead><tr class="bg-surface-subtle text-left text-xs text-ink-500 uppercase tracking-wide"><th [class]="th">When</th><th [class]="th">By</th><th [class]="th">Group of teams</th><th [class]="th">Month</th><th [class]="th">Change</th><th [class]="th + ' text-right'">From</th><th [class]="th + ' text-right'">To</th><th [class]="th">Reason</th></tr></thead>
             <tbody>
               @for (e of history(); track e.id) {
                 <tr class="border-t border-surface-border"><td class="px-3 py-2 whitespace-nowrap">{{ e.at | date:'d MMM, HH:mm' }}</td><td class="px-3 py-2">{{ e.by }}</td><td class="px-3 py-2">{{ e.item }}</td><td class="px-3 py-2">{{ svc.monthLabelOf(e.month) }}</td><td class="px-3 py-2">{{ e.field }}</td><td class="px-3 py-2 text-right">{{ e.from | number:'1.0-3' }}</td><td class="px-3 py-2 text-right font-semibold">{{ e.to | number:'1.0-3' }}</td><td class="px-3 py-2 text-ink-600">{{ e.reason }}</td></tr>
-              } @empty { <tr><td colspan="8" class="px-4 py-10 text-center text-sm text-ink-400">No team forecast has been changed yet.</td></tr> }
+              } @empty { <tr><td colspan="8" class="px-4 py-10 text-center text-sm text-ink-400">No forecast has been changed yet.</td></tr> }
             </tbody>
           </table>
         </div>

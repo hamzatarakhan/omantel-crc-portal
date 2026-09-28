@@ -59,6 +59,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: 'Accrual Forecast', path: 'accrual-forecast', icon: 'receipt_long', perms: ['View Accrual Forecast'], section: 'CSR Forecast' },
       { label: 'Team Forecast', path: 'team-forecast', icon: 'groups', perms: ['View Team Forecast'], section: 'CSR Forecast' },
       { label: 'Transaction Forecast', path: 'transaction-forecast', icon: 'support_agent', perms: ['View Transaction Forecast'], section: 'CSR Forecast' },
+      { label: 'Group of Teams', path: 'team-groups', icon: 'account_tree', perms: ['View Team Forecast'], section: 'CSR Forecast' },
       { label: 'Forecast Settings', path: 'forecast-settings', icon: 'tune', perms: ['Configure Forecast'], section: 'CSR Forecast' },
     ],
   },

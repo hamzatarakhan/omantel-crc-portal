@@ -32,6 +32,7 @@ export const routes: Routes = [
       { path: 'contracts-budget/accrual-forecast', loadComponent: () => import('./features/contracts-budget/accrual-forecast/accrual-forecast.component').then((m) => m.AccrualForecastComponent) },
       { path: 'contracts-budget/team-forecast', loadComponent: () => import('./features/contracts-budget/team-forecast/team-forecast.component').then((m) => m.TeamForecastComponent) },
       { path: 'contracts-budget/transaction-forecast', loadComponent: () => import('./features/contracts-budget/transaction-forecast/transaction-forecast.component').then((m) => m.TransactionForecastComponent) },
+      { path: 'contracts-budget/team-groups', loadComponent: () => import('./features/contracts-budget/team-groups/team-groups.component').then((m) => m.TeamGroupsComponent) },
       { path: 'contracts-budget/forecast-settings', loadComponent: () => import('./features/contracts-budget/forecast-settings/forecast-settings.component').then((m) => m.ForecastSettingsComponent) },
       { path: 'contracts-budget/forecast', loadComponent: () => import('./features/contracts-budget/cost-forecast/cost-forecast.component').then((m) => m.CostForecastComponent) },
 
