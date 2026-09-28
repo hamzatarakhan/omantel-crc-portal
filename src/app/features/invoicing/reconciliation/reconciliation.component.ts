@@ -117,6 +117,7 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Annexure needed': 'ambe
           </ol>
         </div>
         <div class="flex items-center gap-2 flex-wrap">
+          <button type="button" [class]="btnSecondary" (click)="view.set('annexure')"><mat-icon [class]="ico">upload_file</mat-icon>Vendor annexure @if (store.vendorClaim(vendor(), 'salary') !== undefined) { <mat-icon class="!text-base !w-4 !h-4 text-status-green">check_circle</mat-icon> }</button>
           <a routerLink="/invoicing/line-mapping" class="inline-flex items-center gap-1 text-xs font-semibold text-brand-600 hover:underline" appRequires="Configure Payable Rules"><mat-icon class="!text-base">link</mat-icon>Payable Line Mapping</a>
           <button type="button" [class]="btnSecondary" (click)="validate(validatable())" appRequires="Validate Invoice" [disabled]="!validatable().length"><mat-icon [class]="ico">fact_check</mat-icon>Validate selected @if (validatable().length) { <span [class]="pill">{{ validatable().length }}</span> }</button>
           <button type="button" [class]="btnPrimary" (click)="approve(approvable())" appRequires="Validate Invoice" [disabled]="!approvable().length"><mat-icon [class]="ico">task_alt</mat-icon>Approve selected @if (approvable().length) { <span class="bg-white/25 rounded-full px-1.5 text-[10px] leading-4">{{ approvable().length }}</span> }</button>
