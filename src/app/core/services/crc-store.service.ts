@@ -74,7 +74,10 @@ export interface PayableLineCatalogItem { key: string; vendorName: string; contr
 const addMonthsIso = (iso: string, n: number) => { const [y, m] = iso.split('-').map(Number); const d = new Date(Date.UTC(y, m - 1 + n, 1)); return d.toISOString().slice(0, 10); };
 /** The contract's flat management fee per employee per month (OMR). */
 export const FLAT_MANAGEMENT_FEE = 116;
+export type ServiceClass = 'Secondment' | 'Managed Services · Voice' | 'Managed Services · Non Voice';
+export const SERVICE_CLASSES: ServiceClass[] = ['Secondment', 'Managed Services · Voice', 'Managed Services · Non Voice'];
 export const ROLE_SUMMARY: Record<string, string> = {
+  'Top Management': 'The General Dashboard: budgets, expense, savings and active projects across contracts',
   'Contract Mgmt Team': 'Contracts, budgets and forecasts',
   'Contract Mgmt Manager': 'Contract risk, escalations and notification rules',
   'Budget Owner': 'Contracts and budget approval',
@@ -85,7 +88,7 @@ export const ROLE_SUMMARY: Record<string, string> = {
   'Read-Only User': 'Views authorized contracts, budgets, projects and forecasts, without changing anything',
   'System Admin': 'Everything, plus access control and audit',
 };
-export const ROLES = ['Contract Mgmt Team', 'Contract Mgmt Manager', 'Budget Owner', 'Line Manager', 'Project Manager', 'Finance', 'Budget Team', 'Read-Only User', 'System Admin'];
+export const ROLES = ['Top Management', 'Contract Mgmt Team', 'Contract Mgmt Manager', 'Budget Owner', 'Line Manager', 'Project Manager', 'Finance', 'Budget Team', 'Read-Only User', 'System Admin'];
 
 export interface Permission { permission: string; module: string; }
 export const PERMISSIONS: Permission[] = [
@@ -95,6 +98,8 @@ export const PERMISSIONS: Permission[] = [
   { permission: 'View Sync History', module: 'Contracts & Budget' },
   { permission: 'View Attachments', module: 'Contracts & Budget' },
   { permission: 'View Dashboards', module: 'Contracts & Budget' },
+  { permission: 'View General Dashboard', module: 'Contracts & Budget' },
+  { permission: 'Classify Contracts', module: 'Contracts & Budget' },
   { permission: 'Export Contract Data', module: 'Contracts & Budget' },
   { permission: 'Manage Sync Configuration', module: 'Contracts & Budget' },
   { permission: 'Manage Notifications', module: 'Contracts & Budget' },
@@ -126,7 +131,8 @@ export const PERMISSIONS: Permission[] = [
 const CT_ROLES = ['Contract Mgmt Team', 'Contract Mgmt Manager', 'Budget Owner'];
 const RO = 'Read-Only User';
 const SPECIAL: Record<string, string[]> = {
-  'View Contracts': [...CT_ROLES, RO], 'View Contract Details': [...CT_ROLES, RO], 'View Sync History': CT_ROLES, 'View Attachments': [...CT_ROLES, RO], 'View Dashboards': [...CT_ROLES, RO], 'Export Contract Data': CT_ROLES,
+  'View General Dashboard': ['Top Management', 'Budget Owner', 'Contract Mgmt Manager'], 'Classify Contracts': ['Contract Mgmt Team', 'Contract Mgmt Manager'],
+  'View Contracts': [...CT_ROLES, RO, 'Top Management'], 'View Contract Details': [...CT_ROLES, RO], 'View Sync History': CT_ROLES, 'View Attachments': [...CT_ROLES, RO], 'View Dashboards': [...CT_ROLES, RO, 'Top Management'], 'Export Contract Data': CT_ROLES,
   'View Budget': ['Contract Mgmt Team', 'Contract Mgmt Manager', 'Budget Owner', 'Finance', 'Budget Team', 'Read-Only User'],
   'Prepare/Edit Draft Budget': ['Contract Mgmt Team', 'Budget Owner'],
   'Manage Budget Cycle': ['Budget Owner', 'Contract Mgmt Manager'],
@@ -217,6 +223,21 @@ export class CrcStore {
   readonly budgetLines = signal<BudgetLine[]>(this.mock.getBudgetLines().filter((l) => l.category !== 'Total Budget'));
   /** Manual override of a Yearly Budget line's approved amount, keyed by "contractId:Y<year>:L<line>". Not read from the ERP. */
   readonly yearlyBudgetApprovals = signal<Record<string, number>>({});
+  /** How each contract is reported on the General Dashboard, by contract reference. Seeded: the Infoline salary PO is the secondment contract. */
+  readonly serviceClass = signal<Record<string, ServiceClass>>(this.seedServiceClass());
+  setServiceClass(reference: string, cls: ServiceClass | null) {
+    this.serviceClass.update((m) => { const { [reference]: _old, ...rest } = m; return cls ? { ...rest, [reference]: cls } : rest; });
+    this.log('Contract Classified', reference, cls ? `Reported as ${cls} on the General Dashboard.` : 'Removed from the General Dashboard.');
+  }
+  private seedServiceClass(): Record<string, ServiceClass> {
+    const list = this.contracts(), rec: Record<string, ServiceClass> = {};
+    const salary = list.find((c) => c.poNumber === '325100185');
+    if (salary) rec[salary.reference] = 'Secondment';
+    const rest = list.filter((c) => c !== salary && c.status !== 'Cancelled' && c.status !== 'Expired');
+    if (rest[0]) rec[rest[0].reference] = 'Managed Services · Voice';
+    if (rest[1]) rec[rest[1].reference] = 'Managed Services · Non Voice';
+    return rec;
+  }
 
   readonly agents = signal<Agent[]>([
     ...this.mock.getAgents(48).filter((a) => a.vendor !== 'Infoline'),

@@ -11,6 +11,7 @@ export const routes: Routes = [
       { path: '', pathMatch: 'full', redirectTo: 'contracts-budget/dashboard' },
 
       // Contracts & Budget
+      { path: 'contracts-budget/general-dashboard', loadComponent: () => import('./features/contracts-budget/general-dashboard/general-dashboard.component').then((m) => m.GeneralDashboardComponent) },
       { path: 'contracts-budget/dashboard', loadComponent: () => import('./features/contracts-budget/contract-dashboard/contract-dashboard.component').then((m) => m.ContractDashboardComponent) },
       { path: 'contracts-budget/contracts', loadComponent: () => import('./features/contracts-budget/contract-list/contract-list.component').then((m) => m.ContractListComponent) },
       { path: 'contracts-budget/contracts/:id', loadComponent: () => import('./features/contracts-budget/contract-detail/contract-detail.component').then((m) => m.ContractDetailComponent) },

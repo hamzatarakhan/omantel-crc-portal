@@ -42,6 +42,8 @@ export interface ProjectRequest {
   /** Part of the cost that falls in this financial year, and a monthly figure where the cost is phased. */
   annualCost?: number;
   monthlyCost?: number;
+  /** Spent so far on the project, in `currency` — shown on the General Dashboard. */
+  expense?: number;
   costBreakdown?: string;
   department?: string;
   /** Justification: why the project is needed. */
@@ -76,6 +78,7 @@ export const fx = (p: Pick<ProjectRequest, 'currency'>) => (p.currency === 'USD'
 /** Project cost plus resource cost, always in OMR. */
 export const projectTotal = (p: ProjectRequest) => Math.round((p.budget + resourceCost(p)) * fx(p));
 
+const dayIso = (offset: number) => new Date(Date.now() + offset * 86400000).toISOString().slice(0, 10);
 const day = (offset: number) => new Date(Date.now() + offset * 86400000).toISOString();
 const ev = (offset: number, by: string, role: string, action: ProjectEvent['action'], note: string): ProjectEvent => ({ at: day(offset), by, role, action, note });
 
@@ -101,13 +104,13 @@ function seed(id: string, name: string, projectStatus: ProjectStatus, scope: str
 }
 
 export const SEED_PROJECTS: ProjectRequest[] = [
-  seed('PRJ-1', 'VAS Tool Project', 'Need Extension', 'UNIFIED CUSTOMER CARE VAS TOOL Dec 2023', 6000, 'Unifies the value-added-service screens agents use, so handling time drops.', 'Included in Budget', 'Medium', { contractRef: '2021-167-T-00', poNumber: '321101273', from: '2021-09-01', to: '2022-09-01' }),
+  seed('PRJ-1', 'VAS Tool Project', 'Need Extension', 'UNIFIED CUSTOMER CARE VAS TOOL Dec 2023', 6000, 'Unifies the value-added-service screens agents use, so handling time drops.', 'Included in Budget', 'Medium', { contractRef: '2021-167-T-00', poNumber: '321101273', from: dayIso(-400), to: dayIso(65), expense: 4200 }),
   seed('PRJ-2', 'Purchasing CSR Headsets for Contact Center 2023 H1', 'New Proposed Project', 'Depends on the requirement during the year', 6500, 'Headsets are worn out on two queues and replacements are needed before the summer peak.', 'Submitted', 'Medium'),
-  seed('PRJ-3', 'Contact Center knowledge base (KB) sprint 5', 'Need Renewal', 'Contact Center knowledge base (KB) sprint 5 (remaining is 5590)', 5590, 'Finishes the last sprint of the knowledge base so agents stop searching across separate documents.', 'Included in Budget', 'High', { poNumber: '322101308' }),
-  seed('PRJ-4', 'Innovative Business Communication (IVR)', 'Need Extension', 'IVR Record', 2400, 'Records IVR calls for quality review.', 'Included in Budget', 'Low', { poNumber: '322100709' }),
-  seed('PRJ-5', 'Omantel Tele-Sales Vocalcom Solution (July 2024 till July 2025)', 'Need Renewal', 'Omantel Tele-Sales Vocalcom Solution (July 2024 till July 2025)', 8000, 'Runs the outbound tele-sales dialler for the year.', 'Included in Budget', 'High', { contractRef: '2024 171 T 00 11 25 O', from: '2024-07-01', to: '2025-07-31' }),
+  seed('PRJ-3', 'Contact Center knowledge base (KB) sprint 5', 'Need Renewal', 'Contact Center knowledge base (KB) sprint 5 (remaining is 5590)', 5590, 'Finishes the last sprint of the knowledge base so agents stop searching across separate documents.', 'Included in Budget', 'High', { poNumber: '322101308', from: dayIso(-200), to: dayIso(150), expense: 3100 }),
+  seed('PRJ-4', 'Innovative Business Communication (IVR)', 'Need Extension', 'IVR Record', 2400, 'Records IVR calls for quality review.', 'Included in Budget', 'Low', { poNumber: '322100709', from: dayIso(-300), to: dayIso(200), expense: 1500 }),
+  seed('PRJ-5', 'Omantel Tele-Sales Vocalcom Solution (July 2024 till July 2025)', 'Need Renewal', 'Omantel Tele-Sales Vocalcom Solution (July 2024 till July 2025)', 8000, 'Runs the outbound tele-sales dialler for the year.', 'Included in Budget', 'High', { contractRef: '2024 171 T 00 11 25 O', poNumber: '324101171', from: dayIso(-450), to: dayIso(320), expense: 5200 }),
   seed('PRJ-6', 'Blacklisting', 'New Proposed Project', 'Blacklisting is a new System integrate all defaulters in Oman', 30000, 'A new system that integrates all defaulters in Oman, so risky customers are flagged at the first call.', 'Submitted', 'High', { headCount: 2, resourceRole: 'Analyst', costPerResource: 600, months: 6, resourceType: 'New', resourceSource: 'Outsourced', resourceStart: '2027-02-01' }),
-  seed('PRJ-7', 'Basket, Inc. - Inv. 005/2-0-24', 'Need Renewal', 'Speech Analytics for contact Centre-Call Quality', 4500, 'Speech analytics to measure call quality without manual sampling.', 'Included in Budget', 'Medium', { contractRef: '2023-215-T-00-', poNumber: '323102380' }),
+  seed('PRJ-7', 'Basket, Inc. - Inv. 005/2-0-24', 'Need Renewal', 'Speech Analytics for contact Centre-Call Quality', 4500, 'Speech analytics to measure call quality without manual sampling.', 'Included in Budget', 'Medium', { contractRef: '2023-215-T-00-', poNumber: '323102380', from: dayIso(-100), to: dayIso(265), expense: 1800 }),
   seed('PRJ-8', 'Futurelook "Virtual agent IVR"', 'New Proposed Project', 'Futurelook "Virtual agent IVR"', 12000, 'A virtual agent in the IVR to answer simple requests without an agent.', 'Returned for Modification', 'Low', {}, 'Please add the expected go-live date and how the licence cost is split before we can decide.'),
   seed('PRJ-9', 'Sohar contact center refreshment', 'New Proposed Project', 'Sohar contact center refreshment', 55000, 'Refreshes the Sohar contact centre; the contract is still under RFT.', 'Draft', 'Medium', { contractRef: 'Still under RFT' }),
   // previous financial year — read-only history that can be copied forward
