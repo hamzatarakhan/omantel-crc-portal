@@ -963,9 +963,10 @@ export class CrcStore {
    * Employee by employee: what the vendor's annexure bills for each person against what we calculate, matched on employee ID.
    * Says who differs, by how much, and why (billing rate, absent days, joining) — plus people on only one side. Null until an annexure is imported.
    */
-  annexureEmployees(vendorName: string): { fileName: string; rows: EmployeeCompareRow[] } | null {
+  annexureEmployees(vendorName: string, component: 'salary' | 'overtime' = 'salary'): { fileName: string; rows: EmployeeCompareRow[] } | null {
     const a = this.vendorAnnexures()[vendorName];
     if (!a?.people) return null;
+    if (component === 'overtime') return { fileName: a.fileName, rows: this.overtimeEmployees(vendorName, a) };
     const calc = this.calculateInvoice(vendorName);
     const r3 = (n: number) => Math.round(n * 1000) / 1000, f3 = (n: number) => n.toFixed(3);
     const ours = new Map(calc.agentRows.map((r) => [String(r.agent.employeeId).trim(), r]));
@@ -1006,6 +1007,28 @@ export class CrcStore {
     for (const [id, o] of oursRes) if (!seenRes.has(id)) rows.push({ key: 'R|' + id, employeeId: id, name: o.name, queue: o.queue, degree: o.degree, kind: 'Resignation', status: 'Only in our WFO', ours: r3(o.total), theirs: 0, diff: -r3(o.total), reasons: ['A resignation in our records that the vendor did not bill'], days: [] });
     rows.sort((x, y) => Number(y.status !== 'Matches') - Number(x.status !== 'Matches') || Math.abs(y.diff) - Math.abs(x.diff) || x.name.localeCompare(y.name));
     return { fileName: a.fileName, rows };
+  }
+
+  /** Overtime employee by employee: what the vendor's annexure bills as "Additional" for each person against our own overtime (hours x rate). */
+  private overtimeEmployees(vendorName: string, a: VendorAnnexureClaim): EmployeeCompareRow[] {
+    const r3 = (n: number) => Math.round(n * 1000) / 1000;
+    const ours = new Map(this.calculateInvoice(vendorName).agentRows.map((r) => [String(r.agent.employeeId).trim(), r.agent]));
+    const theirs = new Map<string, VendorPerson>();
+    for (const v of a.people) theirs.set(v.employeeId, v);
+    const rows: EmployeeCompareRow[] = [];
+    for (const id of new Set([...ours.keys(), ...theirs.keys()])) {
+      const ag = ours.get(id), v = theirs.get(id), ot = ag ? this.overtimeFor(ag) : null;
+      const o = ot ? r3(ot.amount) : 0, t = v ? r3(v.overtime) : 0, diff = r3(t - o);
+      if (!o && !t) continue;
+      const status: EmployeeCompareRow['status'] = !ag ? 'Only on vendor annexure' : !v ? 'Only in our WFO' : Math.abs(diff) >= 0.005 ? 'Different' : 'Matches';
+      const reasons: string[] = [];
+      if (status === 'Different') reasons.push(!t ? `The vendor billed no overtime; we calculate ${ot!.hours} h` : !o ? 'The vendor billed overtime; we have none for this person' : `Overtime differs: ours is ${ot!.hours} h at ${ot!.rate.toFixed(3)}`);
+      if (status === 'Only on vendor annexure') reasons.push('Overtime billed for someone who is not an active agent in our WFO');
+      if (status === 'Only in our WFO') reasons.push('Overtime in our WFO that the vendor did not bill');
+      const p = ag ?? v!;
+      rows.push({ key: 'O|' + id, employeeId: id, name: ag ? ag.name : v!.name, queue: ag ? ag.queue : v!.queue, degree: p.degree, kind: 'Salary', status, ours: o, theirs: t, diff, reasons, days: [] });
+    }
+    return rows.sort((x, y) => Number(y.status !== 'Matches') - Number(x.status !== 'Matches') || Math.abs(y.diff) - Math.abs(x.diff) || x.name.localeCompare(y.name));
   }
 
   /** Employees that appear more than once on the vendor's annexure: a duplicated record cannot be validated. */

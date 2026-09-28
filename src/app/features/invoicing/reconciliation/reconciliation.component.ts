@@ -474,7 +474,7 @@ export class ReconciliationComponent {
   /** Everything the vendor needs to see where a line's difference is: both amounts, what the line is linked to, and how our figure is built. */
   private queryLine(l: PayableLineItem): QueryLine {
     const parts = l.source === 'wfo' ? this.breakdown(l).filter((x) => Math.abs(x.amount) >= 0.005 || l.calculated === 0) : [];
-    const emp = l.component === 'salary' ? this.store.annexureEmployees(this.vendor()) : null;
+    const emp = l.component === 'salary' || l.component === 'overtime' ? this.store.annexureEmployees(this.vendor(), l.component) : null;
     const employees = emp ? { fileName: emp.fileName, total: emp.rows.filter((r) => r.status !== 'Matches').length, rows: emp.rows.filter((r) => r.status !== 'Matches') } : undefined;
     const compare = this.store.annexureCompare(this.vendor(), l.component, this.lines().some((x) => x.component === 'fee')) ?? undefined;
     return { key: l.key, label: l.label, linkedTo: l.component ? WFO_LABEL[l.component] : null, calculated: l.calculated, vendorAmount: this.vendorAmount(l.key), parts, basis: l.basis, note: l.note, compare, employees };
