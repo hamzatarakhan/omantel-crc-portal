@@ -53,7 +53,7 @@ export interface VendorAnnexureClaim {
   people: VendorPerson[];
   resignationRows: Array<{ employeeId: string; name: string; queue: string; degree: string; total: number; resignDate: string }>;
 }
-export interface VendorPerson { employeeId: string; name: string; queue: string; degree: string; joinDate: string; rate: number; expected: number; billable: number; absent: number; codes: string[]; amount: number; overtime: number; joiner: boolean }
+export interface VendorPerson { employeeId: string; name: string; queue: string; degree: string; joinDate: string; rate: number; expected: number; billable: number; absent: number; maternity: number; codes: string[]; amount: number; overtime: number; joiner: boolean }
 /** One employee (or resignation) on the vendor's annexure against our calculation. */
 export interface EmployeeCompareRow {
   key: string; employeeId: string; name: string; queue: string; degree: string;
@@ -64,7 +64,7 @@ export interface EmployeeCompareRow {
   /** Days where the attendance code differs (only when both files cover the same number of days). */
   days: Array<{ day: number; vendor: string; ours: string }>;
 }
-export interface AgentBillRow { agent: Agent; kind: 'existing' | 'joiner'; rate: number; expected: number; billable: number; absent: number; amount: number; codes: string[] }
+export interface AgentBillRow { agent: Agent; kind: 'existing' | 'joiner'; rate: number; expected: number; billable: number; absent: number; /** Maternity leave (M/L) is not paid. */ maternity: number; amount: number; codes: string[] }
 /** One part of a Salary / Overtime figure: what we calculated against what the vendor's annexure says. */
 export interface AnnexureCompareRow { label: string; ours: number; theirs: number; oursDetail: string; theirsDetail: string }
 export const WFO_COMPONENTS: WfoComponent[] = ['salary', 'overtime', 'performance', 'incentive', 'fee'];
@@ -749,17 +749,18 @@ export class CrcStore {
         const pay = this.payrollFor(a);
         const codes = att[a.id] ?? [];
         const expected = codes.filter((c) => c !== 'OFF').length;
-        const billable = codes.filter((c) => c !== 'OFF' && c !== 'A').length;
+        const billable = codes.filter((c) => c !== 'OFF' && c !== 'A' && c !== 'M/L').length;
         const absent = codes.filter((c) => c === 'A').length;
+        const maternity = codes.filter((c) => c === 'M/L').length;
         const factor = expected ? billable / expected : 0;
         const flatFee = Math.min(pay.managementFee, FLAT_MANAGEMENT_FEE);
         gross += pay.billingRate; amount += pay.billingRate * factor; factorSum += factor;
-        agentRows.push({ agent: a, kind: 'existing', rate: pay.billingRate, expected, billable, absent, amount: pay.billingRate * factor, codes });
+        agentRows.push({ agent: a, kind: 'existing', rate: pay.billingRate, expected, billable, absent, maternity, amount: pay.billingRate * factor, codes });
         const ot = this.overtimeFor(a), perf = this.performanceFor(a);
         overtime += ot.amount; overtimeHours += ot.hours; performance += perf.amount; if (perf.eligible) qualified++; fee += flatFee; payroll += pay.billingRate - flatFee;
-        if (absent) {
-          absentDays += absent;
-          absentees.push({ agent: a, absentDays: absent, rate: pay.billingRate, deduction: expected ? (pay.billingRate * absent) / expected : 0 });
+        if (absent + maternity) {
+          absentDays += absent + maternity;
+          absentees.push({ agent: a, absentDays: absent + maternity, rate: pay.billingRate, deduction: expected ? (pay.billingRate * (absent + maternity)) / expected : 0 });
         }
       }
       return { degree, headcount: group.length, rate: group.length ? gross / group.length : 0, gross, payroll, fee, billableFte: factorSum, amount, overtime, overtimeHours, performance, qualified, salaryAmount: amount };
@@ -777,7 +778,7 @@ export class CrcStore {
       const daysBilled = daysInMonth - day + 1;
       return { agent: a, pay, daysBilled, prorated: (pay.billingRate * daysBilled) / daysInMonth };
     });
-    for (const j of newJoiners) agentRows.push({ agent: j.agent, kind: 'joiner', rate: j.pay.billingRate, expected: daysInMonth, billable: j.daysBilled, absent: 0, amount: j.prorated, codes: att[j.agent.id] ?? [] });
+    for (const j of newJoiners) agentRows.push({ agent: j.agent, kind: 'joiner', rate: j.pay.billingRate, expected: daysInMonth, billable: j.daysBilled, absent: 0, maternity: 0, amount: j.prorated, codes: att[j.agent.id] ?? [] });
     const newJoining = { units: newJoiners.length, amount: newJoiners.reduce((s, j) => s + j.prorated, 0) };
 
     const resignationRecords = this.resignations().filter((r) => r.vendor === key && r.resignDate.startsWith(monthPrefix));
@@ -927,7 +928,7 @@ export class CrcStore {
       const expected = codes.filter((c) => c !== 'OFF').length, billable = codes.filter((c) => c !== 'OFF' && c !== 'A').length;
       const factor = expected ? billable / expected : 1, salary = e.pay.billingRate * factor;
       const joiner = e.joinDate.startsWith(monthPrefix);
-      people.push({ employeeId: String(e.employeeId).trim(), name: e.name, queue: e.queue, degree: e.degree, joinDate: e.joinDate, rate: e.pay.billingRate, expected, billable, absent: codes.filter((c) => c === 'A').length, codes, amount: Math.round(salary * 1000) / 1000, overtime: e.pay.additional, joiner });
+      people.push({ employeeId: String(e.employeeId).trim(), name: e.name, queue: e.queue, degree: e.degree, joinDate: e.joinDate, rate: e.pay.billingRate, expected, billable, absent: codes.filter((c) => c === 'A').length, maternity: codes.filter((c) => c === 'M/L').length, codes, amount: Math.round(salary * 1000) / 1000, overtime: e.pay.additional, joiner });
       const t = tiers.find((x) => x.degree === e.degree);
       if (t) t.overtime += e.pay.additional;
       if (joiner) { joiners.agents++; joiners.salary += salary; continue; }
@@ -949,7 +950,11 @@ export class CrcStore {
     const ours = new Map(calc.agentRows.map((r) => [String(r.agent.employeeId).trim(), r]));
     const rows: EmployeeCompareRow[] = [];
     const seen = new Set<string>();
-    for (const v of a.people) {
+    const copies = new Map<string, VendorPerson[]>();
+    for (const v of a.people) copies.set(v.employeeId, [...(copies.get(v.employeeId) ?? []), v]);
+    for (const list of copies.values()) {
+      const v = list.length > 1 ? { ...list[0], amount: Math.round(list.reduce((t, x) => t + x.amount, 0) * 1000) / 1000 } : list[0];
+      const dup = list.length;
       seen.add(v.employeeId);
       const o = ours.get(v.employeeId);
       if (!o) { rows.push({ key: 'S|' + v.employeeId, employeeId: v.employeeId, name: v.name, queue: v.queue, degree: v.degree, kind: 'Salary', status: 'Only on vendor annexure', ours: 0, theirs: v.amount, diff: v.amount, reasons: ["Billed by the vendor, but not an active agent in our WFO this month"], days: [] }); continue; }
@@ -961,9 +966,11 @@ export class CrcStore {
         if (v.absent !== o.absent) reasons.push(`Absent days: vendor ${v.absent}, ours ${o.absent}`);
         if (v.expected !== o.expected) reasons.push(`Working days: vendor ${v.expected}, ours ${o.expected}`);
         if (v.joiner !== (o.kind === 'joiner')) reasons.push(v.joiner ? 'The vendor bills a new joiner; we bill a full month' : 'We bill a new joiner pro-rata; the vendor bills a full month');
+        if (o.maternity > 0 && v.billable > o.billable) reasons.push(`Maternity leave is not payable: ${o.maternity} day${o.maternity > 1 ? 's' : ''}`);
         if (!reasons.length) reasons.push('The amounts differ');
       }
-      rows.push({ key: 'S|' + v.employeeId, employeeId: v.employeeId, name: v.name || o.agent.name, queue: v.queue || o.agent.queue, degree: v.degree, kind: 'Salary', status: Math.abs(diff) >= 0.005 ? 'Different' : 'Matches', ours: r3(o.amount), theirs: v.amount, diff, reasons, days });
+      if (dup > 1) reasons.unshift(`Duplicated ${dup} times in the vendor annexure — a record cannot be paid twice`);
+      rows.push({ key: 'S|' + v.employeeId, employeeId: v.employeeId, name: v.name || o.agent.name, queue: v.queue || o.agent.queue, degree: v.degree, kind: 'Salary', status: Math.abs(diff) >= 0.005 || dup > 1 ? 'Different' : 'Matches', ours: r3(o.amount), theirs: v.amount, diff, reasons, days });
     }
     for (const [id, o] of ours) if (!seen.has(id)) rows.push({ key: 'S|' + id, employeeId: id, name: o.agent.name, queue: o.agent.queue, degree: o.agent.degree, kind: 'Salary', status: 'Only in our WFO', ours: r3(o.amount), theirs: 0, diff: -r3(o.amount), reasons: ['In our WFO, but missing from the vendor annexure — not billed'], days: [] });
     // resignations
@@ -978,6 +985,14 @@ export class CrcStore {
     for (const [id, o] of oursRes) if (!seenRes.has(id)) rows.push({ key: 'R|' + id, employeeId: id, name: o.name, queue: o.queue, degree: o.degree, kind: 'Resignation', status: 'Only in our WFO', ours: r3(o.total), theirs: 0, diff: -r3(o.total), reasons: ['A resignation in our records that the vendor did not bill'], days: [] });
     rows.sort((x, y) => Number(y.status !== 'Matches') - Number(x.status !== 'Matches') || Math.abs(y.diff) - Math.abs(x.diff) || x.name.localeCompare(y.name));
     return { fileName: a.fileName, rows };
+  }
+
+  /** Employees that appear more than once on the vendor's annexure: a duplicated record cannot be validated. */
+  annexureDuplicates(vendorName: string): Array<{ name: string; employeeId: string; times: number }> {
+    const people = this.vendorAnnexures()[vendorName]?.people ?? [];
+    const n = new Map<string, { name: string; times: number }>();
+    for (const p of people) n.set(p.employeeId, { name: p.name, times: (n.get(p.employeeId)?.times ?? 0) + 1 });
+    return [...n].filter(([, v]) => v.times > 1).map(([employeeId, v]) => ({ employeeId, ...v }));
   }
 
   /** Where a Salary or Overtime difference sits: our figure and the vendor's annexure figure, part by part. Null until their annexure is imported. */
@@ -1031,7 +1046,7 @@ export class CrcStore {
     const todo = lines.filter((l) => this.lineRun(vendorName, l.key)?.status !== 'Approved for payment');
     const runs: InvoiceRun[] = todo.map((l) => {
       const variancePct = l.calculated ? ((l.vendorAmount - l.calculated) / l.calculated) * 100 : 0;
-      return { vendor: vendorName, period: this.period(), lines: [l], calculatedTotal: l.calculated, vendorInvoiceAmount: l.vendorAmount, variancePct, status: Math.abs(variancePct) > tol ? 'Flagged for review' : 'Validated' };
+      return { vendor: vendorName, period: this.period(), lines: [l], calculatedTotal: l.calculated, vendorInvoiceAmount: l.vendorAmount, variancePct, status: Math.abs(variancePct) > tol || (l.key.endsWith('|salary') && this.annexureDuplicates(vendorName).length) ? 'Flagged for review' : 'Validated' };
     });
     if (!runs.length) return runs;
     this.invoiceRuns.update((m) => ({ ...m, [vendorName]: [...(m[vendorName] ?? []), ...runs] }));
