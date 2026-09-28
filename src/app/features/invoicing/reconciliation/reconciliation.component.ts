@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
+import { MatDialog } from '@angular/material/dialog';
 import { PageHeaderComponent } from '../../../shared/components/page-header/page-header.component';
 import { StatusChipComponent } from '../../../shared/components/status-chip/status-chip.component';
 import { KpiCardComponent } from '../../../shared/components/kpi-card/kpi-card.component';
@@ -12,6 +13,8 @@ import { UiService } from '../../../shared/services/ui.service';
 import { InvoiceLineDetail, VendorQuery } from '../../../core/models/domain';
 import { StatusLevel } from '../../../core/models/status';
 import { AnnexureComponent } from './annexure.component';
+import { QueryDialogData, QueryDialogResult, QueryLine, VendorQueryDialogComponent } from './vendor-query-dialog.component';
+import { DIALOG_SIZE } from '../../../shared/dialog-sizes';
 
 const VENDORS = ['Infoline LLC', 'Green Umbrella Services'];
 const VENDOR_CONTACT: Record<string, string> = { 'Infoline LLC': 'accounts@infoline.om', 'Green Umbrella Services': 'billing@greenumbrella.om' };
@@ -227,6 +230,7 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Not validated': 'neutra
 export class ReconciliationComponent {
   store = inject(CrcStore);
   private ui = inject(UiService);
+  private dialog = inject(MatDialog);
 
   readonly vendors = VENDORS;
   readonly field = FIELD;
@@ -443,32 +447,25 @@ export class ReconciliationComponent {
     this.ui.toast(`Approved — ${p?.id} added to PO & Payment Tracking.`);
   }
 
-  /** One email to the vendor: each chosen line with what they invoiced and what we calculated, then the user's comment. */
+  /** Everything the vendor needs to see where a line's difference is: both amounts, what the line is linked to, and how our figure is built. */
+  private queryLine(l: PayableLineItem): QueryLine {
+    const parts = l.source === 'wfo' ? this.breakdown(l).filter((x) => Math.abs(x.amount) >= 0.005 || l.calculated === 0) : [];
+    return { key: l.key, label: l.label, linkedTo: l.component ? WFO_LABEL[l.component] : null, calculated: l.calculated, vendorAmount: this.vendorAmount(l.key), parts, basis: l.basis, note: l.note };
+  }
+
+  /** One email to the vendor: each chosen line with the exact difference and how we calculated it, then the user's comment. */
   async emailVendor(onlyKey?: string) {
     if (!this.ui.requires('Validate Invoice')) return;
     const c = this.contract();
     const candidates = this.queryable();
     if (!c || !candidates.length) return;
-    const fmt = (n: number) => n.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const chosenLabels = (onlyKey ? candidates.filter((l) => l.key === onlyKey) : candidates).map((l) => l.label);
-    const lineText = chosenLabels.length <= 2 ? chosenLabels.join(', ') : `${chosenLabels.slice(0, 2).join(', ')} and ${chosenLabels.length - 2} more`;
-    const v = await this.ui.form({
-      title: `Email ${this.vendor()}`,
-      subtitle: `${c.reference} · ${this.store.period()} · the email lists each chosen line with the amount they invoiced and the amount we calculated, then your comment`,
-      icon: 'mail',
-      submitLabel: 'Send email',
-      values: { to: this.vendorContact(), subject: `Invoice query — ${c.reference} — ${lineText} — ${this.store.period()}`, lines: onlyKey ? [onlyKey] : candidates.map((l) => l.key), comment: '' },
-      fields: [
-        { key: 'to', label: 'To', required: true, placeholder: 'accounts@vendor.com, finance@vendor.com', hint: 'Separate multiple addresses with a comma.' },
-        { key: 'subject', label: 'Subject', required: true },
-        { key: 'lines', label: 'Lines that do not match', type: 'multiselect', options: candidates.map((l) => ({ value: l.key, label: `${l.label} — invoiced ${fmt(this.vendorAmount(l.key))} · calculated ${fmt(l.calculated)}` })) },
-        { key: 'comment', label: 'Comment', type: 'textarea', required: true, placeholder: 'e.g. Please re-issue the invoice with the calculated amounts, or send the supporting sheet for the difference.' },
-      ],
-    });
+    const data: QueryDialogData = {
+      vendor: this.vendor(), contract: c.reference, contractName: c.name, period: this.store.period(), to: this.vendorContact(),
+      tolerancePct: this.store.payableRules().deviationPct, lines: candidates.map((l) => this.queryLine(l)), selected: onlyKey ? [onlyKey] : candidates.map((l) => l.key),
+    };
+    const v: QueryDialogResult | undefined = await this.dialog.open(VendorQueryDialogComponent, { data, panelClass: 'app-dialog-panel', autoFocus: false, ...DIALOG_SIZE.wide }).afterClosed().toPromise();
     if (!v) return;
-    const lines = this.details(v['lines'] ?? []);
-    if (!lines.length) { this.ui.toast('Pick at least one line to query.'); return; }
-    this.store.queryVendor({ vendor: this.vendor(), contract: c.reference, period: this.store.period(), lines, to: v['to'], subject: v['subject'], comment: v['comment'] });
-    this.ui.toast(`Email sent to ${v['to']}.`);
+    this.store.queryVendor({ vendor: this.vendor(), contract: c.reference, period: this.store.period(), lines: this.details(v.keys), to: v.to, subject: v.subject, comment: v.comment });
+    this.ui.toast(`Email sent to ${v.to}.`);
   }
 }
