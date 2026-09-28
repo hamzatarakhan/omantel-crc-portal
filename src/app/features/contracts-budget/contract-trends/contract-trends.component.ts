@@ -159,8 +159,10 @@ export class ContractTrendsComponent {
       ] } },
       { title: 'Contracts Requiring Action', subtitle: 'By the next step needed', type: 'bar' as const, options: this.horizontal, data: { labels: [...actions.keys()], datasets: [{ label: 'Contracts', data: [...actions.values()], backgroundColor: C.orange }] } },
       { title: 'Escalated Contracts over Time', subtitle: 'Escalations per month', type: 'line' as const, data: { labels: mixed.map(monthLabel), datasets: [{ label: 'Escalations', data: mixed.map((m) => escalationDates.filter((d) => sameMonth(d, m)).length), borderColor: C.red, backgroundColor: C.red, tension: 0.3 }] } },
-    ];
+    ].filter((chart) => !this.hiddenCharts.includes(chart.title));
   });
+  /** Hidden for now at the user's request; the chart definitions above are kept. */
+  private readonly hiddenCharts = ['PO Value and Contract Amount by Contract', 'Contracts Requiring Action'];
 
   clear() {
     for (const s of [this.vendor, this.type, this.parent, this.status, this.category]) s.set('All');

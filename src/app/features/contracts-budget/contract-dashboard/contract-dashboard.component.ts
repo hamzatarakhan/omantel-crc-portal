@@ -226,9 +226,12 @@ export class ContractDashboardComponent {
     { key: 'daysRemaining', label: 'Days Remaining', display: (r) => remainingLabel(r.endDate) },
     { key: 'amount', label: 'Contract Amount', type: 'currency', align: 'right' },
     { key: 'status', label: 'Status', type: 'status', statusFn: (row) => ({ label: row.status, level: row.level }) },
+    { key: 'lastSyncedAt', label: 'Last Synchronization', type: 'date' },
+  ];
+  /** Hidden for now at the user's request; kept for when the columns come back. */
+  private readonly hiddenColumns: TableColumn<any>[] = [
     { key: 'renewalStatus', label: 'Renewal Status' },
     { key: 'requiredAction', label: 'Required Action' },
-    { key: 'lastSyncedAt', label: 'Last Synchronization', type: 'date' },
   ];
 
   expiryChart = computed(() => {
