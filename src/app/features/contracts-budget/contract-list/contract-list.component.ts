@@ -115,10 +115,20 @@ export class ContractListComponent {
     });
   });
 
+  /** Elapsed-time share of the record's value (0 before it starts, all of it once ended), as on the Contract Dashboard. Not read from the ERP yet. */
+  private consumedFor(r: ListRow): number | null {
+    if (r.amount === null) return null;
+    const span = +new Date(r.endDate) - +new Date(r.startDate);
+    const elapsed = span > 0 ? Math.min(1, Math.max(0, (Date.now() - +new Date(r.startDate)) / span)) : 1;
+    return r.amount * elapsed;
+  }
+  private money = (n: number | null) => (n === null ? '—' : `${n.toLocaleString('en-GB', { maximumFractionDigits: 0 })} OMR`);
+
   columns: TableColumn<ListRow>[] = [
     { key: 'reference', label: 'Reference' },
     { key: 'name', label: 'Name' },
     { key: 'vendorName', label: 'Vendor' },
+    { key: 'poNumber', label: 'PO number', display: (r) => r.poNumber || '—' },
     { key: 'contractType', label: 'Contract type' },
     { key: 'recordType', label: 'Record type' },
     { key: 'erpReference', label: 'ERP reference' },
@@ -126,6 +136,8 @@ export class ContractListComponent {
     { key: 'endDate', label: 'End date', type: 'date' },
     { key: 'daysRemaining', label: 'Days remaining', display: (r) => r.remaining },
     { key: 'amount', label: 'Amount', type: 'currency', align: 'right' },
+    { key: 'consumed', label: 'Consumed amount', align: 'right', display: (r) => this.money(this.consumedFor(r)) },
+    { key: 'remainingAmount', label: 'Remaining amount', align: 'right', display: (r) => this.money(r.amount === null ? null : r.amount - (this.consumedFor(r) ?? 0)) },
     { key: 'status', label: 'Status', type: 'status', statusFn: (r) => ({ label: r.status, level: r.level }) },
     { key: 'renewalStatus', label: 'Renewal status' },
     { key: 'syncStatus', label: 'Sync', type: 'status', statusFn: (r) => ({ label: r.syncStatus, level: r.syncStatus === 'Failed' ? 'red' : 'normal' }) },
