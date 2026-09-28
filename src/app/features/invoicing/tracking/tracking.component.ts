@@ -21,9 +21,9 @@ const PAGE = 10;
   imports: [CommonModule, RouterModule, MatIconModule, PageHeaderComponent, KanbanBoardComponent, StatusChipComponent],
   template: `
     <app-page-header
-      title="PO & Payment Tracking"
+      title="Payment Tracking"
       subtitle="Purchase order and payment status, updated from the ERP"
-      [breadcrumbs]="[{ label: 'Invoicing & Payments', link: '/invoicing/reconciliation' }, { label: 'PO & Payment Tracking' }]"
+      [breadcrumbs]="[{ label: 'Invoicing & Payments', link: '/invoicing/reconciliation' }, { label: 'Payment Tracking' }]"
     >
       <div class="inline-flex rounded-lg border border-surface-border bg-white p-0.5">
         <button type="button" class="vbtn" [class.on]="view() === 'table'" (click)="view.set('table')"><mat-icon class="!text-base">table_rows</mat-icon>Table</button>

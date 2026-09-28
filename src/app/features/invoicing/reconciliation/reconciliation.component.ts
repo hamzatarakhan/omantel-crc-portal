@@ -175,7 +175,7 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Annexure needed': 'ambe
                 <td class="text-right">
                   <div class="inline-flex items-center gap-1">
                     @switch (lineStatus(l.key)) {
-                      @case ('Approved for payment') { <a routerLink="/invoicing/tracking" [class]="rowBtn + ' text-brand-700 hover:bg-brand-50'" title="Open the payment in PO & Payment Tracking"><mat-icon [class]="icoSm">receipt_long</mat-icon>{{ store.lineRun(vendor(), l.key)?.paymentId }}</a> }
+                      @case ('Approved for payment') { <a routerLink="/invoicing/tracking" [class]="rowBtn + ' text-brand-700 hover:bg-brand-50'" title="Open the payment in Payment Tracking"><mat-icon [class]="icoSm">receipt_long</mat-icon>{{ store.lineRun(vendor(), l.key)?.paymentId }}</a> }
                       @case ('Matches') { <button type="button" [class]="rowBtn + ' text-white bg-brand-600 hover:bg-brand-700'" (click)="approve([l.key])" appRequires="Validate Invoice"><mat-icon [class]="icoSm">task_alt</mat-icon>Approve</button> }
                       @case ('Does not match') { <button type="button" [class]="rowBtn + ' text-white bg-status-red hover:bg-red-700'" (click)="emailVendor(l.key)" appRequires="Validate Invoice"><mat-icon [class]="icoSm">mail</mat-icon>Email vendor</button> }
                       @case ('Queried with vendor') { <button type="button" [class]="rowBtn + ' text-status-red border border-solid border-red-200 bg-white hover:bg-red-50'" (click)="emailVendor(l.key)" appRequires="Validate Invoice"><mat-icon [class]="icoSm">forward_to_inbox</mat-icon>Email again</button> }
@@ -237,7 +237,7 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Annexure needed': 'ambe
         </div>
       }
     </div>
-    @if (approvedCount()) { <p class="text-xs text-ink-400 mb-4">Approved lines are paid from <a class="text-brand-600 font-medium" routerLink="/invoicing/tracking">PO &amp; Payment Tracking</a>.</p> }
+    @if (approvedCount()) { <p class="text-xs text-ink-400 mb-4">Approved lines are paid from <a class="text-brand-600 font-medium" routerLink="/invoicing/tracking">Payment Tracking</a>.</p> }
     }
   `,
 })
@@ -468,7 +468,7 @@ export class ReconciliationComponent {
     const documents: PaymentDocument[] | undefined = await this.dialog.open(PaymentDocumentsDialogComponent, { data: { summary: `${names} · ${total} OMR on ${c.reference}` }, panelClass: 'app-dialog-panel', autoFocus: false, ...DIALOG_SIZE.form }).afterClosed().toPromise();
     if (!documents) return;
     const p = this.store.approveLines(this.vendor(), ok, c.reference, documents);
-    this.ui.toast(`Approved — ${p?.id} added to PO & Payment Tracking.`);
+    this.ui.toast(`Approved — ${p?.id} added to Payment Tracking.`);
   }
 
   /** Everything the vendor needs to see where a line's difference is: both amounts, what the line is linked to, and how our figure is built. */
