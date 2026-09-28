@@ -97,7 +97,6 @@ const AGENT_VENDORS = ['Infoline', 'Green Umbrella', 'OJT'] as const;
         @if (headcount(sc); as h) {
           <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Head Count</div><div class="text-sm font-semibold text-ink-900 mt-0.5">{{ h }} resource{{ h === 1 ? '' : 's' }}</div></div>
         }
-        <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Days Remaining</div><div class="text-sm font-semibold mt-0.5" [class]="sc.daysRemaining < 0 ? 'text-status-red' : 'text-ink-900'">{{ sc.daysRemaining }}</div></div>
       </div>
     }
 
