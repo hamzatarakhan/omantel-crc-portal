@@ -1,4 +1,5 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
+import { WFO_REFERENCE } from './wfo-reference';
 import {
   Agent, AnnexureImport, AppNotification, AppUser, AuditEntry, BudgetLine, Candidate, CandidateStatus, Contract, IdDocument,
   InterviewQuestion, InvoiceLineDetail, InvoiceRun, MovementAnnouncement, MovementRequest, NotificationRule, PayableLine,
@@ -217,8 +218,11 @@ export class CrcStore {
   /** Manual override of a Yearly Budget line's approved amount, keyed by "contractId:Y<year>:L<line>". Not read from the ERP. */
   readonly yearlyBudgetApprovals = signal<Record<string, number>>({});
 
-  readonly agents = signal<Agent[]>(this.mock.getAgents(48));
-  readonly attendanceDays = signal<string[]>(Array.from({ length: 14 }, (_, i) => isoDay(i - 13)));
+  readonly agents = signal<Agent[]>([
+    ...this.mock.getAgents(48).filter((a) => a.vendor !== 'Infoline'),
+    ...WFO_REFERENCE.employees.map((e): Agent => ({ id: 'AG-' + e.id, employeeId: e.id, name: e.n, queue: e.q, vendor: 'Infoline', degree: e.d, nationality: e.nat, joinDate: e.j, status: 'Present' })),
+  ]);
+  readonly attendanceDays = signal<string[]>(WFO_REFERENCE.days);
   readonly attendance = signal<Record<string, string[]>>(this.seedAttendance());
   readonly idDocs = signal<Record<string, IdDocument>>(this.seedIdDocs());
   readonly snapshots: WorkforceSnapshot[] = this.mock.getWorkforceSnapshots();
@@ -231,7 +235,7 @@ export class CrcStore {
 
   readonly payableRates: PayableLine[] = this.mock.getPayableLines();
   /** First day of the billing month. Our own agents, payroll and attendance are the WFO's (synced daily); an annexure import never changes them. */
-  readonly periodStart = signal(new Date().toISOString().slice(0, 7) + '-01');
+  readonly periodStart = signal(WFO_REFERENCE.periodStart);
   readonly payroll = signal<Record<string, PayrollLine>>(this.seedPayroll());
   readonly resignations = signal<ResignationRecord[]>(this.seedResignations());
   readonly importInfo = signal<{ fileName: string; employees: number; days: number; resignations: number; period: string } | null>(null);
@@ -1160,7 +1164,8 @@ export class CrcStore {
 
   private seedPayroll(): Record<string, PayrollLine> {
     const rec: Record<string, PayrollLine> = {};
-    for (const a of this.agents()) rec[a.id] = this.makePayroll(a.id, a.degree);
+    const ref = new Map(WFO_REFERENCE.employees.map((e) => ['AG-' + e.id, e.p]));
+    for (const a of this.agents()) rec[a.id] = ref.get(a.id) ?? this.makePayroll(a.id, a.degree);
     return rec;
   }
 
@@ -1176,15 +1181,7 @@ export class CrcStore {
   }
 
   private seedResignations(): ResignationRecord[] {
-    const month = this.periodStart().slice(0, 7);
-    const sample: Array<[string, string, Agent['degree'], number, number]> = [
-      ['Nasser Al-Hinai', 'Retention', 'Diploma', 8, 3], ['Rahma Al-Mamari', 'Sales', 'Non-Diploma', 15, 5],
-      ['Yaqoub Al-Shukaili', 'Complaints', 'Bachelor', 21, 2], ['Sumaiya Al-Wahaibi', 'Hotline', 'Diploma', 26, 8],
-    ];
-    return sample.map(([name, queue, degree, day, leaveDays], i) => {
-      const pay = this.makePayroll('RES' + i, degree);
-      return this.buildResignation({ employeeId: String(6100 + i), name, queue, residentId: pay.residentId, degree, vendor: 'Infoline', joinDate: '2022-0' + (i + 3) + '-15', resignDate: month + '-' + String(day).padStart(2, '0'), gross: pay.gross, managementFee: 116, leaveDays, absentDays: 0 });
-    });
+    return WFO_REFERENCE.resignations.map((r) => ({ id: 'RES-' + this.next(), vendor: 'Infoline', ...r }));
   }
 
   /**
@@ -1204,7 +1201,9 @@ export class CrcStore {
   private seedAttendance(): Record<string, string[]> {
     const rec: Record<string, string[]> = {};
     const agents = this.agents();
+    const ref = new Map(WFO_REFERENCE.employees.filter((e) => e.a).map((e) => ['AG-' + e.id, e.a.split(',')]));
     agents.forEach((a, i) => {
+      if (ref.has(a.id)) { rec[a.id] = ref.get(a.id)!; return; }
       rec[a.id] = this.attendanceDays().map((day, d) => {
         if (new Date(day).getDay() >= 5) return 'OFF';
         const last = d === this.attendanceDays().length - 1;
