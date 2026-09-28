@@ -448,14 +448,16 @@ export class ReconciliationComponent {
     const candidates = this.queryable();
     if (!c || !candidates.length) return;
     const fmt = (n: number) => n.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const chosenLabels = (onlyKey ? candidates.filter((l) => l.key === onlyKey) : candidates).map((l) => l.label);
+    const lineText = chosenLabels.length <= 2 ? chosenLabels.join(', ') : `${chosenLabels.slice(0, 2).join(', ')} and ${chosenLabels.length - 2} more`;
     const v = await this.ui.form({
       title: `Email ${this.vendor()}`,
       subtitle: `${c.reference} · ${this.store.period()} · the email lists each chosen line with the amount they invoiced and the amount we calculated, then your comment`,
       icon: 'mail',
       submitLabel: 'Send email',
-      values: { to: this.vendorContact(), subject: `Invoice query — ${c.reference} — ${this.store.period()}`, lines: onlyKey ? [onlyKey] : candidates.map((l) => l.key), comment: '' },
+      values: { to: this.vendorContact(), subject: `Invoice query — ${c.reference} — ${lineText} — ${this.store.period()}`, lines: onlyKey ? [onlyKey] : candidates.map((l) => l.key), comment: '' },
       fields: [
-        { key: 'to', label: 'To', type: 'email', required: true },
+        { key: 'to', label: 'To', required: true, placeholder: 'accounts@vendor.com, finance@vendor.com', hint: 'Separate multiple addresses with a comma.' },
         { key: 'subject', label: 'Subject', required: true },
         { key: 'lines', label: 'Lines that do not match', type: 'multiselect', options: candidates.map((l) => ({ value: l.key, label: `${l.label} — invoiced ${fmt(this.vendorAmount(l.key))} · calculated ${fmt(l.calculated)}` })) },
         { key: 'comment', label: 'Comment', type: 'textarea', required: true, placeholder: 'e.g. Please re-issue the invoice with the calculated amounts, or send the supporting sheet for the difference.' },
