@@ -74,12 +74,12 @@ const today = () => new Date().toISOString().slice(0, 10);
         <div class="surface-card px-4 py-3 mb-4 flex items-start gap-3 border-l-4 !border-l-status-amber"><mat-icon class="text-status-amber">flag</mat-icon><div class="text-sm text-ink-700"><b>Flagged for review ({{ i.code }}).</b> {{ i.message }}</div></div>
       }
 
-      <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+      <div [class]="'grid grid-cols-2 gap-4 mb-6 ' + (showRequiredAction ? 'md:grid-cols-5' : 'md:grid-cols-4')">
         <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Vendor</div><div class="text-sm font-medium text-ink-900 mt-0.5">{{ c.vendorName }}</div></div>
         <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Contract Amount</div><div class="text-sm font-medium text-ink-900 mt-0.5">{{ c.amount | number:'1.0-2' }} {{ c.currency }}</div></div>
         <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Start &rarr; End Date</div><div class="text-sm font-medium text-ink-900 mt-0.5">{{ c.startDate }} &rarr; {{ c.endDate }}</div></div>
         <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Days Remaining</div><div class="text-sm font-medium mt-0.5" [class]="c.daysRemaining < 0 ? 'text-status-red' : 'text-ink-900'" [title]="c.daysRemaining + ' days'">{{ remaining(c) }}</div></div>
-        <div class="surface-card px-4 py-3 col-span-2 md:col-span-1"><div class="text-xs text-ink-400">Required action</div><div class="text-sm font-medium text-ink-900 mt-0.5">{{ ops.requiredAction(c) }}</div></div>
+        @if (showRequiredAction) { <div class="surface-card px-4 py-3 col-span-2 md:col-span-1"><div class="text-xs text-ink-400">Required action</div><div class="text-sm font-medium text-ink-900 mt-0.5">{{ ops.requiredAction(c) }}</div></div> }
       </div>
 
       <mat-tab-group [selectedIndex]="selected()" (selectedIndexChange)="selected.set($event)">
@@ -234,6 +234,7 @@ const today = () => new Date().toISOString().slice(0, 10);
         </mat-tab>
 
         <!-- ============ Notifications & Escalations ============ -->
+        @if (showNotificationsTab) {
         <mat-tab label="Notifications & Escalations">
           <div class="pt-4 flex flex-col gap-4">
             <div class="surface-card px-4 py-3.5 flex items-center gap-3 flex-wrap">
@@ -252,6 +253,7 @@ const today = () => new Date().toISOString().slice(0, 10);
             <p class="text-xs text-ink-400">Rules, templates and the escalation threshold are managed on <a class="text-brand-600 font-medium" routerLink="/contracts-budget/notifications">Notification Config</a>. Each rule sends one alert per contract, so duplicates are never produced.</p>
           </div>
         </mat-tab>
+        }
 
         <!-- ============ Monitoring actions ============ -->
         <mat-tab [label]="'Monitoring Actions (' + actions().length + ')'">
@@ -296,6 +298,9 @@ const today = () => new Date().toISOString().slice(0, 10);
   `,
 })
 export class ContractDetailComponent {
+  /** Hidden for now at the user's request; the code is kept. */
+  readonly showRequiredAction = false;
+  readonly showNotificationsTab = false;
   store = inject(CrcStore);
   ops = inject(ContractOps);
   private ui = inject(UiService);
