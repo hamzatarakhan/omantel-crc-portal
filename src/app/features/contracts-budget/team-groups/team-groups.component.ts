@@ -11,7 +11,8 @@ import { ForecastService } from '../../../core/services/forecast.service';
 
 /**
  * Which group of teams each team belongs to. The teams are the workforce queues (RTM, Project, Hotline, ...); the groups are the
- * rows of the Team Forecast (Revenue, Complaints, ...). Drag a team onto a group to link it; drag it back to "No group" to unlink.
+ * rows of the Team Forecast (Revenue, Complaints, ...). Drag a team onto a group to link it; drag it back to the top bar to unlink.
+ * Laid out as a board (unassigned teams pinned on top, groups in a grid) so every group is visible at once.
  */
 @Component({
   selector: 'app-team-groups',
@@ -20,58 +21,56 @@ import { ForecastService } from '../../../core/services/forecast.service';
   template: `
     <app-page-header
       title="Group of Teams"
-      subtitle="Link the teams (the workforce queues) to the groups the Team Forecast is prepared for. Drag a team onto a group."
+      subtitle="Drag each team (workforce queue) onto the group of teams it belongs to."
       [breadcrumbs]="[{ label: 'Contracts & Budget', link: '/contracts-budget/dashboard' }, { label: 'CSR Forecast' }, { label: 'Group of Teams' }]"
     ></app-page-header>
 
-    <div class="surface-card px-4 py-3.5 mb-4 flex flex-wrap items-end gap-3">
-      <label class="block w-72"><span class="lbl">New group</span>
-        <input class="w-full mt-1 px-2.5 py-2 text-xs font-semibold rounded-lg border border-surface-border bg-white text-ink-700 focus:outline-none focus:border-brand-400" placeholder="e.g. Corporate accounts" [value]="newName()" (input)="newName.set($any($event.target).value)" (keydown.enter)="create()" /></label>
-      <button mat-flat-button color="primary" (click)="create()"><mat-icon class="!text-base !mr-1">add</mat-icon>Create group</button>
-      <span class="text-xs text-ink-400 pb-2">{{ linked() }} of {{ svc.allTeams().length }} teams are linked to a group. A new group's approved budget is set in <a class="text-brand-600 font-medium" routerLink="/contracts-budget/forecast-settings">Forecast Settings</a>.</span>
-    </div>
-
-    <div cdkDropListGroup class="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4 items-start">
-      <!-- teams with no group -->
-      <section class="surface-card p-4 lg:sticky lg:top-2">
-        <h3 class="text-[13.5px] font-bold text-ink-900 flex items-center gap-2"><mat-icon class="!text-lg text-ink-400">groups_2</mat-icon>No group yet <span class="text-xs font-semibold text-ink-400">{{ free().length }}</span></h3>
-        <p class="text-xs text-ink-400 mt-0.5 mb-3">Teams that are not linked to any group.</p>
-        <div cdkDropList [cdkDropListData]="''" (cdkDropListDropped)="drop($event)" class="zone min-h-[64px]">
-          @for (t of free(); track t) { <div cdkDrag [cdkDragData]="t" class="chip"><mat-icon class="!text-base text-ink-300">drag_indicator</mat-icon><span class="flex-1">{{ t }}</span><span class="cnt">{{ svc.agentsIn(t) }}</span></div> }
-          @empty { <div class="text-xs text-ink-400 text-center py-3">Every team is linked.</div> }
+    <div cdkDropListGroup>
+      <!-- unassigned teams, always in view while you drag -->
+      <section class="surface-card px-4 py-3 mb-4 sticky top-0 z-20">
+        <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <div class="min-w-0">
+            <h3 class="text-[13.5px] font-bold text-ink-900 flex items-center gap-2"><mat-icon class="!text-lg text-ink-400">groups_2</mat-icon>No group yet <span class="text-xs font-semibold text-ink-400">{{ free().length }} of {{ svc.allTeams().length }} teams</span></h3>
+          </div>
+          <div class="flex items-center gap-2">
+            <input class="w-52 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-surface-border bg-white text-ink-700 focus:outline-none focus:border-brand-400" placeholder="New group, e.g. Corporate accounts" [value]="newName()" (input)="newName.set($any($event.target).value)" (keydown.enter)="create()" />
+            <button mat-flat-button color="primary" class="!h-8 !text-xs" (click)="create()"><mat-icon class="!text-base !mr-0.5">add</mat-icon>Create group</button>
+          </div>
+        </div>
+        <div cdkDropList cdkDropListOrientation="mixed" [cdkDropListSortingDisabled]="true" [cdkDropListData]="''" (cdkDropListDropped)="drop($event)" class="zone mt-2.5 max-h-28 overflow-y-auto">
+          @for (t of free(); track t) { <div cdkDrag [cdkDragData]="t" class="chip"><mat-icon class="!text-[15px] !w-[15px] !h-[15px] text-ink-300">drag_indicator</mat-icon>{{ t }}<span class="cnt">{{ svc.agentsIn(t) }}</span></div> }
+          @empty { <span class="text-xs text-status-green font-medium inline-flex items-center gap-1"><mat-icon class="!text-base">check_circle</mat-icon>Every team is linked to a group.</span> }
         </div>
       </section>
 
-      <!-- groups -->
-      <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+      <!-- the groups -->
+      <div class="board">
         @for (g of svc.teams(); track g.name) {
-          <section class="surface-card p-4">
-            <div class="flex items-start gap-2">
-              <div class="flex-1 min-w-0">
-                <h3 class="text-[13.5px] font-bold text-ink-900 truncate">{{ g.name }}</h3>
-                <p class="text-xs text-ink-400 mt-0.5">{{ svc.teamsOf(g.name).length }} team{{ svc.teamsOf(g.name).length === 1 ? '' : 's' }} · {{ agentTotal(g.name) }} agents</p>
-              </div>
-              @if (svc.canRemoveGroup(g.name)) { <button class="w-7 h-7 rounded-lg flex items-center justify-center text-ink-400 hover:bg-surface-subtle hover:text-status-red" title="Delete this empty group" (click)="remove(g.name)"><mat-icon class="!text-lg">delete_outline</mat-icon></button> }
+          <section class="surface-card px-3 pt-2.5 pb-3">
+            <div class="flex items-center gap-2 min-h-[28px]">
+              <h3 class="flex-1 min-w-0 text-[13px] font-bold text-ink-900 truncate" [title]="g.name">{{ g.name }}</h3>
+              <span class="text-[11px] font-semibold text-ink-400 whitespace-nowrap">{{ svc.teamsOf(g.name).length }} · {{ agentTotal(g.name) }} agents</span>
+              @if (svc.canRemoveGroup(g.name)) { <button class="w-6 h-6 rounded-md flex items-center justify-center text-ink-400 hover:bg-surface-subtle hover:text-status-red" title="Delete this empty group" (click)="remove(g.name)"><mat-icon class="!text-base">delete_outline</mat-icon></button> }
             </div>
-            <div cdkDropList [cdkDropListData]="g.name" (cdkDropListDropped)="drop($event)" class="zone min-h-[72px] mt-3">
-              @for (t of svc.teamsOf(g.name); track t) { <div cdkDrag [cdkDragData]="t" class="chip in"><mat-icon class="!text-base text-brand-300">drag_indicator</mat-icon><span class="flex-1">{{ t }}</span><span class="cnt">{{ svc.agentsIn(t) }}</span></div> }
-              @empty { <div class="text-xs text-ink-400 text-center py-4">Drop teams here</div> }
+            <div cdkDropList cdkDropListOrientation="mixed" [cdkDropListSortingDisabled]="true" [cdkDropListData]="g.name" (cdkDropListDropped)="drop($event)" class="zone mt-2">
+              @for (t of svc.teamsOf(g.name); track t) { <div cdkDrag [cdkDragData]="t" class="chip in"><mat-icon class="!text-[15px] !w-[15px] !h-[15px] text-brand-300">drag_indicator</mat-icon>{{ t }}<span class="cnt">{{ svc.agentsIn(t) }}</span></div> }
+              @empty { <span class="text-[11px] text-ink-400 px-1">Drop teams here</span> }
             </div>
           </section>
         }
       </div>
     </div>
-    <p class="text-xs text-ink-400 mt-3">The number on each team is how many agents work in that queue. A team can belong to one group; moving it to another group replaces the link.</p>
+    <p class="text-xs text-ink-400 mt-3">The number on a team is how many agents work in that queue. A team belongs to one group; dropping it on another group moves it. A new group's approved budget is set in <a class="text-brand-600 font-medium" routerLink="/contracts-budget/forecast-settings">Forecast Settings</a>.</p>
   `,
   styles: [`
-    .lbl { font-size: 10.5px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: .04em; }
-    .zone { display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1.5px dashed #e3e2ec; border-radius: 12px; background: #fafafc; transition: border-color .15s, background .15s; }
+    .board { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); align-items: start; }
+    .zone { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 6px; min-height: 46px; padding: 6px; border: 1.5px dashed #e3e2ec; border-radius: 10px; background: #fafafc; transition: border-color .15s, background .15s; }
     .zone.cdk-drop-list-dragging, .zone.cdk-drop-list-receiving { border-color: #fb923c; background: #fff7ed; }
-    .chip { display: flex; align-items: center; gap: 6px; padding: 6px 10px 6px 6px; border-radius: 9px; border: 1px solid #e3e2ec; background: #fff; font-size: 12.5px; font-weight: 600; color: #413e5c; cursor: grab; user-select: none; }
+    .chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px 4px 4px; border-radius: 8px; border: 1px solid #e3e2ec; background: #fff; font-size: 12px; font-weight: 600; color: #413e5c; cursor: grab; user-select: none; white-space: nowrap; }
     .chip.in { background: #fff4e9; border-color: #fdd6b0; color: #b45309; }
-    .chip .cnt { font-size: 11px; font-weight: 700; color: #9ca3af; background: #f3f4f6; border-radius: 999px; padding: 0 7px; }
+    .chip .cnt { font-size: 10.5px; font-weight: 700; color: #9ca3af; background: #f3f4f6; border-radius: 999px; padding: 0 6px; margin-left: 2px; }
     .chip.in .cnt { background: #ffe8d1; color: #c2410c; }
-    .cdk-drag-preview { box-shadow: 0 10px 24px -8px rgba(25,23,51,.35); border-radius: 9px; }
+    .cdk-drag-preview { box-shadow: 0 10px 24px -8px rgba(25,23,51,.35); border-radius: 8px; }
     .cdk-drag-placeholder { opacity: .25; }
     .cdk-drag-animating { transition: transform 200ms cubic-bezier(0, 0, 0.2, 1); }
   `],
@@ -84,7 +83,6 @@ export class TeamGroupsComponent {
   newName = signal('');
 
   free = () => this.svc.allTeams().filter((t) => !this.svc.teamGroup()[t]);
-  linked = () => this.svc.allTeams().length - this.free().length;
   agentTotal = (group: string) => this.svc.teamsOf(group).reduce((s, t) => s + this.svc.agentsIn(t), 0);
 
   drop(e: CdkDragDrop<string>) {
