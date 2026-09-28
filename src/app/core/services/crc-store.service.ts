@@ -937,7 +937,13 @@ export class CrcStore {
     if (!runs.length) return;
     const names = runs.map((r) => r.lines[0].label).join(', ');
     const amount = runs.reduce((sum, r) => sum + r.vendorInvoiceAmount, 0);
-    const payment: PaymentRecord = { id: 'PAY-' + this.next(), vendorName, lines: `${contractRef} · ${names}`, invoiceAmount: Math.round(amount), status: 'Pending', slaAtRisk: false, invoiceRef: 'INV-' + this.next(), period: this.period() };
+    const mapping = this.lineMapping();
+    const items = runs.map((r) => {
+      const l = r.lines[0], tail = l.key.split('|')[1] as WfoComponent;
+      const comp = mapping[l.key] ?? (WFO_COMPONENTS.includes(tail) ? tail : undefined);
+      return { label: l.label, linkedTo: comp ? WFO_LABEL[comp] : undefined };
+    });
+    const payment: PaymentRecord = { id: 'PAY-' + this.next(), vendorName, lines: `${contractRef} · ${names}`, contract: contractRef, items, pendingAt: 'Finance approval', invoiceAmount: Math.round(amount), status: 'Pending', slaAtRisk: false, invoiceRef: 'INV-' + this.next(), period: this.period() };
     this.payments.update((list) => [payment, ...list]);
     this.invoiceRuns.update((m) => ({ ...m, [vendorName]: (m[vendorName] ?? []).map((r) => (runs.includes(r) ? { ...r, status: 'Approved for payment', paymentId: payment.id } : r)) }));
     this.log('Invoice Approved', vendorName, `${contractRef} · ${names}: approved for payment, ${payment.invoiceAmount.toLocaleString()} OMR (${payment.id}).`);

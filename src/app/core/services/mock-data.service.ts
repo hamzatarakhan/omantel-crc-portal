@@ -217,6 +217,12 @@ export class MockDataService {
   getPaymentRecords(): PaymentRecord[] {
     const statuses: PaymentRecord['status'][] = ['Pending', 'Approved', 'Completed'];
     const vendors = ['Infoline LLC', 'Green Umbrella Services', 'Al-Waha Facilities', 'Tech Bridge Solutions'];
+    const detail: Array<Pick<PaymentRecord, 'contract' | 'items' | 'pendingAt'>> = [
+      { contract: '2025-013T-00-01', items: [{ label: 'Infoline Salary', linkedTo: 'Salary' }, { label: 'Over time', linkedTo: 'Overtime' }, { label: 'Incentive Telesales', linkedTo: 'Incentive' }], pendingAt: 'Finance approval' },
+      { contract: '2025-013T-00-02', items: [{ label: 'Cleaning and waste management' }, { label: 'Security and access control' }] },
+      { contract: '2025-013T-00-03', items: [{ label: 'Service desk' }] },
+      { contract: '2025-013T-00-04', items: [{ label: 'Induction training' }, { label: 'Assessment and certification' }], pendingAt: 'Budget Owner approval' },
+    ];
     return vendors.map((v, i) => ({
       id: `PAY-${i + 1}`,
       vendorName: v,
@@ -224,6 +230,9 @@ export class MockDataService {
       status: statuses[i % statuses.length],
       paymentDate: i % 3 === 2 ? addDays(-2) : undefined,
       slaAtRisk: i === 1,
+      invoiceRef: `INV-${100 + i}`,
+      ...detail[i],
+      ...(statuses[i % statuses.length] === 'Pending' ? {} : { pendingAt: undefined }),
     }));
   }
 

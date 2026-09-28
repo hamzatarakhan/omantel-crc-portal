@@ -169,6 +169,11 @@ export interface PaymentRecord {
   slaAtRisk: boolean;
   invoiceRef?: string;
   period?: string;
+  contract?: string;
+  /** The invoice items (payable lines) this payment covers, and what each is linked to on Payable Line Mapping (Salary, Incentive, ...). */
+  items?: Array<{ label: string; linkedTo?: string }>;
+  /** Where a Pending payment is waiting (the ERP reports it) — e.g. "Finance approval". */
+  pendingAt?: string;
 }
 
 export interface AuditEntry {
