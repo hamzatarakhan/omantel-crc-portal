@@ -51,7 +51,7 @@ import { parseAnnexure } from '../../../core/services/annexure-import';
             }
           </tbody>
         </table>
-        <p class="text-[11px] text-ink-400 mt-2">The vendor's claim comes from their own file's billing rate × their own attendance (Salary) and "Additional" column (Overtime); Performance and the 3 Clicks incentive are ours to calculate and are not on their file.</p>
+        <p class="text-[11px] text-ink-400 mt-2">The vendor's claim comes from their own file's billing rate × their own attendance. Only Salary is compared here; Overtime, Performance and the incentive come from their own sheets.</p>
       </div>
     }
 
@@ -183,7 +183,7 @@ export class AnnexureComponent {
 
   /** The vendor's own annexure claim, read once for comparison — never a source for our own figures above. */
   claim = computed(() => this.store.vendorAnnexures()[this.vendor()]);
-  /** Only the components the annexure covers (Salary and Overtime) are compared; Performance and the other lines are not in it. */
+  /** Only Salary is compared here; Overtime and Performance come from their own sheets. */
   claimTotals = computed(() => { const rows = this.claimRows(); return { ours: rows.reduce((s, r) => s + r.ours, 0), theirs: rows.reduce((s, r) => s + r.theirs, 0) }; });
   claimDiff = computed(() => Math.round((this.claimTotals().theirs - this.claimTotals().ours) * 1000) / 1000);
   claimRows = computed(() => {
@@ -191,7 +191,6 @@ export class AnnexureComponent {
     if (!c) return [];
     const rows: Array<{ label: string; ours: number; theirs?: number }> = [
       { label: 'Salary (incl. new joiners & resignations)', ours: k.salaryBase + k.newJoining.amount + k.resignation.amount, theirs: c.claim.salary },
-      { label: 'Overtime', ours: k.overtimeBase, theirs: c.claim.overtime },
     ];
     return rows.filter((r) => r.theirs !== undefined).map((r) => ({ ...r, theirs: r.theirs as number, diff: Math.round(((r.theirs as number) - r.ours) * 1000) / 1000 }));
   });
