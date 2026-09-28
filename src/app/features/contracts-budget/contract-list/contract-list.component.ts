@@ -87,9 +87,9 @@ export class ContractListComponent {
     { key: 'record', label: 'Record type', value: this.record, set: (v: string) => this.record.set(v), options: RECORD_TYPES },
     { key: 'vendor', label: 'Vendor', value: this.vendor, set: (v: string) => this.vendor.set(v), options: this.opts(this.vendors(), 'All vendors') },
     { key: 'type', label: 'Contract type', value: this.type, set: (v: string) => this.type.set(v), options: this.opts(this.types(), 'All types') },
-    { key: 'renewal', label: 'Renewal status', value: this.renewal, set: (v: string) => this.renewal.set(v), options: [['All', 'Any'], ['Renewed', 'Renewed'], ['Renewal in progress', 'Renewal in progress'], ['None', 'No renewal']] as Array<[string, string]> },
     { key: 'sync', label: 'Sync status', value: this.sync, set: (v: string) => this.sync.set(v), options: [['All', 'Any'], ['Synced', 'Synced'], ['Failed', 'Last sync failed']] as Array<[string, string]> },
   ]);
+  /** Hidden for now at the user's request; the filter still exists in `renewal`/`rows()`, just not shown. */
 
   private cancelledIds = computed(() => new Set(this.ops.scoped().filter((c) => c.status === 'Cancelled').map((c) => c.id)));
 
