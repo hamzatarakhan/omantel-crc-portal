@@ -68,7 +68,7 @@ const PAGE = 10;
           <thead><tr class="bg-surface-subtle text-left text-xs text-ink-500 uppercase tracking-wide">
             <th class="px-3 py-2.5 font-medium">Payment</th><th class="px-3 py-2.5 font-medium">Vendor</th><th class="px-3 py-2.5 font-medium">Contract</th>
             <th class="px-3 py-2.5 font-medium min-w-[260px]">Invoice items</th><th class="px-3 py-2.5 font-medium">Period</th><th class="px-3 py-2.5 font-medium text-right">Amount</th>
-            <th class="px-3 py-2.5 font-medium">Status</th><th class="px-3 py-2.5 font-medium min-w-[150px]">Where it is</th>
+            <th class="px-3 py-2.5 font-medium">Status</th><th class="px-3 py-2.5 font-medium min-w-[150px]">Where it is</th><th class="px-3 py-2.5 font-medium min-w-[190px]">Documents</th>
           </tr></thead>
           <tbody>
             @for (p of pageRows(); track p.id) {
@@ -91,9 +91,14 @@ const PAGE = 10;
                   @else if (p.status === 'Completed') { <span class="text-ink-600">Paid {{ p.paymentDate || '' }}</span> }
                   @else { <span class="text-ink-400">Awaiting payment</span> }
                 </td>
+                <td class="px-3 py-2.5 text-xs">
+                  @for (d of p.documents ?? []; track $index) {
+                    <div class="flex items-center gap-1 text-ink-700 py-0.5"><mat-icon class="!text-sm !w-4 !h-4 text-brand-600 shrink-0">description</mat-icon><span class="truncate"><b class="font-semibold">{{ d.kind === 'Other' ? 'Other' : d.kind }}</b> <span class="text-ink-400">{{ d.name }}</span></span></div>
+                  } @empty { <span class="text-ink-400">—</span> }
+                </td>
               </tr>
             } @empty {
-              <tr><td colspan="8" class="px-4 py-12 text-center text-sm text-ink-400">No invoices match these filters. <button type="button" class="text-brand-600 font-semibold hover:underline" (click)="reset()">Reset filters</button></td></tr>
+              <tr><td colspan="9" class="px-4 py-12 text-center text-sm text-ink-400">No invoices match these filters. <button type="button" class="text-brand-600 font-semibold hover:underline" (click)="reset()">Reset filters</button></td></tr>
             }
           </tbody>
         </table>

@@ -231,6 +231,7 @@ export class MockDataService {
       paymentDate: i % 3 === 2 ? addDays(-2) : undefined,
       slaAtRisk: i === 1,
       invoiceRef: `INV-${100 + i}`,
+      documents: [{ kind: 'Invoice', name: `INV-${100 + i}.pdf`, size: 184320 }, { kind: 'Payment Certificate', name: `Payment certificate ${i + 1}.pdf`, size: 96256 }, ...(i % 2 === 0 ? [{ kind: 'Other', name: 'Supporting timesheets.xlsx', size: 52224 }] : [])],
       ...detail[i],
       ...(statuses[i % statuses.length] === 'Pending' ? {} : { pendingAt: undefined }),
     }));
