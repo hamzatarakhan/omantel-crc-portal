@@ -39,8 +39,8 @@ import { parseAnnexure } from '../../../core/services/annexure-import';
       <div class="surface-card px-4 py-4 mb-4">
         <h3 class="text-[13.5px] font-bold text-ink-900 mb-3">Vendor's claim vs. our calculation</h3>
         <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
-          <div><div class="text-[10.5px] font-bold text-ink-400 uppercase tracking-wide">Our calculation</div><div class="text-lg font-bold text-ink-900 mt-1">{{ calc().subtotal | number:'1.2-2' }} OMR</div></div>
-          <div><div class="text-[10.5px] font-bold text-ink-400 uppercase tracking-wide">Vendor's claim</div><div class="text-lg font-bold text-ink-900 mt-1">{{ c.total | number:'1.2-2' }} OMR</div></div>
+          <div><div class="text-[10.5px] font-bold text-ink-400 uppercase tracking-wide">Our calculation</div><div class="text-lg font-bold text-ink-900 mt-1">{{ claimTotals().ours | number:'1.2-2' }} OMR</div></div>
+          <div><div class="text-[10.5px] font-bold text-ink-400 uppercase tracking-wide">Vendor's claim</div><div class="text-lg font-bold text-ink-900 mt-1">{{ claimTotals().theirs | number:'1.2-2' }} OMR</div></div>
           <div><div class="text-[10.5px] font-bold text-ink-400 uppercase tracking-wide">Difference</div><div class="text-lg font-bold mt-1" [class.text-status-red]="claimDiff() > 0.005 || claimDiff() < -0.005">{{ claimDiff() > 0 ? '+' : '' }}{{ claimDiff() | number:'1.2-2' }} OMR</div></div>
         </div>
         <table class="crc-table w-full">
@@ -183,7 +183,9 @@ export class AnnexureComponent {
 
   /** The vendor's own annexure claim, read once for comparison — never a source for our own figures above. */
   claim = computed(() => this.store.vendorAnnexures()[this.vendor()]);
-  claimDiff = computed(() => { const c = this.claim(); return c ? Math.round((c.total - this.calc().subtotal) * 1000) / 1000 : 0; });
+  /** Only the components the annexure covers (Salary and Overtime) are compared; Performance and the other lines are not in it. */
+  claimTotals = computed(() => { const rows = this.claimRows(); return { ours: rows.reduce((s, r) => s + r.ours, 0), theirs: rows.reduce((s, r) => s + r.theirs, 0) }; });
+  claimDiff = computed(() => Math.round((this.claimTotals().theirs - this.claimTotals().ours) * 1000) / 1000);
   claimRows = computed(() => {
     const c = this.claim(), k = this.calc();
     if (!c) return [];

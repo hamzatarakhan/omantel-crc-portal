@@ -224,6 +224,7 @@ export class CrcStore {
   /** Manual override of a Yearly Budget line's approved amount, keyed by "contractId:Y<year>:L<line>". Not read from the ERP. */
   readonly yearlyBudgetApprovals = signal<Record<string, number>>({});
   /** How each contract is reported on the General Dashboard, by contract reference. Seeded: the Infoline salary PO is the secondment contract. */
+  private readonly referencePay = new Map(WFO_REFERENCE.employees.map((e) => ['AG-' + e.id, e.p]));
   readonly serviceClass = signal<Record<string, ServiceClass>>(this.seedServiceClass());
   setServiceClass(reference: string, cls: ServiceClass | null) {
     this.serviceClass.update((m) => { const { [reference]: _old, ...rest } = m; return cls ? { ...rest, [reference]: cls } : rest; });
@@ -663,6 +664,8 @@ export class CrcStore {
     const mix = (x: number) => { x = Math.imul(x ^ (x >>> 16), 0x85ebca6b) >>> 0; x = Math.imul(x ^ (x >>> 13), 0xc2b2ae35) >>> 0; return (x ^ (x >>> 16)) >>> 0; };
     const h = current ? raw : mix(raw);
     const hours = [0, 0, 0, 0, 0, 0, 0, 8.5, 12, 25.5, 34, 16];
+    // An agent from the WFO reference has the overtime the reference file records (its Additional column), not a stand-in.
+    if (current && this.referencePay.has(a.id)) return { performanceScore: 84 + ((h >>> 5) % 17), overtimeHours: this.referencePay.get(a.id)!.additional > 0 ? this.referencePay.get(a.id)!.additional / this.overtimeRateFor(a) : 0 };
     return { performanceScore: 84 + ((h >>> 5) % 17), overtimeHours: hours[(h >>> 11) % hours.length] };
   }
 
