@@ -62,11 +62,13 @@ const AGENT_VENDORS = ['Infoline', 'Green Umbrella', 'OJT'] as const;
       </div>
     }
 
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+    <div [class]="'grid grid-cols-2 gap-3 mb-4 ' + (showSyncErrorsCard ? 'lg:grid-cols-4' : 'lg:grid-cols-3')">
       <a routerLink="/contracts-budget/sync-history" class="surface-card px-4 py-3 hover:border-brand-300 transition-colors" title="Open the run history"><div class="text-xs text-ink-400">Automated synchronization</div><div class="text-sm font-semibold mt-0.5" [class]="syncHealthy() ? 'text-status-normal' : 'text-status-red'">{{ !ops.syncConfig().enabled ? 'Switched off' : syncHealthy() ? 'Running · ' + ops.syncConfig().frequency.toLowerCase() : 'Last run failed — data retained' }}</div></a>
       <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Last synchronization</div><div class="text-sm font-semibold text-ink-900 mt-0.5">{{ lastSync() }}</div></div>
       <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Next scheduled synchronization</div><div class="text-sm font-semibold text-ink-900 mt-0.5">{{ nextSync() }}</div></div>
-      <a routerLink="/contracts-budget/sync-errors" class="surface-card px-4 py-3 hover:border-brand-300 transition-colors" title="Open the error log"><div class="text-xs text-ink-400">Synchronization errors</div><div class="text-sm font-semibold mt-0.5" [class]="openErrors() ? 'text-status-red' : 'text-status-normal'">{{ openErrors() }} open · {{ ops.errorLog().length }} logged</div></a>
+      @if (showSyncErrorsCard) {
+        <a routerLink="/contracts-budget/sync-errors" class="surface-card px-4 py-3 hover:border-brand-300 transition-colors" title="Open the error log"><div class="text-xs text-ink-400">Synchronization errors</div><div class="text-sm font-semibold mt-0.5" [class]="openErrors() ? 'text-status-red' : 'text-status-normal'">{{ openErrors() }} open · {{ ops.errorLog().length }} logged</div></a>
+      }
     </div>
 
     <!-- Counts across contracts only mean something when more than one contract is in view. -->
@@ -99,9 +101,9 @@ const AGENT_VENDORS = ['Infoline', 'Green Umbrella', 'OJT'] as const;
       </div>
     }
 
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div [class]="'grid grid-cols-2 gap-4 mb-6 ' + (showActionCards && !selectedContract() ? 'md:grid-cols-4' : 'md:grid-cols-1 max-w-xs')">
       <app-kpi-card label="Variation Orders" [value]="variationOrders()" icon="call_split"></app-kpi-card>
-      @if (!selectedContract()) {
+      @if (!selectedContract() && showActionCards) {
         <a routerLink="/contracts-budget/needs-attention" class="contents"><app-kpi-card label="Requiring Action" [value]="actionCount()" [level]="actionCount() ? 'amber' : 'neutral'" icon="assignment_late"></app-kpi-card></a>
         <a routerLink="/contracts-budget/needs-attention" class="contents"><app-kpi-card label="Unresolved" [value]="unresolved()" [level]="unresolved() ? 'orange' : 'neutral'" icon="report"></app-kpi-card></a>
         <app-kpi-card label="Escalated" [value]="escalated()" [level]="escalated() ? 'red' : 'neutral'" icon="priority_high"></app-kpi-card>
@@ -143,6 +145,9 @@ const AGENT_VENDORS = ['Infoline', 'Green Umbrella', 'OJT'] as const;
   `,
 })
 export class ContractDashboardComponent {
+  /** Hidden for now at the user's request; the code is kept. */
+  readonly showSyncErrorsCard = false;
+  readonly showActionCards = false;
   store = inject(CrcStore);
   ops = inject(ContractOps);
   private dialog = inject(MatDialog);
