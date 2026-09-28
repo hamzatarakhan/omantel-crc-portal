@@ -152,11 +152,10 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Annexure needed': 'ambe
                 <td class="text-right">
                   @if (isSalary(l)) {
                     @if (annexureClaim(l) !== undefined) {
-                      <div class="inline-block w-32 h-8 leading-8 text-right text-sm font-semibold tabular-nums text-ink-900 bg-surface-subtle rounded-lg px-2.5">{{ vendorAmount(l.key) | number:'1.2-2' }}</div>
-                      <button type="button" class="text-[11px] font-semibold text-brand-600 hover:underline mt-0.5" (click)="view.set('annexure')">From the vendor's annexure &middot; view</button>
+                      <div class="text-sm font-semibold tabular-nums text-ink-900">{{ vendorAmount(l.key) | number:'1.2-2' }}</div>
+                      <button type="button" class="text-[11px] font-semibold text-brand-600 hover:underline mt-0.5" (click)="view.set('annexure')">From the annexure &middot; view</button>
                     } @else {
-                      <button type="button" class="inline-flex items-center gap-1 h-8 px-2.5 text-xs font-semibold rounded-lg border border-solid border-brand-200 text-brand-700 bg-white hover:bg-brand-50" (click)="view.set('annexure')"><mat-icon class="!text-base">upload_file</mat-icon>Import annexure</button>
-                      <div class="text-[11px] text-status-amber mt-0.5">Needed to check Salary</div>
+                      <span class="text-xs text-ink-400">Waiting for the annexure</span>
                     }
                   } @else {
                   <input type="number" step="0.01" min="0" class="w-32 h-8 text-right text-sm font-medium tabular-nums bg-white border border-surface-border rounded-lg px-2.5 focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 disabled:bg-surface-subtle disabled:text-ink-500 disabled:border-transparent" [ngModel]="vendorAmount(l.key)" (ngModelChange)="setVendorAmount(l.key, +$event)" [disabled]="isApproved(l.key)" />
