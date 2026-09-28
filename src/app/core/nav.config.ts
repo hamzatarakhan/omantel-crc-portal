@@ -97,6 +97,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: 'Reconciliation Workspace', path: 'reconciliation', icon: 'calculate', perms: ['Validate Invoice'] },
       { label: 'Payable Rule Config', path: 'rules', icon: 'tune', perms: ['Configure Payable Rules'] },
+      { label: 'Payable Line Mapping', path: 'line-mapping', icon: 'link', perms: ['Configure Payable Rules'] },
       { label: 'PO & Payment Tracking', path: 'tracking', icon: 'view_kanban', perms: ['Validate Invoice'] },
       { label: 'Payment Dashboard', path: 'dashboard', icon: 'dashboard', perms: ['Validate Invoice', 'Configure Payable Rules'], hidden: true },
     ],

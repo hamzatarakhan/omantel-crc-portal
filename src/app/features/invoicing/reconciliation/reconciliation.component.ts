@@ -7,7 +7,7 @@ import { PageHeaderComponent } from '../../../shared/components/page-header/page
 import { StatusChipComponent } from '../../../shared/components/status-chip/status-chip.component';
 import { KpiCardComponent } from '../../../shared/components/kpi-card/kpi-card.component';
 import { RequiresDirective } from '../../../shared/directives/requires.directive';
-import { CrcStore, PayableLineItem } from '../../../core/services/crc-store.service';
+import { CrcStore, PayableLineItem, WFO_LABEL } from '../../../core/services/crc-store.service';
 import { UiService } from '../../../shared/services/ui.service';
 import { InvoiceLineDetail, VendorQuery } from '../../../core/models/domain';
 import { StatusLevel } from '../../../core/models/status';
@@ -112,6 +112,7 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Not validated': 'neutra
           </ol>
         </div>
         <div class="flex items-center gap-2 flex-wrap">
+          <a routerLink="/invoicing/line-mapping" class="inline-flex items-center gap-1 text-xs font-semibold text-brand-600 hover:underline" appRequires="Configure Payable Rules"><mat-icon class="!text-base">link</mat-icon>Payable Line Mapping</a>
           <button type="button" [class]="btnSecondary" (click)="validate(validatable())" appRequires="Validate Invoice" [disabled]="!validatable().length"><mat-icon [class]="ico">fact_check</mat-icon>Validate selected @if (validatable().length) { <span [class]="pill">{{ validatable().length }}</span> }</button>
           <button type="button" [class]="btnPrimary" (click)="approve(approvable())" appRequires="Validate Invoice" [disabled]="!approvable().length"><mat-icon [class]="ico">task_alt</mat-icon>Approve selected @if (approvable().length) { <span class="bg-white/25 rounded-full px-1.5 text-[10px] leading-4">{{ approvable().length }}</span> }</button>
           <button type="button" [class]="btnDanger" (click)="emailVendor()" appRequires="Validate Invoice" [disabled]="!queryable().length"><mat-icon [class]="ico">mail</mat-icon>Email vendor @if (queryable().length) { <span class="bg-status-red text-white rounded-full px-1.5 text-[10px] leading-4">{{ queryable().length }}</span> }</button>
@@ -140,7 +141,7 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Not validated': 'neutra
                 </td>
                 <td class="!whitespace-normal min-w-[200px]">
                   <div class="font-semibold text-ink-900">{{ l.label }}</div>
-                  <div class="text-[11px] mt-0.5" [class]="l.source === 'wfo' ? 'text-brand-700' : 'text-ink-400'">{{ l.source === 'wfo' ? 'Calculated from WFO attendance' : 'Contract monthly share' }}@if (l.note) { <span class="text-ink-400"> &middot; {{ l.note }}</span> }</div>
+                  <div class="text-[11px] mt-0.5" [class]="l.source === 'wfo' ? 'text-brand-700' : 'text-ink-400'">{{ l.source === 'wfo' ? 'Linked to ' + wfoLabel[l.component!] : 'Contract monthly share — not linked' }}@if (l.note) { <span class="text-ink-400"> &middot; {{ l.note }}</span> }</div>
                 </td>
                 <td class="text-right font-medium text-ink-900 tabular-nums">{{ l.calculated | number:'1.2-2' }}</td>
                 <td class="text-right">
@@ -229,6 +230,7 @@ export class ReconciliationComponent {
 
   readonly vendors = VENDORS;
   readonly field = FIELD;
+  readonly wfoLabel = WFO_LABEL;
   readonly statusLevels = STATUS_LEVEL;
   readonly ico = '!text-[17px] !w-[17px] !h-[17px]';
   readonly icoSm = '!text-base !w-4 !h-4';

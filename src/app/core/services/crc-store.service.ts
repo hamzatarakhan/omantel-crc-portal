@@ -7,7 +7,7 @@ import {
 import { StatusLevel, daysRemainingToLevel } from '../models/status';
 import { MockDataService } from './mock-data.service';
 import { NAV_GROUPS, NavGroup } from '../nav.config';
-import { attachmentsFor, childRecordsFor, enrichContract, timelineFor, yearlyBudgetFor } from './contract-data';
+import { attachmentsFor, childRecordsFor, enrichContract, infolineFirst, timelineFor, yearlyBudgetFor } from './contract-data';
 import { seedChanges } from './contract-monitoring';
 
 export const CURRENT_USER = 'Hamza Tarkan';
@@ -43,6 +43,10 @@ export interface PayableLineItem {
 }
 /** The vendor's own annexure file, read once for comparison: what they claim per component, never a replacement for our WFO data. */
 export interface VendorAnnexureClaim { fileName: string; importedAt: string; period: string; employees: number; days: number; resignations: number; claim: Partial<Record<WfoComponent, number>>; total: number }
+export const WFO_COMPONENTS: WfoComponent[] = ['salary', 'overtime', 'performance', 'incentive', 'fee'];
+export const WFO_LABEL: Record<WfoComponent, string> = { salary: 'Salary', overtime: 'Overtime', performance: 'Performance', incentive: 'Incentive', fee: 'Management fee' };
+/** One PO line (of every active contract) a user can link to a calculated component, so Reconciliation knows to bill it from WFO instead of the contract's yearly share. */
+export interface PayableLineCatalogItem { key: string; vendorName: string; contractRef: string; contractName: string; label: string; scope: string; component: WfoComponent | null }
 const addMonthsIso = (iso: string, n: number) => { const [y, m] = iso.split('-').map(Number); const d = new Date(Date.UTC(y, m - 1 + n, 1)); return d.toISOString().slice(0, 10); };
 /** The contract's flat management fee per employee per month (OMR). */
 export const FLAT_MANAGEMENT_FEE = 116;
@@ -218,6 +222,8 @@ export class CrcStore {
   /** Overtime formulas scoped to a vendor / contract / line; agents no rule covers use the default in payrollRules. */
   readonly overtimeRules = signal<OvertimeRule[]>([]);
   readonly payableRules = signal<PayableRules>({ thresholdSeconds: 10, deviationPct: 2, perVendor: false, includeIncentive: false });
+  /** Which calculated component (if any) each PO line is billed from, keyed `${contractRef}|L${line}` — set on Payable Line Mapping, used by payableLines(). */
+  readonly lineMapping = signal<Record<string, WfoComponent>>(this.seedLineMapping());
   /** Every validate/approve pass, per vendor, oldest first — a vendor can have several, one per subset of lines paid over time. */
   readonly invoiceRuns = signal<Record<string, InvoiceRun[]>>({});
   readonly payments = signal<PaymentRecord[]>(this.mock.getPaymentRecords());
@@ -767,12 +773,53 @@ export class CrcStore {
     return list.map((c, i) => ({ ...c, billing: i === 0 }));
   }
 
+  /** A PO line's Yearly Budget entries are identical across contract-years (same name/scope, only the amount differs), so year 1 stands for all of them. */
+  private currentLines(c: Contract) {
+    const kids = childRecordsFor(c);
+    return yearlyBudgetFor(c, kids)[0]?.lines ?? [];
+  }
+
+  /** First-run guess at each line's component, by name (Salary/Overtime/Performance/Incentive/Management fee) — a starting point the user can change on Payable Line Mapping. */
+  private seedLineMapping(): Record<string, WfoComponent> {
+    const guess: Array<[RegExp, WfoComponent]> = [[/^salary$/i, 'salary'], [/^over ?time$/i, 'overtime'], [/^performance$/i, 'performance'], [/^incentive$/i, 'incentive'], [/management fee/i, 'fee']];
+    const map: Record<string, WfoComponent> = {};
+    for (const c of this.contracts().filter((x) => x.status !== 'Cancelled')) {
+      for (const l of this.currentLines(c)) {
+        const hit = guess.find(([re]) => re.test(l.description));
+        if (hit) map[`${c.reference}|L${l.line}`] = hit[1];
+      }
+    }
+    return map;
+  }
+
+  /** Every PO line of every active contract, and which calculated component (if any) it is linked to — the full list for Payable Line Mapping. */
+  payableLineCatalog(): PayableLineCatalogItem[] {
+    const mapping = this.lineMapping();
+    return this.contracts()
+      .filter((c) => c.status !== 'Cancelled')
+      .sort((a, b) => infolineFirst(a.vendorName, b.vendorName) || a.reference.localeCompare(b.reference))
+      .flatMap((c) => this.currentLines(c).map((l): PayableLineCatalogItem => {
+        const key = `${c.reference}|L${l.line}`;
+        return { key, vendorName: c.vendorName, contractRef: c.reference, contractName: c.name, label: l.description, scope: l.scope, component: mapping[key] ?? null };
+      }));
+  }
+
+  /** Links (or unlinks) one PO line to a calculated component from the Payable Line Mapping screen. */
+  setLineMapping(key: string, component: WfoComponent | null) {
+    this.lineMapping.update((m) => {
+      const n = { ...m };
+      if (component) n[key] = component; else delete n[key];
+      return n;
+    });
+    this.invoiceRuns.set({});
+    this.log('Payable Line Mapping Changed', key, component ? `Linked to ${WFO_LABEL[component]}. Invoices must be re-validated.` : 'Unlinked — this line goes back to its contract share. Invoices must be re-validated.');
+  }
+
   /**
    * What the vendor can invoice on one contract this month: one line per line of the contract's PO. On the billing contract,
-   * the Salary, Overtime, Performance and Incentive (3 Clicks) lines — and a management fee line, if any — take the calculated figure,
-   * and any calculated component with no matching PO line is added as its own line so nothing billed is lost. Every other line
-   * is the contract's monthly share of its yearly budget.
-   * ponytail: lines are matched to WFO components by name; map them explicitly once the ERP gives a line type.
+   * a line linked (on Payable Line Mapping) to Salary, Overtime, Performance, Incentive or Management fee takes that calculated
+   * figure, and any calculated component with no line linked to it is added as its own line so nothing billed is lost. Every
+   * other line is the contract's monthly share of its yearly budget.
    */
   payableLines(vendorName: string, contractRef: string): PayableLineItem[] {
     const c = this.contracts().find((x) => x.reference === contractRef && x.vendorName === vendorName);
@@ -782,6 +829,7 @@ export class CrcStore {
     const period = this.periodStart();
     const year = yearlyBudgetFor(c, kids).find((y) => y.startDate <= period && y.endDate >= period) ?? yearlyBudgetFor(c, kids).slice(-1)[0];
     const months = year ? Math.max(1, Math.round((new Date(year.endDate).getTime() - new Date(year.startDate).getTime()) / 2629800000)) : 1;
+    const mapping = this.lineMapping();
     const lines: PayableLineItem[] = (year?.lines ?? []).map((l) => ({
       key: `${c.reference}|L${l.line}`, label: l.description, calculated: Math.round((l.allocated / months) * 1000) / 1000, source: 'contract' as const,
       basis: `${year!.description.split(' — ')[0]} allocation ${l.allocated.toLocaleString('en-GB')} OMR ÷ ${months} month${months === 1 ? '' : 's'}`,
@@ -790,16 +838,17 @@ export class CrcStore {
 
     const calc = this.calculateInvoice(vendorName);
     const fee = calc.tiers.reduce((sum, t) => sum + t.fee, 0);
-    const hasFeeLine = lines.some((l) => /management fee/i.test(l.label));
-    const wfo: Array<{ component: WfoComponent; label: string; match: RegExp; amount: number; note?: string }> = [
-      { component: 'salary', label: 'Salary', match: /^salary$/i, amount: calc.salaryBase + calc.newJoining.amount + calc.resignation.amount - (hasFeeLine ? fee : 0) },
-      { component: 'overtime', label: 'Overtime', match: /^over ?time$/i, amount: calc.overtimeBase },
-      { component: 'performance', label: 'Performance', match: /^performance$/i, amount: calc.performanceBase },
-      { component: 'incentive', label: 'Incentive', match: /^incentive$/i, amount: calc.incentive, note: calc.incentiveIncluded ? undefined : 'Not on the vendor invoice by the current payable rule' },
-      ...(hasFeeLine ? [{ component: 'fee' as WfoComponent, label: 'Management fee', match: /management fee/i, amount: fee }] : []),
+    const linkedTo = (component: WfoComponent) => lines.find((l) => mapping[l.key] === component);
+    const hasFeeLine = !!linkedTo('fee');
+    const wfo: Array<{ component: WfoComponent; label: string; amount: number; note?: string }> = [
+      { component: 'salary', label: 'Salary', amount: calc.salaryBase + calc.newJoining.amount + calc.resignation.amount - (hasFeeLine ? fee : 0) },
+      { component: 'overtime', label: 'Overtime', amount: calc.overtimeBase },
+      { component: 'performance', label: 'Performance', amount: calc.performanceBase },
+      { component: 'incentive', label: 'Incentive', amount: calc.incentive, note: calc.incentiveIncluded ? undefined : 'Not on the vendor invoice by the current payable rule' },
+      ...(hasFeeLine ? [{ component: 'fee' as WfoComponent, label: 'Management fee', amount: fee }] : []),
     ];
     for (const w of wfo) {
-      const hit = lines.find((l) => l.source === 'contract' && w.match.test(l.label));
+      const hit = linkedTo(w.component);
       const patch = { calculated: Math.round(w.amount * 1000) / 1000, source: 'wfo' as const, component: w.component, note: w.note, basis: undefined };
       if (hit) Object.assign(hit, patch);
       else lines.push({ key: `${c.reference}|${w.component}`, label: w.label, ...patch });

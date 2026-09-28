@@ -52,6 +52,7 @@ export const routes: Routes = [
       // Invoicing & Payments
       { path: 'invoicing/reconciliation', loadComponent: () => import('./features/invoicing/reconciliation/reconciliation.component').then((m) => m.ReconciliationComponent) },
       { path: 'invoicing/rules', loadComponent: () => import('./features/invoicing/rules/rules.component').then((m) => m.RulesComponent) },
+      { path: 'invoicing/line-mapping', loadComponent: () => import('./features/invoicing/line-mapping/line-mapping.component').then((m) => m.LineMappingComponent) },
       { path: 'invoicing/tracking', loadComponent: () => import('./features/invoicing/tracking/tracking.component').then((m) => m.TrackingComponent) },
       { path: 'invoicing/dashboard', loadComponent: () => import('./features/invoicing/dashboard/payment-dashboard.component').then((m) => m.PaymentDashboardComponent) },
 
