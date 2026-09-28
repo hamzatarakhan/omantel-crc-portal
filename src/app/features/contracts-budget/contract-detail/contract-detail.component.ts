@@ -18,7 +18,7 @@ import { Contract, ContractAttachment, ContractRecord, PurchaseOrder } from '../
 import { daysRemainingToLevel } from '../../../core/models/status';
 import { addDays, attachmentsFor, purchaseOrdersFor, ruleApplies, timelineFor, YearlyBudgetLine, yearlyBudgetFor, YearlyBudgetYear } from '../../../core/services/contract-data';
 import { PO_LEVEL, PoDetailDialogComponent } from './po-detail-dialog.component';
-import { ACTION_STATUSES, ACTION_TYPES, ESCALATION_STATUSES, EscalationStatus, MonitoringAction, remainingLabel, statusLevelFor } from '../../../core/services/contract-monitoring';
+import { ACTION_STATUSES, ACTION_TYPES, ESCALATION_STATUSES, EscalationStatus, expiryCountdown, MonitoringAction, statusLevelFor } from '../../../core/services/contract-monitoring';
 import { RequiresDirective } from '../../../shared/directives/requires.directive';
 import { DIALOG_SIZE } from '../../../shared/dialog-sizes';
 import { RecordDetailDialogComponent } from './record-detail-dialog.component';
@@ -559,7 +559,7 @@ export class ContractDetailComponent {
   }
 
   remaining(c: Contract) {
-    return remainingLabel(c.endDate);
+    return expiryCountdown(c.endDate);
   }
 
   min(a: number, b: number) {
