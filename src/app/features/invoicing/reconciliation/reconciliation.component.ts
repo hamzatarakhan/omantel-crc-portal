@@ -14,6 +14,7 @@ import { InvoiceLineDetail, VendorQuery } from '../../../core/models/domain';
 import { StatusLevel } from '../../../core/models/status';
 import { AnnexureComponent } from './annexure.component';
 import { VendorQueryDialogComponent } from './vendor-query-dialog.component';
+import { PaymentDocumentsDialogComponent, PaymentDocument } from './payment-documents-dialog.component';
 import { MismatchDetailsDialogComponent } from './mismatch-details-dialog.component';
 import { QueryDialogData, QueryDialogResult, QueryLine } from './mismatch';
 import { DIALOG_SIZE } from '../../../shared/dialog-sizes';
@@ -464,7 +465,9 @@ export class ReconciliationComponent {
       confirmLabel: 'Approve', icon: 'payments',
     });
     if (!yes) return;
-    const p = this.store.approveLines(this.vendor(), ok, c.reference);
+    const documents: PaymentDocument[] | undefined = await this.dialog.open(PaymentDocumentsDialogComponent, { data: { summary: `${names} · ${total} OMR on ${c.reference}` }, panelClass: 'app-dialog-panel', autoFocus: false, ...DIALOG_SIZE.form }).afterClosed().toPromise();
+    if (!documents) return;
+    const p = this.store.approveLines(this.vendor(), ok, c.reference, documents);
     this.ui.toast(`Approved — ${p?.id} added to PO & Payment Tracking.`);
   }
 

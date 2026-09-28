@@ -174,6 +174,8 @@ export interface PaymentRecord {
   items?: Array<{ label: string; linkedTo?: string }>;
   /** Where a Pending payment is waiting (the ERP reports it) — e.g. "Finance approval". */
   pendingAt?: string;
+  /** The documents attached on approval: the invoice and payment certificate (mandatory) and up to six others. */
+  documents?: Array<{ kind: string; name: string; size: number }>;
 }
 
 export interface AuditEntry {

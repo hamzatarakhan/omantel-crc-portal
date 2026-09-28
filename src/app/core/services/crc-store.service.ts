@@ -1045,7 +1045,7 @@ export class CrcStore {
   }
 
   /** Approves one matching line or several at once; together they become one payment. A line that does not match is queried with the vendor instead. */
-  approveLines(vendorName: string, keys: string[], contractRef: string) {
+  approveLines(vendorName: string, keys: string[], contractRef: string, documents: Array<{ kind: string; name: string; size: number }> = []) {
     const runs = keys.map((k) => this.lineRun(vendorName, k)).filter((r): r is InvoiceRun => r?.status === 'Validated');
     if (!runs.length) return;
     const names = runs.map((r) => r.lines[0].label).join(', ');
@@ -1056,10 +1056,10 @@ export class CrcStore {
       const comp = mapping[l.key] ?? (WFO_COMPONENTS.includes(tail) ? tail : undefined);
       return { label: l.label, linkedTo: comp ? WFO_LABEL[comp] : undefined };
     });
-    const payment: PaymentRecord = { id: 'PAY-' + this.next(), vendorName, lines: `${contractRef} · ${names}`, contract: contractRef, items, pendingAt: 'Finance approval', invoiceAmount: Math.round(amount), status: 'Pending', slaAtRisk: false, invoiceRef: 'INV-' + this.next(), period: this.period() };
+    const payment: PaymentRecord = { id: 'PAY-' + this.next(), vendorName, lines: `${contractRef} · ${names}`, contract: contractRef, items, documents, pendingAt: 'Finance approval', invoiceAmount: Math.round(amount), status: 'Pending', slaAtRisk: false, invoiceRef: 'INV-' + this.next(), period: this.period() };
     this.payments.update((list) => [payment, ...list]);
     this.invoiceRuns.update((m) => ({ ...m, [vendorName]: (m[vendorName] ?? []).map((r) => (runs.includes(r) ? { ...r, status: 'Approved for payment', paymentId: payment.id } : r)) }));
-    this.log('Invoice Approved', vendorName, `${contractRef} · ${names}: approved for payment, ${payment.invoiceAmount.toLocaleString()} OMR (${payment.id}).`);
+    this.log('Invoice Approved', vendorName, `${contractRef} · ${names}: approved for payment, ${payment.invoiceAmount.toLocaleString()} OMR (${payment.id}). ${documents.length} document(s) attached: ${documents.map((d) => d.kind === 'Other' ? d.name : d.kind).join(', ')}.`);
     this.notify(`${vendorName} (${names}) approved for payment.`, 'Invoicing & Payments', 'green', '/invoicing/tracking');
     return payment;
   }
