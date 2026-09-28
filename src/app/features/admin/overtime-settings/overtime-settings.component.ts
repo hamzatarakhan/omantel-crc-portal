@@ -53,6 +53,8 @@ import { AGENT_VENDORS, SETTINGS_UI } from '../settings-ui';
       </div>
     </div>
 
+    <!-- Hidden for now at the user's request: overtime rules by vendor, contract and line. -->
+    @if (false) {
     <div class="surface-card overflow-hidden mb-6">
       <div class="flex items-center justify-between gap-3 flex-wrap px-4 py-3.5 border-b border-surface-border">
         <div>
@@ -82,12 +84,13 @@ import { AGENT_VENDORS, SETTINGS_UI } from '../settings-ui';
         </table>
       </div>
     </div>
+    }
 
     <div class="surface-card overflow-hidden mb-4">
       <div class="flex items-center justify-between gap-3 flex-wrap px-4 py-3.5 border-b border-surface-border">
         <div>
           <h3 class="text-[13.5px] font-bold text-ink-900">Overtime rate per agent</h3>
-          <p class="text-xs text-ink-400 mt-0.5">Type a rate to give an agent their own; clear it to go back to the default{{ dirty() ? ' (default shown with the unsaved values)' : '' }}. Changes are written to the audit log.</p>
+          <p class="text-xs text-ink-400 mt-0.5">The rate used to price one overtime hour for each agent{{ dirty() ? ' (default shown with the unsaved values)' : '' }}.</p>
         </div>
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 w-full lg:w-auto lg:min-w-[720px]">
           <select [class]="ui.field" (change)="vendor.set($any($event.target).value)">
@@ -116,7 +119,7 @@ import { AGENT_VENDORS, SETTINGS_UI } from '../settings-ui';
                 <td class="text-right tabular-nums text-ink-400">{{ r.formula | number:'1.3-3' }}</td>
                 <td class="text-right whitespace-nowrap">
                   @if (r.custom !== undefined) { <span class="status-chip status-chip--info mr-1.5">Own rate</span> }
-                  <input type="number" min="0" step="0.001" [class]="ui.num" [placeholder]="(r.formula | number:'1.3-3') ?? ''" [ngModel]="r.custom ?? null" (change)="setRate(r.a.id, $any($event.target).value)" />
+                  <span class="font-semibold text-ink-900 tabular-nums">{{ (r.custom ?? r.formula) | number:'1.3-3' }}</span>
                 </td>
               </tr>
             } @empty { <tr><td colspan="7" class="!text-center text-sm text-ink-400 !py-8">No agents match.</td></tr> }
