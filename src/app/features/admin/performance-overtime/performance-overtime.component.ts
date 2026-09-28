@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
@@ -27,9 +27,12 @@ const FIELD = 'w-full px-2.5 py-2 text-xs font-semibold rounded-lg border border
           <h3 class="text-[13.5px] font-bold text-ink-900">Performance rate per agent</h3>
           <p class="text-xs text-ink-400 mt-0.5">{{ qualifiedCount() }} of {{ rows().length }} agents qualify in {{ monthLabel(month()) }} &middot; {{ performanceTotal() | number:'1.0-3' }} OMR performance &middot; {{ overtimeTotal() | number:'1.3-3' }} OMR overtime</p>
         </div>
-        <div class="grid grid-cols-3 gap-2.5 w-full sm:w-auto sm:min-w-[560px]">
-          <select [class]="field" (change)="month.set($any($event.target).value)">
-            @for (m of months; track m) { <option [value]="m" [selected]="m === month()">{{ monthLabel(m) }}</option> }
+        <div class="grid grid-cols-4 gap-2.5 w-full sm:w-auto sm:min-w-[700px]">
+          <select [class]="field" (change)="monthNum.set(+$any($event.target).value)">
+            @for (m of monthsForYear(); track m.num) { <option [value]="m.num" [selected]="m.num === monthNum()">{{ m.name }}</option> }
+          </select>
+          <select [class]="field" (change)="year.set(+$any($event.target).value)">
+            @for (y of years; track y) { <option [value]="y" [selected]="y === year()">{{ y }}</option> }
           </select>
           <select [class]="field" (change)="vendor.set($any($event.target).value)">
             @for (v of vendors; track v) { <option [value]="v" [selected]="v === vendor()">{{ v === 'All' ? 'All vendors' : v }}</option> }
@@ -74,7 +77,30 @@ export class PerformanceOvertimeComponent {
   vendor = signal('All');
   q = signal('');
   readonly months = [...this.store.payrollMonths()].reverse();
-  month = signal(this.months[0]);
+  readonly years = [...new Set(this.months.map((m) => +m.split('-')[0]))].sort((a, b) => b - a);
+
+  private readonly initial = this.months[0].split('-').map(Number);
+  year = signal(this.initial[0]);
+  monthNum = signal(this.initial[1]);
+
+  /** The month options available for the selected year (only months present in the last 12), sorted Jan → Dec. */
+  monthsForYear = computed(() => {
+    const names = Array.from({ length: 12 }, (_, i) => new Date(2000, i, 1).toLocaleString('en-GB', { month: 'long' }));
+    return this.months
+      .filter((m) => +m.split('-')[0] === this.year())
+      .map((m) => +m.split('-')[1])
+      .sort((a, b) => a - b)
+      .map((num) => ({ num, name: names[num - 1] }));
+  });
+
+  /** Keeps the month selector on a real available month whenever the year changes. */
+  private readonly syncMonth = effect(() => {
+    const opts = this.monthsForYear();
+    if (!opts.length) return;
+    if (!opts.some((o) => o.num === this.monthNum())) this.monthNum.set(opts[opts.length - 1].num);
+  }, { allowSignalWrites: true });
+
+  month = computed(() => `${this.year()}-${String(this.monthNum()).padStart(2, '0')}`);
 
   rows = computed(() => {
     const q = this.q().trim().toLowerCase();
