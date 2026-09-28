@@ -13,7 +13,9 @@ import { UiService } from '../../../shared/services/ui.service';
 import { InvoiceLineDetail, VendorQuery } from '../../../core/models/domain';
 import { StatusLevel } from '../../../core/models/status';
 import { AnnexureComponent } from './annexure.component';
-import { QueryDialogData, QueryDialogResult, QueryLine, VendorQueryDialogComponent } from './vendor-query-dialog.component';
+import { VendorQueryDialogComponent } from './vendor-query-dialog.component';
+import { MismatchDetailsDialogComponent } from './mismatch-details-dialog.component';
+import { QueryDialogData, QueryDialogResult, QueryLine } from './mismatch';
 import { DIALOG_SIZE } from '../../../shared/dialog-sizes';
 
 const VENDORS = ['Infoline LLC', 'Green Umbrella Services'];
@@ -154,6 +156,7 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Not validated': 'neutra
                 <td class="text-right">
                   <div class="font-semibold tabular-nums" [class]="diffClass(l)">{{ lineDiff(l) > 0 ? '+' : '' }}{{ lineDiff(l) | number:'1.2-2' }}</div>
                   @if (!same(l)) { <div class="text-[11px] text-ink-400">{{ lineDiff(l) > 0 ? 'Higher' : 'Lower' }} than ours &middot; {{ lineVariance(l) > 0 ? '+' : '' }}{{ lineVariance(l) | number:'1.1-1' }}%</div> }
+                  @if (lineStatus(l.key) === 'Does not match' || lineStatus(l.key) === 'Queried with vendor') { <button type="button" class="mt-0.5 text-[11px] font-semibold text-brand-700 hover:underline" (click)="showDetails(l)">See where it differs</button> }
                 </td>
                 <td class="!whitespace-normal">
                   <app-status-chip [label]="lineStatus(l.key)" [level]="statusLevels[lineStatus(l.key)]"></app-status-chip>
@@ -450,7 +453,15 @@ export class ReconciliationComponent {
   /** Everything the vendor needs to see where a line's difference is: both amounts, what the line is linked to, and how our figure is built. */
   private queryLine(l: PayableLineItem): QueryLine {
     const parts = l.source === 'wfo' ? this.breakdown(l).filter((x) => Math.abs(x.amount) >= 0.005 || l.calculated === 0) : [];
-    return { key: l.key, label: l.label, linkedTo: l.component ? WFO_LABEL[l.component] : null, calculated: l.calculated, vendorAmount: this.vendorAmount(l.key), parts, basis: l.basis, note: l.note };
+    const compare = this.store.annexureCompare(this.vendor(), l.component, this.lines().some((x) => x.component === 'fee')) ?? undefined;
+    return { key: l.key, label: l.label, linkedTo: l.component ? WFO_LABEL[l.component] : null, calculated: l.calculated, vendorAmount: this.vendorAmount(l.key), parts, basis: l.basis, note: l.note, compare };
+  }
+
+  /** The full explanation of one mismatched line, without sending anything. */
+  showDetails(l: PayableLineItem) {
+    const c = this.contract();
+    if (!c) return;
+    this.dialog.open(MismatchDetailsDialogComponent, { data: { vendor: this.vendor(), contract: c.reference, period: this.store.period(), tolerancePct: this.store.payableRules().deviationPct, line: this.queryLine(l) }, panelClass: 'app-dialog-panel', autoFocus: false, width: 'min(860px, 94vw)', maxWidth: '94vw' });
   }
 
   /** One email to the vendor: each chosen line with the exact difference and how we calculated it, then the user's comment. */

@@ -42,7 +42,15 @@ export interface PayableLineItem {
   note?: string;
 }
 /** The vendor's own annexure file, read once for comparison: what they claim per component, never a replacement for our WFO data. */
-export interface VendorAnnexureClaim { fileName: string; importedAt: string; period: string; employees: number; days: number; resignations: number; claim: Partial<Record<WfoComponent, number>>; total: number }
+export interface VendorAnnexureClaim {
+  fileName: string; importedAt: string; period: string; employees: number; days: number; resignations: number; claim: Partial<Record<WfoComponent, number>>; total: number;
+  /** The vendor's own figures per degree tier (their agents, billable FTE, salary and overtime), so a difference can be located. */
+  tiers: Array<{ degree: string; agents: number; fte: number; salary: number; overtime: number }>;
+  joiners: { agents: number; salary: number };
+  resignationTotal: number;
+}
+/** One part of a Salary / Overtime figure: what we calculated against what the vendor's annexure says. */
+export interface AnnexureCompareRow { label: string; ours: number; theirs: number; oursDetail: string; theirsDetail: string }
 export const WFO_COMPONENTS: WfoComponent[] = ['salary', 'overtime', 'performance', 'incentive', 'fee'];
 export const WFO_LABEL: Record<WfoComponent, string> = { salary: 'Salary', overtime: 'Overtime', performance: 'Performance', incentive: 'Incentive', fee: 'Management fee' };
 /** One PO line (of every active contract) a user can link to a calculated component, so Reconciliation knows to bill it from WFO instead of the contract's yearly share. */
@@ -880,10 +888,46 @@ export class CrcStore {
     const vendorName = 'Infoline LLC';
     const claim = this.claimFromAnnexure(d);
     const total = Object.values(claim).reduce((s, v) => s + (v ?? 0), 0);
-    this.vendorAnnexures.update((m) => ({ ...m, [vendorName]: { fileName: d.fileName, importedAt: new Date().toISOString(), period: this.period(), employees: d.employees.length, days: d.attendance.days.length, resignations: d.resignations.length, claim, total } }));
+    this.vendorAnnexures.update((m) => ({ ...m, [vendorName]: { fileName: d.fileName, importedAt: new Date().toISOString(), period: this.period(), employees: d.employees.length, days: d.attendance.days.length, resignations: d.resignations.length, claim, total, ...this.annexureBreakdown(d) } }));
     this.importInfo.set({ fileName: d.fileName, employees: d.employees.length, days: d.attendance.days.length, resignations: d.resignations.length, period: this.period() });
     this.log('Annexure Imported', d.fileName, `${d.employees.length} employee line(s), ${d.attendance.days.length} attendance days and ${d.resignations.length} resignation(s) compared against our WFO calculation for ${this.period()}. Our own agent, payroll and attendance data is unchanged.`);
     this.notify(`${d.fileName} loaded — comparing the vendor's claimed amount against our calculation for ${this.period()}.`, 'Invoicing & Payments', 'green', '/invoicing/reconciliation');
+  }
+
+  /** The vendor's own figures per tier, from their file, so a Salary or Overtime difference can be located. */
+  private annexureBreakdown(d: AnnexureImport) {
+    const monthPrefix = d.periodStart.slice(0, 7);
+    const tiers = ['Bachelor', 'Diploma', 'Non-Diploma'].map((degree) => ({ degree, agents: 0, fte: 0, salary: 0, overtime: 0 }));
+    const joiners = { agents: 0, salary: 0 };
+    for (const e of d.employees) {
+      const codes = d.attendance.rows[e.employeeId] ?? [];
+      const expected = codes.filter((c) => c !== 'OFF').length, billable = codes.filter((c) => c !== 'OFF' && c !== 'A').length;
+      const factor = expected ? billable / expected : 1, salary = e.pay.billingRate * factor;
+      const t = tiers.find((x) => x.degree === e.degree);
+      if (t) t.overtime += e.pay.additional;
+      if (e.joinDate.startsWith(monthPrefix)) { joiners.agents++; joiners.salary += salary; continue; }
+      if (t) { t.agents++; t.fte += factor; t.salary += salary; }
+    }
+    return { tiers, joiners, resignationTotal: d.resignations.reduce((sum, r) => sum + r.total, 0) };
+  }
+
+  /** Where a Salary or Overtime difference sits: our figure and the vendor's annexure figure, part by part. Null until their annexure is imported. */
+  annexureCompare(vendorName: string, component: WfoComponent | undefined, feeSeparate = false): { fileName: string; rows: AnnexureCompareRow[] } | null {
+    const a = this.vendorAnnexures()[vendorName];
+    if (!a || (component !== 'salary' && component !== 'overtime')) return null;
+    const c = this.calculateInvoice(vendorName);
+    const rows: AnnexureCompareRow[] = c.tiers.map((t) => {
+      const v = a.tiers.find((x) => x.degree === t.degree);
+      return component === 'salary'
+        ? { label: `${t.degree} tier`, ours: t.salaryAmount, theirs: v?.salary ?? 0, oursDetail: `${t.headcount} agents · ${t.billableFte.toFixed(2)} billable FTE`, theirsDetail: `${v?.agents ?? 0} agents · ${(v?.fte ?? 0).toFixed(2)} billable FTE` }
+        : { label: `${t.degree} tier`, ours: t.overtime, theirs: v?.overtime ?? 0, oursDetail: `${t.headcount} agents · ${t.overtimeHours.toLocaleString('en-GB')} h`, theirsDetail: `${v?.agents ?? 0} agents` };
+    });
+    if (component === 'salary') {
+      rows.push({ label: 'New joiners', ours: c.newJoining.amount, theirs: a.joiners.salary, oursDetail: `${c.newJoining.units} agent(s), pro-rata`, theirsDetail: `${a.joiners.agents} agent(s)` });
+      rows.push({ label: 'Resignations', ours: c.resignation.amount, theirs: a.resignationTotal, oursDetail: `${c.resignation.units} record(s)`, theirsDetail: `${a.resignations} record(s)` });
+      if (feeSeparate) rows.push({ label: 'Management fee (billed on its own line)', ours: -c.tiers.reduce((sum, t) => sum + t.fee, 0), theirs: 0, oursDetail: 'taken out of Salary', theirsDetail: 'inside their billing rate' });
+    }
+    return { fileName: a.fileName, rows };
   }
 
   /** The vendor's claimed Salary (their billing rate × their own attendance factor, plus their resignations) and Overtime ("Additional") from their file. */
