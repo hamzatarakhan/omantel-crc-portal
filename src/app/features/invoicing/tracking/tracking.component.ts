@@ -93,7 +93,7 @@ const PAGE = 10;
                 </td>
                 <td class="px-3 py-2.5 text-xs">
                   @for (d of p.documents ?? []; track $index) {
-                    <div class="flex items-center gap-1 text-ink-700 py-0.5"><mat-icon class="!text-sm !w-4 !h-4 text-brand-600 shrink-0">description</mat-icon><span class="truncate"><b class="font-semibold">{{ d.kind === 'Other' ? 'Other' : d.kind }}</b> <span class="text-ink-400">{{ d.name }}</span></span></div>
+                    <button type="button" class="flex items-center gap-1 py-0.5 text-left text-ink-700 hover:text-brand-700 hover:underline" (click)="openDoc(d)" [title]="'Open ' + d.name"><mat-icon class="!text-sm !w-4 !h-4 text-brand-600 shrink-0">description</mat-icon><span><b class="font-semibold">{{ d.kind }}</b> <span class="text-ink-400">&middot; {{ d.name }}</span></span></button>
                   } @empty { <span class="text-ink-400">—</span> }
                 </td>
               </tr>
@@ -180,6 +180,14 @@ export class TrackingComponent {
     this.vendor.set(v);
     if (this.contract() !== 'All' && !this.contractOptions().includes(this.contract())) this.contract.set('All');
     this.page.set(0);
+  }
+
+  /** Uploaded files open from the browser; the demo's sample documents open as a small placeholder. */
+  openDoc(d: { name: string; url?: string }) {
+    const url = d.url ?? URL.createObjectURL(new Blob([`Sample document: ${d.name}
+
+This prototype has no file storage; documents attached during the demo open from memory.`], { type: 'text/plain' }));
+    window.open(url, '_blank');
   }
 
   reset() {

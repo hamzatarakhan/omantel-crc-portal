@@ -1060,7 +1060,7 @@ export class CrcStore {
   }
 
   /** Approves one matching line or several at once; together they become one payment. A line that does not match is queried with the vendor instead. */
-  approveLines(vendorName: string, keys: string[], contractRef: string, documents: Array<{ kind: string; name: string; size: number }> = []) {
+  approveLines(vendorName: string, keys: string[], contractRef: string, documents: Array<{ kind: string; name: string; size: number; url?: string }> = []) {
     const runs = keys.map((k) => this.lineRun(vendorName, k)).filter((r): r is InvoiceRun => r?.status === 'Validated');
     if (!runs.length) return;
     const names = runs.map((r) => r.lines[0].label).join(', ');

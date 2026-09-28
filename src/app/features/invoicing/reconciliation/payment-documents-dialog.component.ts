@@ -2,7 +2,7 @@ import { Component, Inject, computed, signal } from '@angular/core';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 
-export interface PaymentDocument { kind: 'Invoice' | 'Payment Certificate' | 'Other'; name: string; size: number }
+export interface PaymentDocument { kind: 'Invoice' | 'Payment Certificate' | 'Other'; name: string; size: number; url?: string }
 export const MAX_OTHER_DOCUMENTS = 6;
 
 const kb = (n: number) => (n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB');
@@ -67,14 +67,14 @@ export class PaymentDocumentsDialogComponent {
 
   pick(e: Event, kind: PaymentDocument['kind']) {
     const input = e.target as HTMLInputElement, f = input.files?.[0];
-    if (f) this.files.update((l) => [...l.filter((x) => x.kind !== kind), { kind, name: f.name, size: f.size }]);
+    if (f) this.files.update((l) => [...l.filter((x) => x.kind !== kind), { kind, name: f.name, size: f.size, url: URL.createObjectURL(f) }]);
     input.value = '';
   }
 
   pickOthers(e: Event) {
     const input = e.target as HTMLInputElement;
     const room = this.max - this.others().length;
-    const add = Array.from(input.files ?? []).slice(0, room).map((f): PaymentDocument => ({ kind: 'Other', name: f.name, size: f.size }));
+    const add = Array.from(input.files ?? []).slice(0, room).map((f): PaymentDocument => ({ kind: 'Other', name: f.name, size: f.size, url: URL.createObjectURL(f) }));
     this.files.update((l) => [...l, ...add]);
     input.value = '';
   }
