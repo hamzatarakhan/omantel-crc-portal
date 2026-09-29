@@ -77,6 +77,13 @@ const addMonthsIso = (iso: string, n: number) => { const [y, m] = iso.split('-')
 /** The contract's flat management fee per employee per month (OMR). */
 export const FLAT_MANAGEMENT_FEE = 116;
 import type { TransactionInvoiceImport, TxChannel } from './transaction-invoice-import';
+import type { OvertimeImport } from './overtime-import';
+
+export interface OvertimeCompareRow {
+  employeeId: string; name: string; queue: string;
+  status: 'Matches' | 'Different' | 'Only on vendor file' | 'Only in our records';
+  oursHours: number; theirsHours: number; oursAmount: number; theirsAmount: number; diff: number; reasons: string[];
+}
 export const VENDOR_CONTACT: Record<string, string> = { 'Infoline LLC': 'accounts@infoline.om', 'Green Umbrella Services': 'billing@greenumbrella.om' };
 export type ServiceClass = 'Secondment' | 'Managed Services · Voice' | 'Managed Services · Non Voice';
 export const SERVICE_CLASSES: ServiceClass[] = ['Secondment', 'Managed Services · Voice', 'Managed Services · Non Voice'];
@@ -247,6 +254,51 @@ export class CrcStore {
     if (line) this.validateLines(vendorName, [{ key: line.key, label: line.label, calculated: line.calculated, vendorAmount: line.calculated }]);
   }
 
+  /** The vendor's claimed overtime total from their own workbook — undefined until one is imported. */
+  overtimeClaim(vendorName: string): number | undefined {
+    return this.overtimeInvoices()[vendorName]?.total;
+  }
+
+  importOvertimeInvoice(vendorName: string, data: OvertimeImport) {
+    this.overtimeInvoices.update((m) => ({ ...m, [vendorName]: data }));
+    this.log('Overtime File Imported', vendorName, `${data.fileName}: ${data.rows.length} employee(s), ${data.total.toLocaleString('en-GB')} OMR claimed.`);
+    this.notify(`${data.fileName} loaded — ${vendorName} overtime compared for ${this.period()}.`, 'Invoicing & Payments', 'green', '/invoicing/reconciliation');
+  }
+
+  /** Their claimed overtime hours and amount against our WFO calculation, employee by employee, matched by employee ID. */
+  overtimeEmployees(vendorName: string): { fileName: string; rows: OvertimeCompareRow[] } | null {
+    const file = this.overtimeInvoices()[vendorName];
+    if (!file) return null;
+    const key: Agent['vendor'] = vendorName.startsWith('Green') ? 'Green Umbrella' : 'Infoline';
+    const agents = this.agents().filter((a) => a.vendor === key);
+    const byId = new Map(agents.map((a) => [String(a.employeeId).trim(), a]));
+    const r3 = (n: number) => Math.round(n * 1000) / 1000;
+    const rows: OvertimeCompareRow[] = [];
+    const seen = new Set<string>();
+    for (const v of file.rows) {
+      seen.add(v.employeeId);
+      const a = byId.get(v.employeeId);
+      if (!a) { rows.push({ employeeId: v.employeeId, name: v.name, queue: v.queue, status: 'Only on vendor file', oursHours: 0, theirsHours: v.hours, oursAmount: 0, theirsAmount: v.amount, diff: v.amount, reasons: ['Billed by the vendor, but not an active agent in our records'] }); continue; }
+      const ot = this.overtimeFor(a);
+      const diff = r3(v.amount - ot.amount), reasons: string[] = [];
+      if (Math.abs(diff) >= 0.005) {
+        if (Math.abs(v.hours - ot.hours) >= 0.05) reasons.push(`Overtime hours: vendor ${v.hours}h, ours ${ot.hours}h`);
+        if (Math.abs(v.premium - this.payrollRules().overtimePremium) >= 0.005) reasons.push(`Premium: vendor ×${v.premium}, ours ×${this.payrollRules().overtimePremium}`);
+        if (!reasons.length) reasons.push('The amounts differ');
+      }
+      rows.push({ employeeId: v.employeeId, name: v.name || a.name, queue: v.queue || a.queue, status: Math.abs(diff) >= 0.005 ? 'Different' : 'Matches', oursHours: ot.hours, theirsHours: v.hours, oursAmount: r3(ot.amount), theirsAmount: v.amount, diff, reasons });
+    }
+    for (const a of agents) {
+      const id = String(a.employeeId).trim();
+      if (seen.has(id)) continue;
+      const ot = this.overtimeFor(a);
+      if (ot.amount < 0.005) continue;
+      rows.push({ employeeId: id, name: a.name, queue: a.queue, status: 'Only in our records', oursHours: ot.hours, theirsHours: 0, oursAmount: r3(ot.amount), theirsAmount: 0, diff: -r3(ot.amount), reasons: ['In our records, but missing from the vendor overtime file — not billed'] });
+    }
+    rows.sort((x, y) => Number(y.status !== 'Matches') - Number(x.status !== 'Matches') || Math.abs(y.diff) - Math.abs(x.diff));
+    return { fileName: file.fileName, rows };
+  }
+
   private seedServiceClass(): Record<string, ServiceClass> {
     const list = this.contracts(), rec: Record<string, ServiceClass> = {};
     const salary = list.find((c) => c.poNumber === '325100185');
@@ -275,6 +327,8 @@ export class CrcStore {
   readonly payableRates: PayableLine[] = this.mock.getPayableLines();
   /** The vendor's monthly transaction invoice (Voice or Chat), read once — replaces the contract-share estimate for that line, since there is no independent calculation for it. Keyed `${vendorName}|${channel}`. */
   readonly transactionInvoices = signal<Record<string, TransactionInvoiceImport>>({});
+  /** The vendor's own monthly overtime workbook, one per vendor — compared against our WFO overtime calculation, employee by employee. */
+  readonly overtimeInvoices = signal<Record<string, OvertimeImport>>({});
   /** First day of the billing month. Our own agents, payroll and attendance are the WFO's (synced daily); an annexure import never changes them. */
   readonly periodStart = signal(WFO_REFERENCE.periodStart);
   readonly payroll = signal<Record<string, PayrollLine>>(this.seedPayroll());
