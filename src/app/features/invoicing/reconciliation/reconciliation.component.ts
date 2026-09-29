@@ -185,6 +185,9 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Annexure needed': 'ambe
                     } @else {
                       <button type="button" class="inline-flex items-center gap-1 h-7 px-2 text-xs font-semibold rounded-md border border-solid border-brand-200 text-brand-700 bg-white hover:bg-brand-50" (click)="view.set('overtime')"><mat-icon class="!text-sm !w-4 !h-4">upload_file</mat-icon>Import overtime</button>
                     }
+                  } @else if (isPerformanceLine(l)) {
+                    <div class="text-sm font-semibold tabular-nums text-ink-900">{{ vendorAmount(l.key) | number:'1.2-2' }}</div>
+                    <div class="text-[11px] text-ink-400 mt-0.5">Same as our calculation</div>
                   } @else {
                   <input type="number" step="0.01" min="0" class="w-32 h-8 text-right text-sm font-medium tabular-nums bg-white border border-surface-border rounded-lg px-2.5 focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 disabled:bg-surface-subtle disabled:text-ink-500 disabled:border-transparent" [ngModel]="vendorAmount(l.key)" (ngModelChange)="setVendorAmount(l.key, +$event)" [disabled]="isApproved(l.key)" />
                   @if (fromAnnexure(l.key)) { <div class="text-[11px] text-brand-600 mt-0.5">From the vendor's annexure</div> }
@@ -386,6 +389,7 @@ export class ReconciliationComponent {
     const line = this.lines().find((l) => l.key === key);
     if (line && this.isSalary(line)) return this.annexureClaim(line) ?? line.calculated;
     if (line && this.isOvertimeLine(line)) return this.overtimeClaim(line) ?? line.calculated;
+    if (line && this.isPerformanceLine(line)) return line.calculated;
     const typed = this.typed()[key];
     if (typed !== undefined) return typed;
     const claimed = this.store.vendorClaim(this.vendor(), line?.component);
@@ -402,6 +406,9 @@ export class ReconciliationComponent {
   overtimeClaim(l: PayableLineItem) { return this.store.overtimeClaim(this.vendor()); }
   /** Overtime is already calculated from our WFO data, but it is checked against the vendor's own overtime workbook — nothing to compare until one is imported. */
   needsOvertimeFile(l: PayableLineItem) { return this.isOvertimeLine(l) && this.overtimeClaim(l) === undefined; }
+
+  /** Performance has no vendor file at all — the vendor invoice column just mirrors our own calculation, never typed. */
+  isPerformanceLine(l: PayableLineItem) { return l.component === 'performance'; }
 
   isTxLine(l: PayableLineItem) { return !!l.txChannel; }
   txInvoice(l: PayableLineItem) { return l.txChannel ? this.store.transactionInvoiceFor(this.vendor(), l.txChannel) : undefined; }
