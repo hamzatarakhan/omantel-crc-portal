@@ -63,9 +63,9 @@ const FIELD = 'w-full px-2.5 py-2 text-xs font-semibold rounded-lg border border
               <td class="px-3 py-2 text-ink-700"><div>{{ r.contractRef }}</div><div class="text-[11px] text-ink-400">{{ r.contractName }}</div></td>
               <td class="px-3 py-2"><div class="text-ink-900 font-medium">{{ r.label }}</div><div class="text-[11px] text-ink-400">{{ r.scope }}</div></td>
               <td class="px-3 py-2">
-                <select [class]="field" [value]="r.component ?? ''" (change)="link(r.key, $any($event.target).value)">
-                  <option value="">Not linked — contract share</option>
-                  @for (k of components; track k) { <option [value]="k">{{ label[k] }}</option> }
+                <select [class]="field" (change)="link(r.key, $any($event.target).value)">
+                  <option value="" [selected]="!r.component">Not linked — contract share</option>
+                  @for (k of components; track k) { <option [value]="k" [selected]="k === r.component">{{ label[k] }}</option> }
                 </select>
               </td>
             </tr>

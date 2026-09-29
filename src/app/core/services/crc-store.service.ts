@@ -13,7 +13,7 @@ import { seedChanges } from './contract-monitoring';
 
 export const CURRENT_USER = 'Hamza Tarkan';
 
-export type WfoComponent = 'salary' | 'overtime' | 'performance' | 'incentive' | 'fee';
+export type WfoComponent = 'salary' | 'overtime' | 'performance' | 'incentive' | 'fee' | 'voice' | 'chat';
 
 /** Admin-configured rules for the per-agent Performance and Overtime lines. */
 /** An overtime rate formula for a vendor, a contract, a line (queue) or any mix of them; 'All' means any. */
@@ -69,8 +69,8 @@ export interface EmployeeCompareRow {
 export interface AgentBillRow { agent: Agent; kind: 'existing' | 'joiner'; rate: number; expected: number; billable: number; absent: number; /** Maternity leave (M/L) is not paid. */ maternity: number; amount: number; codes: string[] }
 /** One part of a Salary / Overtime figure: what we calculated against what the vendor's annexure says. */
 export interface AnnexureCompareRow { label: string; ours: number; theirs: number; oursDetail: string; theirsDetail: string }
-export const WFO_COMPONENTS: WfoComponent[] = ['salary', 'overtime', 'performance', 'incentive', 'fee'];
-export const WFO_LABEL: Record<WfoComponent, string> = { salary: 'Salary', overtime: 'Overtime', performance: 'Performance', incentive: 'Incentive', fee: 'Management fee' };
+export const WFO_COMPONENTS: WfoComponent[] = ['salary', 'overtime', 'performance', 'incentive', 'fee', 'voice', 'chat'];
+export const WFO_LABEL: Record<WfoComponent, string> = { salary: 'Salary', overtime: 'Overtime', performance: 'Performance', incentive: 'Incentive', fee: 'Management fee', voice: 'Voice', chat: 'Chat' };
 /** One PO line (of every active contract) a user can link to a calculated component, so Reconciliation knows to bill it from WFO instead of the contract's yearly share. */
 export interface PayableLineCatalogItem { key: string; vendorName: string; contractRef: string; contractName: string; label: string; scope: string; component: WfoComponent | null }
 const addMonthsIso = (iso: string, n: number) => { const [y, m] = iso.split('-').map(Number); const d = new Date(Date.UTC(y, m - 1 + n, 1)); return d.toISOString().slice(0, 10); };
@@ -853,7 +853,7 @@ export class CrcStore {
 
   /** First-run guess at each line's component, by name (Salary/Overtime/Performance/Incentive/Management fee) — a starting point the user can change on Payable Line Mapping. */
   private seedLineMapping(): Record<string, WfoComponent> {
-    const guess: Array<[RegExp, WfoComponent]> = [[/^salary$/i, 'salary'], [/^over ?time$/i, 'overtime'], [/^performance$/i, 'performance'], [/^incentive$/i, 'incentive'], [/management fee/i, 'fee']];
+    const guess: Array<[RegExp, WfoComponent]> = [[/^salary$/i, 'salary'], [/^over ?time$/i, 'overtime'], [/^performance$/i, 'performance'], [/^incentive$/i, 'incentive'], [/management fee/i, 'fee'], [/^voice$/i, 'voice'], [/^chat$/i, 'chat']];
     const map: Record<string, WfoComponent> = {};
     for (const c of this.contracts().filter((x) => x.status !== 'Cancelled')) {
       for (const l of this.currentLines(c)) {
@@ -903,11 +903,13 @@ export class CrcStore {
     const months = year ? Math.max(1, Math.round((new Date(year.endDate).getTime() - new Date(year.startDate).getTime()) / 2629800000)) : 1;
     const mapping = this.lineMapping();
     const lines: PayableLineItem[] = (year?.lines ?? []).map((l) => {
-      const txChannel: TxChannel | undefined = /^voice$/i.test(l.description.trim()) ? 'Voice' : /^chat$/i.test(l.description.trim()) ? 'Chat' : undefined;
+      const key = `${c.reference}|L${l.line}`;
+      const mapped = mapping[key];
+      const txChannel: TxChannel | undefined = mapped === 'voice' ? 'Voice' : mapped === 'chat' ? 'Chat' : undefined;
       const tx = txChannel ? this.transactionInvoiceFor(vendorName, txChannel) : undefined;
       const share = Math.round((l.allocated / months) * 1000) / 1000;
       return {
-        key: `${c.reference}|L${l.line}`, label: l.description, calculated: txChannel ? (tx?.totalInvoicedAmount ?? 0) : share, source: 'contract' as const, txChannel,
+        key, label: l.description, calculated: txChannel ? (tx?.totalInvoicedAmount ?? 0) : share, source: 'contract' as const, component: txChannel ? mapped : undefined, txChannel,
         basis: txChannel
           ? (tx ? `From the imported ${txChannel} transaction invoice (${tx.fileName}) — ${tx.invoicedTransactions.toLocaleString('en-GB')} invoiced transactions × ${tx.rate} OMR` : `No ${txChannel} invoice imported yet — nothing to calculate until one is.`)
           : `${year!.description.split(' — ')[0]} allocation ${l.allocated.toLocaleString('en-GB')} OMR ÷ ${months} month${months === 1 ? '' : 's'}`,

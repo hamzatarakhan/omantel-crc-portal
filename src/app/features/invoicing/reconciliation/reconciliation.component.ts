@@ -151,10 +151,9 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Annexure needed': 'ambe
                 </td>
                 <td class="!whitespace-normal min-w-[200px]">
                   <div class="font-semibold text-ink-900">{{ l.label }}</div>
-                  <div class="text-[11px] mt-0.5" [class]="l.source === 'wfo' || l.txChannel ? 'text-brand-700' : 'text-ink-400'">
-                    @if (l.source === 'wfo') { Linked to {{ wfoLabel[l.component!] }} }
-                    @else if (l.txChannel) { {{ txInvoice(l) ? 'From the imported ' + l.txChannel + ' invoice' : l.txChannel + ' transactions — invoice needed' }} }
-                    @else { Contract monthly share — not linked }
+                  <div class="text-[11px] mt-0.5" [class]="l.component ? 'text-brand-700' : 'text-ink-400'">
+                    {{ l.component ? 'Linked to ' + wfoLabel[l.component] : 'Contract monthly share — not linked' }}
+                    @if (l.txChannel && !txInvoice(l)) { <span> &middot; invoice needed</span> }
                     @if (l.note) { <span class="text-ink-400"> &middot; {{ l.note }}</span> }
                   </div>
                 </td>
