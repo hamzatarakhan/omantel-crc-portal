@@ -118,6 +118,7 @@ export class MockDataService {
         joinDate: `20${18 + Math.floor(this.rand() * 7)}-0${1 + Math.floor(this.rand() * 8)}-1${Math.floor(this.rand() * 9)}`,
         status,
         leaveType: status === 'On Leave' ? leaveTypes[Math.floor(this.rand() * leaveTypes.length)] : undefined,
+        gender: this.rand() < 0.5 ? 'Male' : 'Female',
       };
     });
   }

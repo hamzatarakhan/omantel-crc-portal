@@ -55,6 +55,8 @@ export interface Agent {
   joinDate: string;
   status: 'Present' | 'Absent' | 'On Leave' | 'Off';
   leaveType?: string;
+  /** Not read from the ERP/WFO yet — seeded for the workforce-composition chart on the General Dashboard. */
+  gender?: 'Male' | 'Female';
 }
 
 export interface WorkforceSnapshot {

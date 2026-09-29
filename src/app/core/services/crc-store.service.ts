@@ -311,7 +311,7 @@ export class CrcStore {
 
   readonly agents = signal<Agent[]>([
     ...this.mock.getAgents(48).filter((a) => a.vendor !== 'Infoline'),
-    ...WFO_REFERENCE.employees.map((e): Agent => ({ id: 'AG-' + e.id, employeeId: e.id, name: e.n, queue: e.q, vendor: 'Infoline', degree: e.d, nationality: e.nat, joinDate: e.j, status: 'Present' })),
+    ...WFO_REFERENCE.employees.map((e): Agent => ({ id: 'AG-' + e.id, employeeId: e.id, name: e.n, queue: e.q, vendor: 'Infoline', degree: e.d, nationality: e.nat, joinDate: e.j, status: 'Present', gender: hash(e.id) % 2 === 0 ? 'Male' : 'Female' })),
   ]);
   readonly attendanceDays = signal<string[]>(WFO_REFERENCE.days);
   readonly attendance = signal<Record<string, string[]>>(this.seedAttendance());
