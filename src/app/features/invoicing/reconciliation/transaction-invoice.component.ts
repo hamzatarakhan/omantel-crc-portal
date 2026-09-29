@@ -120,7 +120,7 @@ export class TransactionInvoiceComponent {
     try {
       const data = await parseTransactionInvoice(file, this.channel());
       this.store.importTransactionInvoice(this.vendor(), data);
-      this.ui.toast(`Loaded ${data.invoicedTransactions.toLocaleString('en-GB')} invoiced transactions and ${data.dailyRows.length} days from ${file.name}.`, 6000);
+      this.ui.toast(`Loaded ${data.invoicedTransactions.toLocaleString('en-GB')} invoiced transactions and ${data.dailyRows.length} days from ${file.name} — ready to approve.`, 6000);
     } catch (e) {
       this.ui.toast(e instanceof Error ? e.message : 'The workbook could not be read.', 6000);
     } finally {

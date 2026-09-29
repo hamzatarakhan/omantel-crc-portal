@@ -241,6 +241,10 @@ export class CrcStore {
     this.transactionInvoices.update((m) => ({ ...m, [`${vendorName}|${data.channel}`]: data }));
     this.log('Transaction Invoice Imported', `${vendorName} · ${data.channel}`, `${data.fileName}: ${data.invoicedTransactions.toLocaleString('en-GB')} invoiced transactions, ${data.totalInvoicedAmount.toLocaleString('en-GB')} OMR, ${data.totalPenalty ? data.totalPenalty.toLocaleString('en-GB') + ' OMR penalty/incentive' : 'no penalty'}.`);
     this.notify(`${data.fileName} loaded — ${vendorName} ${data.channel} invoice compared for ${this.period()}.`, 'Invoicing & Payments', 'green', '/invoicing/reconciliation');
+    // There is nothing of ours to check it against — the file's own total IS the figure on both sides — so it goes straight to Validated, ready to approve.
+    const contractRef = this.payableContracts(vendorName)[0]?.reference;
+    const line = contractRef ? this.payableLines(vendorName, contractRef).find((l) => l.txChannel === data.channel) : undefined;
+    if (line) this.validateLines(vendorName, [{ key: line.key, label: line.label, calculated: line.calculated, vendorAmount: line.calculated }]);
   }
 
   private seedServiceClass(): Record<string, ServiceClass> {
