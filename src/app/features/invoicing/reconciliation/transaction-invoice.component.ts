@@ -26,7 +26,7 @@ import { TxChannel, parseTransactionInvoice } from '../../../core/services/trans
         }
       </div>
       <label class="inline-flex items-center gap-2 px-3.5 py-2 text-sm font-semibold rounded-lg border border-brand-600 text-brand-600 hover:bg-brand-50 cursor-pointer transition-colors" appRequires="Validate Invoice">
-        <mat-icon class="!text-lg">folder_open</mat-icon>{{ data() ? 'Import another workbook' : 'Import invoice workbook' }}
+        <mat-icon class="!text-lg">folder_open</mat-icon>{{ data() ? 'Import another ' + channel() + ' workbook' : 'Import ' + channel() + ' invoice' }}
         <input type="file" accept=".xlsx" class="hidden" (change)="import($event)" />
       </label>
     </div>
