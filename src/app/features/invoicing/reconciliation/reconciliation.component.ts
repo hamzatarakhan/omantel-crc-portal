@@ -16,6 +16,7 @@ import { AnnexureComponent } from './annexure.component';
 import { TransactionInvoiceComponent } from './transaction-invoice.component';
 import { TxChannel } from '../../../core/services/transaction-invoice-import';
 import { OvertimeFileComponent } from './overtime-file.component';
+import { MsIncentiveComponent } from './ms-incentive.component';
 import { VendorQueryDialogComponent } from './vendor-query-dialog.component';
 import { PaymentDocumentsDialogComponent, PaymentDocument } from './payment-documents-dialog.component';
 import { MismatchDetailsDialogComponent } from './mismatch-details-dialog.component';
@@ -26,13 +27,13 @@ const VENDORS = ['Infoline LLC', 'Green Umbrella Services'];
 const FIELD = 'w-full px-2.5 py-2 text-xs font-semibold rounded-lg border border-surface-border bg-white text-ink-700 focus:outline-none focus:border-brand-400';
 
 /** Where a line is in its journey: validate it, then approve it if it matches — or email the vendor if it does not. */
-type LineStatus = 'Annexure needed' | 'Invoice needed' | 'Overtime needed' | 'Not validated' | 'Matches' | 'Does not match' | 'Queried with vendor' | 'Approved for payment';
-const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Annexure needed': 'amber', 'Invoice needed': 'amber', 'Overtime needed': 'amber', 'Not validated': 'neutral', Matches: 'normal', 'Does not match': 'red', 'Queried with vendor': 'amber', 'Approved for payment': 'info' };
+type LineStatus = 'Annexure needed' | 'Invoice needed' | 'Overtime needed' | 'MS Incentive needed' | 'Not validated' | 'Matches' | 'Does not match' | 'Queried with vendor' | 'Approved for payment';
+const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Annexure needed': 'amber', 'Invoice needed': 'amber', 'Overtime needed': 'amber', 'MS Incentive needed': 'amber', 'Not validated': 'neutral', Matches: 'normal', 'Does not match': 'red', 'Queried with vendor': 'amber', 'Approved for payment': 'info' };
 
 @Component({
   selector: 'app-reconciliation',
   standalone: true,
-  imports: [RequiresDirective, AnnexureComponent, TransactionInvoiceComponent, OvertimeFileComponent, CommonModule, FormsModule, RouterModule, MatIconModule, PageHeaderComponent, StatusChipComponent, KpiCardComponent],
+  imports: [RequiresDirective, AnnexureComponent, TransactionInvoiceComponent, OvertimeFileComponent, MsIncentiveComponent, CommonModule, FormsModule, RouterModule, MatIconModule, PageHeaderComponent, StatusChipComponent, KpiCardComponent],
   template: `
     <app-page-header
       title="Reconciliation Workspace"
@@ -102,6 +103,9 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Annexure needed': 'ambe
     } @else if (view() === 'overtime') {
       <button type="button" class="inline-flex items-center gap-1 mb-3 text-xs font-semibold text-brand-700 hover:underline" (click)="view.set('calc')"><mat-icon class="!text-base !w-4 !h-4">arrow_back</mat-icon>Back to payable lines</button>
       <app-overtime-file [vendor]="vendor()"></app-overtime-file>
+    } @else if (view() === 'msIncentive') {
+      <button type="button" class="inline-flex items-center gap-1 mb-3 text-xs font-semibold text-brand-700 hover:underline" (click)="view.set('calc')"><mat-icon class="!text-base !w-4 !h-4">arrow_back</mat-icon>Back to payable lines</button>
+      <app-ms-incentive [vendor]="vendor()"></app-ms-incentive>
     } @else if (!contract()) {
       <div class="surface-card p-8 text-center text-sm text-ink-500">{{ vendor() }} has no contract running in {{ store.period() }}, so there is nothing to reconcile.</div>
     } @else {
@@ -159,6 +163,7 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Annexure needed': 'ambe
                     {{ l.component ? 'Linked to ' + wfoLabel[l.component] : 'Contract monthly share — not linked' }}
                     @if (l.txChannel && !txInvoice(l)) { <span> &middot; invoice needed</span> }
                     @if (needsOvertimeFile(l)) { <span> &middot; overtime file needed</span> }
+                    @if (needsMsIncentive(l)) { <span> &middot; file needed</span> }
                     @if (l.note) { <span class="text-ink-400"> &middot; {{ l.note }}</span> }
                   </div>
                 </td>
@@ -188,13 +193,20 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Annexure needed': 'ambe
                   } @else if (isPerformanceLine(l)) {
                     <div class="text-sm font-semibold tabular-nums text-ink-900">{{ vendorAmount(l.key) | number:'1.2-2' }}</div>
                     <div class="text-[11px] text-ink-400 mt-0.5">Same as our calculation</div>
+                  } @else if (isMsIncentiveLine(l)) {
+                    @if (msIncentiveClaim(l) !== undefined) {
+                      <div class="text-sm font-semibold tabular-nums text-ink-900">{{ vendorAmount(l.key) | number:'1.2-2' }}</div>
+                      <button type="button" class="text-[11px] font-semibold text-brand-600 hover:underline mt-0.5" (click)="view.set('msIncentive')">From the file &middot; view</button>
+                    } @else {
+                      <button type="button" class="inline-flex items-center gap-1 h-7 px-2 text-xs font-semibold rounded-md border border-solid border-brand-200 text-brand-700 bg-white hover:bg-brand-50" (click)="view.set('msIncentive')"><mat-icon class="!text-sm !w-4 !h-4">upload_file</mat-icon>Import file</button>
+                    }
                   } @else {
                   <input type="number" step="0.01" min="0" class="w-32 h-8 text-right text-sm font-medium tabular-nums bg-white border border-surface-border rounded-lg px-2.5 focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 disabled:bg-surface-subtle disabled:text-ink-500 disabled:border-transparent" [ngModel]="vendorAmount(l.key)" (ngModelChange)="setVendorAmount(l.key, +$event)" [disabled]="isApproved(l.key)" />
                   @if (fromAnnexure(l.key)) { <div class="text-[11px] text-brand-600 mt-0.5">From the vendor's annexure</div> }
                   }
                 </td>
                 <td class="text-right">
-                  @if (needsAnnexure(l) || needsTxInvoice(l) || needsOvertimeFile(l)) { <div class="text-ink-300">—</div> } @else {
+                  @if (needsAnnexure(l) || needsTxInvoice(l) || needsOvertimeFile(l) || needsMsIncentive(l)) { <div class="text-ink-300">—</div> } @else {
                   <div class="font-semibold tabular-nums" [class]="diffClass(l)">{{ lineDiff(l) > 0 ? '+' : '' }}{{ lineDiff(l) | number:'1.2-2' }}</div>
                   @if (!same(l)) { <div class="text-[11px] text-ink-400">{{ lineDiff(l) > 0 ? 'Higher' : 'Lower' }} than ours &middot; {{ lineVariance(l) > 0 ? '+' : '' }}{{ lineVariance(l) | number:'1.1-1' }}%</div> }
                   }
@@ -214,6 +226,7 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Annexure needed': 'ambe
                       @case ('Annexure needed') { <button type="button" [class]="rowBtn + ' text-brand-700 border border-solid border-brand-200 bg-white hover:bg-brand-50'" disabled title="Import the vendor's annexure first" style="opacity:.45;cursor:not-allowed"><mat-icon [class]="icoSm">fact_check</mat-icon>Validate</button> }
                       @case ('Invoice needed') { <button type="button" [class]="rowBtn + ' text-brand-700 border border-solid border-brand-200 bg-white hover:bg-brand-50'" disabled title="Import the invoice first" style="opacity:.45;cursor:not-allowed"><mat-icon [class]="icoSm">task_alt</mat-icon>Approve</button> }
                       @case ('Overtime needed') { <button type="button" [class]="rowBtn + ' text-brand-700 border border-solid border-brand-200 bg-white hover:bg-brand-50'" disabled title="Import the overtime file first" style="opacity:.45;cursor:not-allowed"><mat-icon [class]="icoSm">fact_check</mat-icon>Validate</button> }
+                      @case ('MS Incentive needed') { <button type="button" [class]="rowBtn + ' text-brand-700 border border-solid border-brand-200 bg-white hover:bg-brand-50'" disabled title="Import the Manage Service Incentive file first" style="opacity:.45;cursor:not-allowed"><mat-icon [class]="icoSm">task_alt</mat-icon>Approve</button> }
                       @default { <button type="button" [class]="rowBtn + ' text-brand-700 border border-solid border-brand-200 bg-white hover:bg-brand-50'" (click)="validate([l.key])" appRequires="Validate Invoice"><mat-icon [class]="icoSm">fact_check</mat-icon>Validate</button> }
                     }
                     <button type="button" [class]="iconBtn" (click)="toggleExpand(l.key)" [title]="isExpanded(l.key) ? 'Hide how it was calculated' : 'Show how it was calculated'"><mat-icon class="!text-lg !w-[18px] !h-[18px] transition-transform" [class.rotate-180]="isExpanded(l.key)">expand_more</mat-icon></button>
@@ -295,7 +308,7 @@ export class ReconciliationComponent {
   readonly iconBtn = 'w-8 h-8 inline-flex items-center justify-center rounded-lg text-ink-400 hover:bg-surface-subtle hover:text-ink-700 transition-colors';
 
   vendor = signal(VENDORS[0]);
-  view = signal<'calc' | 'annexure' | 'transaction' | 'overtime'>('calc');
+  view = signal<'calc' | 'annexure' | 'transaction' | 'overtime' | 'msIncentive'>('calc');
   txChannelView = signal<TxChannel | null>(null);
   /** 'YYYY-MM', defaults to the current month; a past month shows read-only history instead of a live calculation. */
   period = signal(this.store.periodStart().slice(0, 7));
@@ -320,7 +333,7 @@ export class ReconciliationComponent {
   openLines = computed(() => this.lines().filter((l) => !this.isApproved(l.key)));
   selected = computed(() => this.selectedBy()[this.ctx()] ?? new Set(this.openLines().map((l) => l.key)));
   allSelected = computed(() => this.openLines().length > 0 && this.openLines().every((l) => this.selected().has(l.key)));
-  validatable = computed(() => this.openLines().filter((l) => this.isSelected(l.key) && !this.needsAnnexure(l) && !this.needsTxInvoice(l) && !this.needsOvertimeFile(l)).map((l) => l.key));
+  validatable = computed(() => this.openLines().filter((l) => this.isSelected(l.key) && !this.needsAnnexure(l) && !this.needsTxInvoice(l) && !this.needsOvertimeFile(l) && !this.needsMsIncentive(l)).map((l) => l.key));
   approvable = computed(() => this.validatable().filter((k) => this.lineStatus(k) === 'Matches'));
   queryable = computed(() => this.lines().filter((l) => this.lineStatus(l.key) === 'Does not match' || this.lineStatus(l.key) === 'Queried with vendor'));
   approvedCount = computed(() => this.lines().length - this.openLines().length);
@@ -390,6 +403,7 @@ export class ReconciliationComponent {
     if (line && this.isSalary(line)) return this.annexureClaim(line) ?? line.calculated;
     if (line && this.isOvertimeLine(line)) return this.overtimeClaim(line) ?? line.calculated;
     if (line && this.isPerformanceLine(line)) return line.calculated;
+    if (line && this.isMsIncentiveLine(line)) return this.msIncentiveClaim(line) ?? line.calculated;
     const typed = this.typed()[key];
     if (typed !== undefined) return typed;
     const claimed = this.store.vendorClaim(this.vendor(), line?.component);
@@ -409,6 +423,10 @@ export class ReconciliationComponent {
 
   /** Performance has no vendor file at all — the vendor invoice column just mirrors our own calculation, never typed. */
   isPerformanceLine(l: PayableLineItem) { return l.component === 'performance'; }
+
+  isMsIncentiveLine(l: PayableLineItem) { return !!l.msIncentive; }
+  msIncentiveClaim(l: PayableLineItem) { return this.store.msIncentiveClaim(this.vendor()); }
+  needsMsIncentive(l: PayableLineItem) { return this.isMsIncentiveLine(l) && this.msIncentiveClaim(l) === undefined; }
 
   isTxLine(l: PayableLineItem) { return !!l.txChannel; }
   txInvoice(l: PayableLineItem) { return l.txChannel ? this.store.transactionInvoiceFor(this.vendor(), l.txChannel) : undefined; }
@@ -451,6 +469,7 @@ export class ReconciliationComponent {
     if (own && this.needsAnnexure(own) && run?.status !== 'Approved for payment') return 'Annexure needed';
     if (own && this.needsTxInvoice(own) && run?.status !== 'Approved for payment') return 'Invoice needed';
     if (own && this.needsOvertimeFile(own) && run?.status !== 'Approved for payment') return 'Overtime needed';
+    if (own && this.needsMsIncentive(own) && run?.status !== 'Approved for payment') return 'MS Incentive needed';
     if (!run) return 'Not validated';
     if (run.status === 'Approved for payment') return run.status;
     const checked = run.lines[0], now = this.lines().find((x) => x.key === key);
