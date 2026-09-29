@@ -903,9 +903,9 @@ export class CrcStore {
       const tx = txChannel ? this.transactionInvoiceFor(vendorName, txChannel) : undefined;
       const share = Math.round((l.allocated / months) * 1000) / 1000;
       return {
-        key: `${c.reference}|L${l.line}`, label: l.description, calculated: tx ? tx.totalInvoicedAmount : share, source: 'contract' as const, txChannel,
-        basis: tx
-          ? `From the imported ${txChannel} transaction invoice (${tx.fileName}) — ${tx.invoicedTransactions.toLocaleString('en-GB')} invoiced transactions × ${tx.rate} OMR`
+        key: `${c.reference}|L${l.line}`, label: l.description, calculated: txChannel ? (tx?.totalInvoicedAmount ?? 0) : share, source: 'contract' as const, txChannel,
+        basis: txChannel
+          ? (tx ? `From the imported ${txChannel} transaction invoice (${tx.fileName}) — ${tx.invoicedTransactions.toLocaleString('en-GB')} invoiced transactions × ${tx.rate} OMR` : `No ${txChannel} invoice imported yet — nothing to calculate until one is.`)
           : `${year!.description.split(' — ')[0]} allocation ${l.allocated.toLocaleString('en-GB')} OMR ÷ ${months} month${months === 1 ? '' : 's'}`,
       };
     });

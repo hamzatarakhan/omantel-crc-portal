@@ -158,7 +158,7 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Annexure needed': 'ambe
                     @if (l.note) { <span class="text-ink-400"> &middot; {{ l.note }}</span> }
                   </div>
                 </td>
-                <td class="text-right font-medium text-ink-900 tabular-nums">{{ l.calculated | number:'1.2-2' }}</td>
+                <td class="text-right font-medium text-ink-900 tabular-nums">{{ needsTxInvoice(l) ? '—' : (l.calculated | number:'1.2-2') }}</td>
                 <td class="text-right">
                   @if (isSalary(l)) {
                     @if (annexureClaim(l) !== undefined) {
@@ -180,8 +180,10 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Annexure needed': 'ambe
                   }
                 </td>
                 <td class="text-right">
+                  @if (needsAnnexure(l) || needsTxInvoice(l)) { <div class="text-ink-300">—</div> } @else {
                   <div class="font-semibold tabular-nums" [class]="diffClass(l)">{{ lineDiff(l) > 0 ? '+' : '' }}{{ lineDiff(l) | number:'1.2-2' }}</div>
                   @if (!same(l)) { <div class="text-[11px] text-ink-400">{{ lineDiff(l) > 0 ? 'Higher' : 'Lower' }} than ours &middot; {{ lineVariance(l) > 0 ? '+' : '' }}{{ lineVariance(l) | number:'1.1-1' }}%</div> }
+                  }
                   @if (lineStatus(l.key) === 'Does not match' || lineStatus(l.key) === 'Queried with vendor') { <button type="button" class="mt-0.5 text-[11px] font-semibold text-brand-700 hover:underline" (click)="showDetails(l)">See where it differs</button> }
                 </td>
                 <td class="!whitespace-normal">
