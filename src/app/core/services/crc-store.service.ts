@@ -74,6 +74,7 @@ export interface PayableLineCatalogItem { key: string; vendorName: string; contr
 const addMonthsIso = (iso: string, n: number) => { const [y, m] = iso.split('-').map(Number); const d = new Date(Date.UTC(y, m - 1 + n, 1)); return d.toISOString().slice(0, 10); };
 /** The contract's flat management fee per employee per month (OMR). */
 export const FLAT_MANAGEMENT_FEE = 116;
+export const VENDOR_CONTACT: Record<string, string> = { 'Infoline LLC': 'accounts@infoline.om', 'Green Umbrella Services': 'billing@greenumbrella.om' };
 export type ServiceClass = 'Secondment' | 'Managed Services · Voice' | 'Managed Services · Non Voice';
 export const SERVICE_CLASSES: ServiceClass[] = ['Secondment', 'Managed Services · Voice', 'Managed Services · Non Voice'];
 export const ROLE_SUMMARY: Record<string, string> = {
@@ -1092,7 +1093,7 @@ export class CrcStore {
       const comp = mapping[l.key] ?? (WFO_COMPONENTS.includes(tail) ? tail : undefined);
       return { label: l.label, linkedTo: comp ? WFO_LABEL[comp] : undefined };
     });
-    const payment: PaymentRecord = { id: 'PAY-' + this.next(), vendorName, lines: `${contractRef} · ${names}`, contract: contractRef, items, documents, pendingAt: 'Finance approval', invoiceAmount: Math.round(amount), status: 'Pending', slaAtRisk: false, invoiceRef: 'INV-' + this.next(), period: this.period() };
+    const payment: PaymentRecord = { id: 'PAY-' + this.next(), vendorName, lines: `${contractRef} · ${names}`, contract: contractRef, poNumber: this.contracts().find((c) => c.reference === contractRef)?.poNumber, items, documents, pendingAt: 'Finance approval', invoiceAmount: Math.round(amount), status: 'Pending', slaAtRisk: false, invoiceRef: 'INV-' + this.next(), period: this.period() };
     this.payments.update((list) => [payment, ...list]);
     this.invoiceRuns.update((m) => ({ ...m, [vendorName]: (m[vendorName] ?? []).map((r) => (runs.includes(r) ? { ...r, status: 'Approved for payment', paymentId: payment.id } : r)) }));
     this.log('Invoice Approved', vendorName, `${contractRef} · ${names}: approved for payment, ${payment.invoiceAmount.toLocaleString()} OMR (${payment.id}). ${documents.length} document(s) attached: ${documents.map((d) => d.kind === 'Other' ? d.name : d.kind).join(', ')}.`);
@@ -1113,9 +1114,12 @@ export class CrcStore {
   movePayment(id: string, status: PaymentRecord['status']) {
     const p = this.payments().find((x) => x.id === id);
     if (!p || p.status === status) return;
-    this.payments.update((list) => list.map((x) => (x.id === id ? { ...x, status, slaAtRisk: status === 'Completed' ? false : x.slaAtRisk, paymentDate: status === 'Completed' ? isoDay(0) : undefined } : x)));
+    const email = status === 'Completed' ? (VENDOR_CONTACT[p.vendorName] ?? 'accounts@vendor.example') : undefined;
+    this.payments.update((list) => list.map((x) => (x.id === id ? { ...x, status, slaAtRisk: status === 'Completed' ? false : x.slaAtRisk, paymentDate: status === 'Completed' ? isoDay(0) : undefined, receiptNumber: status === 'Completed' ? 'RCT-' + this.next() : x.receiptNumber, requisitionNumber: status === 'Completed' ? 'REQ-' + this.next() : x.requisitionNumber, vendorEmail: email ?? x.vendorEmail, emailSentAt: status === 'Completed' ? new Date().toISOString() : x.emailSentAt } : x)));
     this.log('Payment Status Changed', id, `${p.vendorName}: ${p.status} → ${status}.`);
     if (status === 'Completed') {
+      const docs = (p.documents ?? []).map((d) => d.kind).join(', ') || 'no attachments';
+      this.log('Vendor Emailed', p.vendorName, `Payment completion sent to ${email} with ${docs}.`);
       // paid amounts count as actual spend against the Outsourcing budget lines
       const out = this.budgetLines().filter((l) => l.category === 'Outsourcing');
       const totalAlloc = out.reduce((s, l) => s + l.allocated, 0);

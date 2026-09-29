@@ -88,7 +88,11 @@ const PAGE = 10;
                 <td class="px-3 py-2.5"><app-status-chip [label]="p.status" [level]="level[p.status]"></app-status-chip>@if (p.slaAtRisk) { <div class="mt-1"><app-status-chip label="SLA at risk" level="red"></app-status-chip></div> }</td>
                 <td class="px-3 py-2.5 text-xs">
                   @if (p.status === 'Pending') { <span class="text-status-amber font-semibold">Pending at {{ p.pendingAt || 'the ERP' }}</span> }
-                  @else if (p.status === 'Completed') { <span class="text-ink-600">Paid {{ p.paymentDate || '' }}</span> }
+                  @else if (p.status === 'Completed') {
+                    <span class="text-ink-600">Paid {{ p.paymentDate || '' }}</span>
+                    <div class="text-[11px] text-ink-400 mt-1 whitespace-nowrap">PO {{ p.poNumber || '—' }} &middot; Receipt {{ p.receiptNumber || '—' }} &middot; Requisition {{ p.requisitionNumber || '—' }}</div>
+                    @if (p.vendorEmail) { <div class="text-[11px] text-ink-500 mt-0.5">Emailed <span class="font-medium text-ink-700">{{ p.vendorEmail }}</span> with the attached documents</div> }
+                  }
                   @else { <span class="text-ink-400">Awaiting payment</span> }
                 </td>
                 <td class="px-3 py-2.5 text-xs">

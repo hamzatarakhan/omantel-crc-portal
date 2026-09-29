@@ -232,6 +232,11 @@ export class MockDataService {
       slaAtRisk: i === 1,
       invoiceRef: `INV-${100 + i}`,
       documents: [{ kind: 'Invoice', name: `INV-${100 + i}.pdf`, size: 184320 }, { kind: 'Payment Certificate', name: `Payment certificate ${i + 1}.pdf`, size: 96256 }, ...(i % 2 === 0 ? [{ kind: 'Other', name: 'Supporting timesheets.xlsx', size: 52224 }] : [])],
+      poNumber: i === 2 ? '325140077' : undefined,
+      receiptNumber: i === 2 ? 'RCT-2041' : undefined,
+      requisitionNumber: i === 2 ? 'REQ-8823' : undefined,
+      vendorEmail: i === 2 ? 'ap@alwahafacilities.om' : undefined,
+      emailSentAt: i === 2 ? addDays(-2) : undefined,
       ...detail[i],
       ...(statuses[i % statuses.length] === 'Pending' ? {} : { pendingAt: undefined }),
     }));

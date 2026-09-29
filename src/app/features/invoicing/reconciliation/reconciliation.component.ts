@@ -8,7 +8,7 @@ import { PageHeaderComponent } from '../../../shared/components/page-header/page
 import { StatusChipComponent } from '../../../shared/components/status-chip/status-chip.component';
 import { KpiCardComponent } from '../../../shared/components/kpi-card/kpi-card.component';
 import { RequiresDirective } from '../../../shared/directives/requires.directive';
-import { CrcStore, PayableLineItem, WFO_LABEL } from '../../../core/services/crc-store.service';
+import { CrcStore, PayableLineItem, VENDOR_CONTACT, WFO_LABEL } from '../../../core/services/crc-store.service';
 import { UiService } from '../../../shared/services/ui.service';
 import { InvoiceLineDetail, VendorQuery } from '../../../core/models/domain';
 import { StatusLevel } from '../../../core/models/status';
@@ -20,7 +20,6 @@ import { QueryDialogData, QueryDialogResult, QueryLine } from './mismatch';
 import { DIALOG_SIZE } from '../../../shared/dialog-sizes';
 
 const VENDORS = ['Infoline LLC', 'Green Umbrella Services'];
-const VENDOR_CONTACT: Record<string, string> = { 'Infoline LLC': 'accounts@infoline.om', 'Green Umbrella Services': 'billing@greenumbrella.om' };
 const FIELD = 'w-full px-2.5 py-2 text-xs font-semibold rounded-lg border border-surface-border bg-white text-ink-700 focus:outline-none focus:border-brand-400';
 
 /** Where a line is in its journey: validate it, then approve it if it matches — or email the vendor if it does not. */

@@ -176,6 +176,14 @@ export interface PaymentRecord {
   pendingAt?: string;
   /** The documents attached on approval: the invoice and payment certificate (mandatory) and up to six others. */
   documents?: Array<{ kind: string; name: string; size: number; url?: string }>;
+  /** From the contract, for the completed order. */
+  poNumber?: string;
+  /** The ERP's own numbers once the payment is completed. */
+  receiptNumber?: string;
+  requisitionNumber?: string;
+  /** The vendor's casual (accounts) email the completion notice and its attachments were sent to. */
+  vendorEmail?: string;
+  emailSentAt?: string;
 }
 
 export interface AuditEntry {
