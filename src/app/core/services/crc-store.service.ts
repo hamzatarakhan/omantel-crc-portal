@@ -38,6 +38,8 @@ export interface PayableLineItem {
   calculated: number;
   source: 'wfo' | 'contract';
   component?: WfoComponent;
+  /** Set when this line is a transaction channel (Voice or Chat/Non Voice): billed from the imported transaction invoice, not the contract share. */
+  txChannel?: TxChannel;
   /** How a contract-share line was worked out. */
   basis?: string;
   note?: string;
@@ -74,6 +76,7 @@ export interface PayableLineCatalogItem { key: string; vendorName: string; contr
 const addMonthsIso = (iso: string, n: number) => { const [y, m] = iso.split('-').map(Number); const d = new Date(Date.UTC(y, m - 1 + n, 1)); return d.toISOString().slice(0, 10); };
 /** The contract's flat management fee per employee per month (OMR). */
 export const FLAT_MANAGEMENT_FEE = 116;
+import type { TransactionInvoiceImport, TxChannel } from './transaction-invoice-import';
 export const VENDOR_CONTACT: Record<string, string> = { 'Infoline LLC': 'accounts@infoline.om', 'Green Umbrella Services': 'billing@greenumbrella.om' };
 export type ServiceClass = 'Secondment' | 'Managed Services · Voice' | 'Managed Services · Non Voice';
 export const SERVICE_CLASSES: ServiceClass[] = ['Secondment', 'Managed Services · Voice', 'Managed Services · Non Voice'];
@@ -230,6 +233,16 @@ export class CrcStore {
     this.serviceClass.update((m) => { const { [reference]: _old, ...rest } = m; return cls ? { ...rest, [reference]: cls } : rest; });
     this.log('Contract Classified', reference, cls ? `Reported as ${cls} on the General Dashboard.` : 'Removed from the General Dashboard.');
   }
+  transactionInvoiceFor(vendorName: string, channel: TxChannel): TransactionInvoiceImport | undefined {
+    return this.transactionInvoices()[`${vendorName}|${channel}`];
+  }
+
+  importTransactionInvoice(vendorName: string, data: TransactionInvoiceImport) {
+    this.transactionInvoices.update((m) => ({ ...m, [`${vendorName}|${data.channel}`]: data }));
+    this.log('Transaction Invoice Imported', `${vendorName} · ${data.channel}`, `${data.fileName}: ${data.invoicedTransactions.toLocaleString('en-GB')} invoiced transactions, ${data.totalInvoicedAmount.toLocaleString('en-GB')} OMR, ${data.totalPenalty ? data.totalPenalty.toLocaleString('en-GB') + ' OMR penalty/incentive' : 'no penalty'}.`);
+    this.notify(`${data.fileName} loaded — ${vendorName} ${data.channel} invoice compared for ${this.period()}.`, 'Invoicing & Payments', 'green', '/invoicing/reconciliation');
+  }
+
   private seedServiceClass(): Record<string, ServiceClass> {
     const list = this.contracts(), rec: Record<string, ServiceClass> = {};
     const salary = list.find((c) => c.poNumber === '325100185');
@@ -256,6 +269,8 @@ export class CrcStore {
   readonly movementRequests = signal<MovementRequest[]>(this.seedMovementRequests());
 
   readonly payableRates: PayableLine[] = this.mock.getPayableLines();
+  /** The vendor's monthly transaction invoice (Voice or Chat), read once — replaces the contract-share estimate for that line, since there is no independent calculation for it. Keyed `${vendorName}|${channel}`. */
+  readonly transactionInvoices = signal<Record<string, TransactionInvoiceImport>>({});
   /** First day of the billing month. Our own agents, payroll and attendance are the WFO's (synced daily); an annexure import never changes them. */
   readonly periodStart = signal(WFO_REFERENCE.periodStart);
   readonly payroll = signal<Record<string, PayrollLine>>(this.seedPayroll());
@@ -883,10 +898,17 @@ export class CrcStore {
     const year = yearlyBudgetFor(c, kids).find((y) => y.startDate <= period && y.endDate >= period) ?? yearlyBudgetFor(c, kids).slice(-1)[0];
     const months = year ? Math.max(1, Math.round((new Date(year.endDate).getTime() - new Date(year.startDate).getTime()) / 2629800000)) : 1;
     const mapping = this.lineMapping();
-    const lines: PayableLineItem[] = (year?.lines ?? []).map((l) => ({
-      key: `${c.reference}|L${l.line}`, label: l.description, calculated: Math.round((l.allocated / months) * 1000) / 1000, source: 'contract' as const,
-      basis: `${year!.description.split(' — ')[0]} allocation ${l.allocated.toLocaleString('en-GB')} OMR ÷ ${months} month${months === 1 ? '' : 's'}`,
-    }));
+    const lines: PayableLineItem[] = (year?.lines ?? []).map((l) => {
+      const txChannel: TxChannel | undefined = /^voice$/i.test(l.description.trim()) ? 'Voice' : /^chat$/i.test(l.description.trim()) ? 'Chat' : undefined;
+      const tx = txChannel ? this.transactionInvoiceFor(vendorName, txChannel) : undefined;
+      const share = Math.round((l.allocated / months) * 1000) / 1000;
+      return {
+        key: `${c.reference}|L${l.line}`, label: l.description, calculated: tx ? tx.totalInvoicedAmount : share, source: 'contract' as const, txChannel,
+        basis: tx
+          ? `From the imported ${txChannel} transaction invoice (${tx.fileName}) — ${tx.invoicedTransactions.toLocaleString('en-GB')} invoiced transactions × ${tx.rate} OMR`
+          : `${year!.description.split(' — ')[0]} allocation ${l.allocated.toLocaleString('en-GB')} OMR ÷ ${months} month${months === 1 ? '' : 's'}`,
+      };
+    });
     if (!billing) return lines;
 
     const calc = this.calculateInvoice(vendorName);

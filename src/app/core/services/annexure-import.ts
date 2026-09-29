@@ -1,49 +1,11 @@
-import { strFromU8, unzipSync } from 'fflate';
 import { Agent, AnnexureImport, PayrollLine } from '../models/domain';
-
-type Cells = Record<string, string>;
-interface SheetRow { n: number; cells: Cells }
-
-const num = (s?: string) => {
-  const v = parseFloat(s ?? '');
-  return isNaN(v) ? 0 : v;
-};
-
-/** Excel serial numbers (42379) and dd.mm.yyyy text both turn into ISO dates. */
-function iso(s?: string): string {
-  if (!s) return '';
-  if (/^\d{4,6}(\.\d+)?$/.test(s) && parseFloat(s) > 20000) return new Date(Math.round((parseFloat(s) - 25569) * 86400000)).toISOString().slice(0, 10);
-  const m = s.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
-  if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
-  return s.slice(0, 10);
-}
+import { Cells, SheetRow, headerMap, iso, label, num, readSheet, readWorkbookSheets } from './xlsx-read';
 
 function degree(s?: string): Agent['degree'] {
   const t = (s ?? '').toLowerCase().replace(/\s/g, '');
   return t.startsWith('non') ? 'Non-Diploma' : t.startsWith('bach') ? 'Bachelor' : 'Diploma';
 }
 
-function readSheet(xml: string, shared: string[]): SheetRow[] {
-  const doc = new DOMParser().parseFromString(xml, 'application/xml');
-  return Array.from(doc.getElementsByTagName('row'))
-    .map((r) => {
-      const cells: Cells = {};
-      for (const c of Array.from(r.getElementsByTagName('c'))) {
-        const col = (c.getAttribute('r') ?? '').replace(/\d+/g, '');
-        const t = c.getAttribute('t');
-        let val = c.getElementsByTagName('v')[0]?.textContent ?? '';
-        if (t === 's') val = shared[+val] ?? '';
-        else if (t === 'inlineStr') val = Array.from(c.getElementsByTagName('t')).map((x) => x.textContent ?? '').join('');
-        val = val.trim();
-        if (val !== '') cells[col] = val;
-      }
-      return { n: +(r.getAttribute('r') ?? 0), cells };
-    })
-    .filter((r) => Object.keys(r.cells).length > 0);
-}
-
-const label = (v: string) => v.toLowerCase().replace(/\s+/g, ' ').trim();
-const headerMap = (cells: Cells) => Object.fromEntries(Object.entries(cells).map(([col, v]) => [label(v), col]));
 const isId = (v?: string) => !!v && /^\d{3,}$/.test(v);
 
 function payFrom(c: Cells, h: Record<string, string>): PayrollLine {
@@ -65,14 +27,7 @@ function payFrom(c: Cells, h: Record<string, string>): PayrollLine {
 
 /** Reads the vendor's monthly annexure workbook entirely in the browser — nothing is uploaded anywhere. */
 export async function parseAnnexure(file: File): Promise<AnnexureImport> {
-  const files = unzipSync(new Uint8Array(await file.arrayBuffer()));
-  const text = (p: string) => (files[p] ? strFromU8(files[p]) : '');
-  const sharedDoc = new DOMParser().parseFromString(text('xl/sharedStrings.xml'), 'application/xml');
-  const shared = Array.from(sharedDoc.getElementsByTagName('si')).map((si) => Array.from(si.getElementsByTagName('t')).map((t) => t.textContent ?? '').join(''));
-  const sheets = Object.keys(files)
-    .filter((p) => /^xl\/worksheets\/sheet\d+\.xml$/.test(p))
-    .sort()
-    .map((p) => readSheet(text(p), shared));
+  const { sheets } = await readWorkbookSheets(file);
 
   // The tab names in the workbook do not match their contents, so sheets are recognised by their header labels.
   const findHeader = (rows: SheetRow[], test: (labels: string[]) => boolean) => {

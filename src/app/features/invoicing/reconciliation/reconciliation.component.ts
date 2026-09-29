@@ -13,6 +13,8 @@ import { UiService } from '../../../shared/services/ui.service';
 import { InvoiceLineDetail, VendorQuery } from '../../../core/models/domain';
 import { StatusLevel } from '../../../core/models/status';
 import { AnnexureComponent } from './annexure.component';
+import { TransactionInvoiceComponent } from './transaction-invoice.component';
+import { TxChannel } from '../../../core/services/transaction-invoice-import';
 import { VendorQueryDialogComponent } from './vendor-query-dialog.component';
 import { PaymentDocumentsDialogComponent, PaymentDocument } from './payment-documents-dialog.component';
 import { MismatchDetailsDialogComponent } from './mismatch-details-dialog.component';
@@ -23,13 +25,13 @@ const VENDORS = ['Infoline LLC', 'Green Umbrella Services'];
 const FIELD = 'w-full px-2.5 py-2 text-xs font-semibold rounded-lg border border-surface-border bg-white text-ink-700 focus:outline-none focus:border-brand-400';
 
 /** Where a line is in its journey: validate it, then approve it if it matches — or email the vendor if it does not. */
-type LineStatus = 'Annexure needed' | 'Not validated' | 'Matches' | 'Does not match' | 'Queried with vendor' | 'Approved for payment';
-const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Annexure needed': 'amber', 'Not validated': 'neutral', Matches: 'normal', 'Does not match': 'red', 'Queried with vendor': 'amber', 'Approved for payment': 'info' };
+type LineStatus = 'Annexure needed' | 'Invoice needed' | 'Not validated' | 'Matches' | 'Does not match' | 'Queried with vendor' | 'Approved for payment';
+const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Annexure needed': 'amber', 'Invoice needed': 'amber', 'Not validated': 'neutral', Matches: 'normal', 'Does not match': 'red', 'Queried with vendor': 'amber', 'Approved for payment': 'info' };
 
 @Component({
   selector: 'app-reconciliation',
   standalone: true,
-  imports: [RequiresDirective, AnnexureComponent, CommonModule, FormsModule, RouterModule, MatIconModule, PageHeaderComponent, StatusChipComponent, KpiCardComponent],
+  imports: [RequiresDirective, AnnexureComponent, TransactionInvoiceComponent, CommonModule, FormsModule, RouterModule, MatIconModule, PageHeaderComponent, StatusChipComponent, KpiCardComponent],
   template: `
     <app-page-header
       title="Reconciliation Workspace"
@@ -93,6 +95,9 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Annexure needed': 'ambe
     } @else if (view() === 'annexure') {
       <button type="button" class="inline-flex items-center gap-1 mb-3 text-xs font-semibold text-brand-700 hover:underline" (click)="view.set('calc')"><mat-icon class="!text-base !w-4 !h-4">arrow_back</mat-icon>Back to payable lines</button>
       <app-annexure [vendor]="vendor()"></app-annexure>
+    } @else if (view() === 'transaction') {
+      <button type="button" class="inline-flex items-center gap-1 mb-3 text-xs font-semibold text-brand-700 hover:underline" (click)="view.set('calc')"><mat-icon class="!text-base !w-4 !h-4">arrow_back</mat-icon>Back to payable lines</button>
+      <app-transaction-invoice [vendor]="vendor()" [channel]="txChannelView()!"></app-transaction-invoice>
     } @else if (!contract()) {
       <div class="surface-card p-8 text-center text-sm text-ink-500">{{ vendor() }} has no contract running in {{ store.period() }}, so there is nothing to reconcile.</div>
     } @else {
@@ -146,7 +151,12 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Annexure needed': 'ambe
                 </td>
                 <td class="!whitespace-normal min-w-[200px]">
                   <div class="font-semibold text-ink-900">{{ l.label }}</div>
-                  <div class="text-[11px] mt-0.5" [class]="l.source === 'wfo' ? 'text-brand-700' : 'text-ink-400'">{{ l.source === 'wfo' ? 'Linked to ' + wfoLabel[l.component!] : 'Contract monthly share — not linked' }}@if (l.note) { <span class="text-ink-400"> &middot; {{ l.note }}</span> }</div>
+                  <div class="text-[11px] mt-0.5" [class]="l.source === 'wfo' || l.txChannel ? 'text-brand-700' : 'text-ink-400'">
+                    @if (l.source === 'wfo') { Linked to {{ wfoLabel[l.component!] }} }
+                    @else if (l.txChannel) { {{ txInvoice(l) ? 'From the imported ' + l.txChannel + ' invoice' : l.txChannel + ' transactions — invoice needed' }} }
+                    @else { Contract monthly share — not linked }
+                    @if (l.note) { <span class="text-ink-400"> &middot; {{ l.note }}</span> }
+                  </div>
                 </td>
                 <td class="text-right font-medium text-ink-900 tabular-nums">{{ l.calculated | number:'1.2-2' }}</td>
                 <td class="text-right">
@@ -156,6 +166,13 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Annexure needed': 'ambe
                       <button type="button" class="text-[11px] font-semibold text-brand-600 hover:underline mt-0.5" (click)="view.set('annexure')">From the annexure &middot; view</button>
                     } @else {
                       <button type="button" class="inline-flex items-center gap-1 h-7 px-2 text-xs font-semibold rounded-md border border-solid border-brand-200 text-brand-700 bg-white hover:bg-brand-50" (click)="view.set('annexure')"><mat-icon class="!text-sm !w-4 !h-4">upload_file</mat-icon>Import annexure</button>
+                    }
+                  } @else if (isTxLine(l)) {
+                    @if (txInvoice(l)) {
+                      <div class="text-sm font-semibold tabular-nums text-ink-900">{{ vendorAmount(l.key) | number:'1.2-2' }}</div>
+                      <button type="button" class="text-[11px] font-semibold text-brand-600 hover:underline mt-0.5" (click)="openTxInvoice(l)">From the invoice &middot; view</button>
+                    } @else {
+                      <button type="button" class="inline-flex items-center gap-1 h-7 px-2 text-xs font-semibold rounded-md border border-solid border-brand-200 text-brand-700 bg-white hover:bg-brand-50" (click)="openTxInvoice(l)"><mat-icon class="!text-sm !w-4 !h-4">upload_file</mat-icon>Import invoice</button>
                     }
                   } @else {
                   <input type="number" step="0.01" min="0" class="w-32 h-8 text-right text-sm font-medium tabular-nums bg-white border border-surface-border rounded-lg px-2.5 focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 disabled:bg-surface-subtle disabled:text-ink-500 disabled:border-transparent" [ngModel]="vendorAmount(l.key)" (ngModelChange)="setVendorAmount(l.key, +$event)" [disabled]="isApproved(l.key)" />
@@ -179,6 +196,7 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Annexure needed': 'ambe
                       @case ('Does not match') { <button type="button" [class]="rowBtn + ' text-white bg-status-red hover:bg-red-700'" (click)="emailVendor(l.key)" appRequires="Validate Invoice"><mat-icon [class]="icoSm">mail</mat-icon>Email vendor</button> }
                       @case ('Queried with vendor') { <button type="button" [class]="rowBtn + ' text-status-red border border-solid border-red-200 bg-white hover:bg-red-50'" (click)="emailVendor(l.key)" appRequires="Validate Invoice"><mat-icon [class]="icoSm">forward_to_inbox</mat-icon>Email again</button> }
                       @case ('Annexure needed') { <button type="button" [class]="rowBtn + ' text-brand-700 border border-solid border-brand-200 bg-white hover:bg-brand-50'" disabled title="Import the vendor's annexure first" style="opacity:.45;cursor:not-allowed"><mat-icon [class]="icoSm">fact_check</mat-icon>Validate</button> }
+                      @case ('Invoice needed') { <button type="button" [class]="rowBtn + ' text-brand-700 border border-solid border-brand-200 bg-white hover:bg-brand-50'" (click)="openTxInvoice(l)"><mat-icon [class]="icoSm">upload_file</mat-icon>Import invoice</button> }
                       @default { <button type="button" [class]="rowBtn + ' text-brand-700 border border-solid border-brand-200 bg-white hover:bg-brand-50'" (click)="validate([l.key])" appRequires="Validate Invoice"><mat-icon [class]="icoSm">fact_check</mat-icon>Validate</button> }
                     }
                     <button type="button" [class]="iconBtn" (click)="toggleExpand(l.key)" [title]="isExpanded(l.key) ? 'Hide how it was calculated' : 'Show how it was calculated'"><mat-icon class="!text-lg !w-[18px] !h-[18px] transition-transform" [class.rotate-180]="isExpanded(l.key)">expand_more</mat-icon></button>
@@ -205,7 +223,7 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Annexure needed': 'ambe
                         }
                       </p>
                     } @else {
-                      <p class="text-xs text-ink-500">{{ l.basis }}. The vendor bills this line from the contract; there is nothing to recalculate from attendance.</p>
+                      <p class="text-xs text-ink-500">{{ l.basis }}{{ l.txChannel ? '.' : '. The vendor bills this line from the contract; there is nothing to recalculate from attendance.' }}</p>
                     }
                   </td>
                 </tr>
@@ -260,7 +278,8 @@ export class ReconciliationComponent {
   readonly iconBtn = 'w-8 h-8 inline-flex items-center justify-center rounded-lg text-ink-400 hover:bg-surface-subtle hover:text-ink-700 transition-colors';
 
   vendor = signal(VENDORS[0]);
-  view = signal<'calc' | 'annexure'>('calc');
+  view = signal<'calc' | 'annexure' | 'transaction'>('calc');
+  txChannelView = signal<TxChannel | null>(null);
   /** 'YYYY-MM', defaults to the current month; a past month shows read-only history instead of a live calculation. */
   period = signal(this.store.periodStart().slice(0, 7));
   private contractByVendor = signal<Record<string, string>>({});
@@ -284,7 +303,7 @@ export class ReconciliationComponent {
   openLines = computed(() => this.lines().filter((l) => !this.isApproved(l.key)));
   selected = computed(() => this.selectedBy()[this.ctx()] ?? new Set(this.openLines().map((l) => l.key)));
   allSelected = computed(() => this.openLines().length > 0 && this.openLines().every((l) => this.selected().has(l.key)));
-  validatable = computed(() => this.openLines().filter((l) => this.isSelected(l.key) && !this.needsAnnexure(l)).map((l) => l.key));
+  validatable = computed(() => this.openLines().filter((l) => this.isSelected(l.key) && !this.needsAnnexure(l) && !this.needsTxInvoice(l)).map((l) => l.key));
   approvable = computed(() => this.validatable().filter((k) => this.lineStatus(k) === 'Matches'));
   queryable = computed(() => this.lines().filter((l) => this.lineStatus(l.key) === 'Does not match' || this.lineStatus(l.key) === 'Queried with vendor'));
   approvedCount = computed(() => this.lines().length - this.openLines().length);
@@ -364,6 +383,12 @@ export class ReconciliationComponent {
   /** The Salary line is checked against the vendor's annexure — nothing to compare until one is imported. */
   needsAnnexure(l: PayableLineItem) { return this.isSalary(l) && this.annexureClaim(l) === undefined; }
 
+  isTxLine(l: PayableLineItem) { return !!l.txChannel; }
+  txInvoice(l: PayableLineItem) { return l.txChannel ? this.store.transactionInvoiceFor(this.vendor(), l.txChannel) : undefined; }
+  /** Voice and Chat have no independent calculation — the imported transaction invoice IS the figure, on both sides, until one is imported. */
+  needsTxInvoice(l: PayableLineItem) { return this.isTxLine(l) && !this.txInvoice(l); }
+  openTxInvoice(l: PayableLineItem) { if (l.txChannel) { this.txChannelView.set(l.txChannel); this.view.set('transaction'); } }
+
   /** True once the vendor invoice field on screen reflects their imported annexure and hasn't been overridden. */
   fromAnnexure(key: string): boolean {
     if (this.typed()[key] !== undefined || this.store.lineRun(this.vendor(), key)?.status === 'Approved for payment') return false;
@@ -397,6 +422,7 @@ export class ReconciliationComponent {
     const run = this.store.lineRun(this.vendor(), key);
     const own = this.lines().find((x) => x.key === key);
     if (own && this.needsAnnexure(own) && run?.status !== 'Approved for payment') return 'Annexure needed';
+    if (own && this.needsTxInvoice(own) && run?.status !== 'Approved for payment') return 'Invoice needed';
     if (!run) return 'Not validated';
     if (run.status === 'Approved for payment') return run.status;
     const checked = run.lines[0], now = this.lines().find((x) => x.key === key);
