@@ -45,7 +45,8 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Annexure needed': 'ambe
       @else { <span class="status-chip status-chip--neutral">History &middot; read-only</span> }
     </app-page-header>
 
-    <!-- 1. Filters — labelled dropdowns, same pattern as the Contract List -->
+    <!-- 1. Filters — labelled dropdowns, same pattern as the Contract List; hidden inside a file-import sub-page -->
+    @if (view() === 'calc') {
     <div class="surface-card px-4 py-3.5 mb-4">
       <div class="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
         <label class="block"><span class="text-[10.5px] font-bold text-ink-400 uppercase tracking-wide">Vendor</span>
@@ -67,6 +68,7 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Annexure needed': 'ambe
         </label>
       </div>
     </div>
+    }
 
     @if (!isCurrentPeriod()) {
       <!-- Read-only history: past months show whatever was already validated/approved, from the invoice-run history. Our WFO figures
