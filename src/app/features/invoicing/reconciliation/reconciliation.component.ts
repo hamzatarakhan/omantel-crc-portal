@@ -192,7 +192,7 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Annexure needed': 'ambe
                     } @else {
                       <button type="button" class="inline-flex items-center gap-1 h-7 px-2 text-xs font-semibold rounded-md border border-solid border-brand-200 text-brand-700 bg-white hover:bg-brand-50" (click)="view.set('overtime')"><mat-icon class="!text-sm !w-4 !h-4">upload_file</mat-icon>Import overtime</button>
                     }
-                  } @else if (isPerformanceLine(l)) {
+                  } @else if (isPerformanceLine(l) || isIncentiveLine(l)) {
                     <div class="text-sm font-semibold tabular-nums text-ink-900">{{ vendorAmount(l.key) | number:'1.2-2' }}</div>
                     <div class="text-[11px] text-ink-400 mt-0.5">Same as our calculation</div>
                   } @else if (isMsIncentiveLine(l)) {
@@ -248,7 +248,7 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Annexure needed': 'ambe
                       <p class="text-[11px] text-ink-400 mt-2">
                         @switch (l.component) {
                           @case ('performance') { Each eligible agent's fixed monthly performance amount (eligible: score above {{ store.payrollRules().omaniMinScore }}% Omani, {{ store.payrollRules().nonOmaniMinScore }}% non-Omani) — amounts and thresholds are set in <a class="text-brand-600 font-medium" routerLink="/csr/performance-settings">Performance Settings</a>. }
-                          @case ('overtime') { Overtime hours &times; basic &divide; {{ store.payrollRules().overtimeDays }} days &divide; {{ store.payrollRules().overtimeHoursPerDay }} hours &times; {{ store.payrollRules().overtimePremium }}, per agent — set in <a class="text-brand-600 font-medium" routerLink="/csr/overtime-settings">Overtime Settings</a>. }
+                          @case ('overtime') { Overtime hours &times; basic &divide; {{ store.payrollRules().overtimeDays }} days &divide; {{ store.payrollRules().overtimeHoursPerDay }} hours &times; {{ store.payrollRules().overtimePremium }} (&times; {{ store.payrollRules().holidayOvertimePremium }} on an official holiday), per agent — set in <a class="text-brand-600 font-medium" routerLink="/csr/overtime-settings">Overtime Settings</a>. }
                           @case ('incentive') { Calls shorter than {{ calc().threshold }}s don't count — <a class="text-brand-600 font-medium" routerLink="/invoicing/rules">change the rule</a>. }
                           @case ('fee') { The contract's flat management fee per agent per month. }
                           @default { Billing rate &times; billable-day ratio per agent, from the <a class="text-brand-600 font-medium" routerLink="/csr/leave">attendance sheet</a> and the <button type="button" class="text-[11px] text-brand-600 font-medium hover:underline" (click)="view.set('annexure')">annexure</button>. Absence is deducted; approved leave stays billable. }
@@ -405,6 +405,7 @@ export class ReconciliationComponent {
     if (line && this.isSalary(line)) return this.annexureClaim(line) ?? line.calculated;
     if (line && this.isOvertimeLine(line)) return this.overtimeClaim(line) ?? line.calculated;
     if (line && this.isPerformanceLine(line)) return line.calculated;
+    if (line && this.isIncentiveLine(line)) return line.calculated;
     if (line && this.isMsIncentiveLine(line)) return this.msIncentiveClaim(line) ?? line.calculated;
     const typed = this.typed()[key];
     if (typed !== undefined) return typed;
@@ -426,13 +427,16 @@ export class ReconciliationComponent {
   /** Performance has no vendor file at all — the vendor invoice column just mirrors our own calculation, never typed. */
   isPerformanceLine(l: PayableLineItem) { return l.component === 'performance'; }
 
+  /** Incentive is entirely our own WFO calculation too — the vendor invoice column mirrors it, never typed. */
+  isIncentiveLine(l: PayableLineItem) { return l.component === 'incentive'; }
+
   isMsIncentiveLine(l: PayableLineItem) { return !!l.msIncentive; }
   msIncentiveClaim(l: PayableLineItem) { return this.store.msIncentiveClaim(this.vendor()); }
   needsMsIncentive(l: PayableLineItem) { return this.isMsIncentiveLine(l) && this.msIncentiveClaim(l) === undefined; }
 
-  /** Yearly Performance has no file and no independent calculation — whatever the user types as the vendor invoice is taken as our figure too, so the two columns always agree. */
-  isYearlyPerformanceLine(l: PayableLineItem) { return l.component === 'yearlyPerformance'; }
-  calculatedAmount(l: PayableLineItem) { return this.isYearlyPerformanceLine(l) ? this.vendorAmount(l.key) : l.calculated; }
+  /** Yearly Performance and Project have no file and no independent calculation — whatever the user types as the vendor invoice is taken as our figure too, so the two columns always agree. */
+  isManualMirrorLine(l: PayableLineItem) { return l.component === 'yearlyPerformance' || l.component === 'project'; }
+  calculatedAmount(l: PayableLineItem) { return this.isManualMirrorLine(l) ? this.vendorAmount(l.key) : l.calculated; }
 
   isTxLine(l: PayableLineItem) { return !!l.txChannel; }
   txInvoice(l: PayableLineItem) { return l.txChannel ? this.store.transactionInvoiceFor(this.vendor(), l.txChannel) : undefined; }

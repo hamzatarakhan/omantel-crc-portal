@@ -40,7 +40,7 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
         <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Degree</div><div class="text-sm font-medium mt-0.5">{{ a.degree }}</div></div>
         <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Nationality</div><div class="text-sm font-medium mt-0.5">{{ a.nationality }}</div></div>
         <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Join Date</div><div class="text-sm font-medium mt-0.5">{{ a.joinDate }}</div></div>
-        <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Overtime this month</div><div class="text-sm font-medium mt-0.5">{{ ot().hours | number:'1.0-1' }} <span class="text-xs font-medium text-ink-400">hours</span></div></div>
+        <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Overtime this month</div><div class="text-sm font-medium mt-0.5">{{ ot().hours | number:'1.0-1' }} <span class="text-xs font-medium text-ink-400">hours</span></div>@if (ot().holidayHours > 0) { <div class="text-[11px] text-ink-400 mt-0.5">of which {{ ot().holidayHours | number:'1.0-1' }} h on an official holiday</div> }</div>
         @if (canSeePay() && pay(); as p) {
           <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Basic salary</div><div class="text-sm font-extrabold mt-0.5 text-brand-700">{{ p.basic | number:'1.3-3' }} <span class="text-xs font-medium text-ink-400">OMR</span></div></div>
         } @else {
@@ -175,7 +175,7 @@ export class AgentProfileComponent {
   doc = computed(() => this.store.idDocs()[this.id() ?? '']);
   canSeePay = computed(() => this.store.can('View Employee Salary'));
   pay = computed(() => { const a = this.agent(); return a && this.canSeePay() ? this.store.payrollFor(a) : null; });
-  ot = computed(() => { const a = this.agent(); return a ? this.store.overtimeFor(a) : { hours: 0, rate: 0, amount: 0 }; });
+  ot = computed(() => { const a = this.agent(); return a ? this.store.overtimeFor(a) : { hours: 0, holidayHours: 0, rate: 0, holidayRate: 0, amount: 0 }; });
   codes = computed(() => this.store.attendance()[this.id() ?? ''] ?? []);
   perf = computed(() => this.store.performance().find((p) => p.agentId === this.id()));
   moves = computed(() => this.store.movementRequests().filter((m) => m.agentId === this.id() && (m.status === 'Active' || m.status === 'Ending Soon' || m.status === 'Expired')));

@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
 import { PageHeaderComponent } from '../../../shared/components/page-header/page-header.component';
-import { CrcStore, OvertimeRule } from '../../../core/services/crc-store.service';
+import { CrcStore, DOW_NAMES, OvertimeRule } from '../../../core/services/crc-store.service';
 import { UiService } from '../../../shared/services/ui.service';
 import { AGENT_VENDORS, SETTINGS_UI } from '../settings-ui';
 
@@ -24,32 +24,95 @@ import { AGENT_VENDORS, SETTINGS_UI } from '../settings-ui';
       <button type="button" [class]="ui.save" (click)="save()" [disabled]="!dirty() || !valid()"><mat-icon class="!text-[17px] !w-[17px] !h-[17px]">save</mat-icon>Save</button>
     </app-page-header>
 
-    <div class="surface-card p-5 mb-6 max-w-3xl">
-      <div class="flex items-start gap-3">
-        <div class="w-10 h-10 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center shrink-0"><mat-icon>more_time</mat-icon></div>
-        <div class="min-w-0">
-          <h3 class="text-[14px] font-bold text-ink-900">Default overtime rate</h3>
-          <p class="text-xs text-ink-400 mt-0.5 leading-relaxed">The formula for every agent who has no rate of their own, worked out from their basic salary.</p>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start mb-6">
+      <div class="flex flex-col gap-5">
+        <div class="surface-card p-5">
+          <div class="flex items-start gap-3">
+            <div class="w-10 h-10 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center shrink-0"><mat-icon>more_time</mat-icon></div>
+            <div class="min-w-0">
+              <h3 class="text-[14px] font-bold text-ink-900">Default overtime rate</h3>
+              <p class="text-xs text-ink-400 mt-0.5 leading-relaxed">The formula for every agent who has no rate of their own, worked out from their basic salary.</p>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-5">
+            <label class="block">
+              <span [class]="ui.lbl">Days per month</span>
+              <div [class]="ui.group"><input type="number" min="1" max="31" [class]="ui.inp" [ngModel]="days()" (ngModelChange)="days.set(+$event)" /><span [class]="ui.affix + ' border-l'">days</span></div>
+            </label>
+            <label class="block">
+              <span [class]="ui.lbl">Hours per day</span>
+              <div [class]="ui.group"><input type="number" min="1" max="24" [class]="ui.inp" [ngModel]="hours()" (ngModelChange)="hours.set(+$event)" /><span [class]="ui.affix + ' border-l'">hours</span></div>
+            </label>
+            <label class="block">
+              <span [class]="ui.lbl">Premium</span>
+              <div [class]="ui.group"><span [class]="ui.affix + ' border-r'">&times;</span><input type="number" min="1" step="0.05" [class]="ui.inp" [ngModel]="premium()" (ngModelChange)="premium.set(+$event)" /></div>
+            </label>
+          </div>
+          @if (!valid()) { <p class="text-xs text-status-red font-medium mt-2">Days and hours must be at least 1, and the premium at least 1.</p> }
+          <div [class]="ui.note + ' mt-4 flex-wrap'">
+            <span class="font-semibold text-ink-700">Basic</span> <span [class]="ui.op">&divide;</span> {{ days() }} <span [class]="ui.op">&divide;</span> {{ hours() }} <span [class]="ui.op">&times;</span> {{ premium() }} <span [class]="ui.op">&times;</span> <span class="font-semibold text-ink-700">hours</span>
+            <span class="ml-auto text-ink-400">e.g. 276.722 OMR, 25.5 h &rarr; <b class="text-ink-900">{{ rateFor(276.722) * 25.5 | number:'1.3-3' }} OMR</b></span>
+          </div>
+        </div>
+
+        <div class="surface-card p-5">
+          <div class="flex items-start gap-3">
+            <div class="w-10 h-10 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center shrink-0"><mat-icon>event</mat-icon></div>
+            <div class="min-w-0">
+              <h3 class="text-[14px] font-bold text-ink-900">Official holiday overtime rate</h3>
+              <p class="text-xs text-ink-400 mt-0.5 leading-relaxed">The same formula, but for overtime hours worked on an official holiday — configurable separately from the default premium above.</p>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-5">
+            <label class="block">
+              <span [class]="ui.lbl">Holiday premium</span>
+              <div [class]="ui.group"><span [class]="ui.affix + ' border-r'">&times;</span><input type="number" min="1" step="0.05" [class]="ui.inp" [ngModel]="holidayPremium()" (ngModelChange)="holidayPremium.set(+$event)" /></div>
+            </label>
+          </div>
+          @if (!validHoliday()) { <p class="text-xs text-status-red font-medium mt-2">The holiday premium must be at least 1.</p> }
+          <div [class]="ui.note + ' mt-4 flex-wrap'">
+            <span class="font-semibold text-ink-700">Basic</span> <span [class]="ui.op">&divide;</span> {{ days() }} <span [class]="ui.op">&divide;</span> {{ hours() }} <span [class]="ui.op">&times;</span> {{ holidayPremium() }} <span [class]="ui.op">&times;</span> <span class="font-semibold text-ink-700">holiday hours</span>
+            <span class="ml-auto text-ink-400">default {{ holidayPremium() * 100 | number:'1.0-0' }}% &middot; e.g. 276.722 OMR, 25.5 h &rarr; <b class="text-ink-900">{{ holidayRateFor(276.722) * 25.5 | number:'1.3-3' }} OMR</b></span>
+          </div>
         </div>
       </div>
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-5">
-        <label class="block">
-          <span [class]="ui.lbl">Days per month</span>
-          <div [class]="ui.group"><input type="number" min="1" max="31" [class]="ui.inp" [ngModel]="days()" (ngModelChange)="days.set(+$event)" /><span [class]="ui.affix + ' border-l'">days</span></div>
-        </label>
-        <label class="block">
-          <span [class]="ui.lbl">Hours per day</span>
-          <div [class]="ui.group"><input type="number" min="1" max="24" [class]="ui.inp" [ngModel]="hours()" (ngModelChange)="hours.set(+$event)" /><span [class]="ui.affix + ' border-l'">hours</span></div>
-        </label>
-        <label class="block">
-          <span [class]="ui.lbl">Premium</span>
-          <div [class]="ui.group"><span [class]="ui.affix + ' border-r'">&times;</span><input type="number" min="1" step="0.05" [class]="ui.inp" [ngModel]="premium()" (ngModelChange)="premium.set(+$event)" /></div>
-        </label>
-      </div>
-      @if (!valid()) { <p class="text-xs text-status-red font-medium mt-2">Days and hours must be at least 1, and the premium at least 1.</p> }
-      <div [class]="ui.note + ' mt-4 flex-wrap'">
-        <span class="font-semibold text-ink-700">Basic</span> <span [class]="ui.op">&divide;</span> {{ days() }} <span [class]="ui.op">&divide;</span> {{ hours() }} <span [class]="ui.op">&times;</span> {{ premium() }} <span [class]="ui.op">&times;</span> <span class="font-semibold text-ink-700">hours</span>
-        <span class="ml-auto text-ink-400">e.g. 276.722 OMR, 25.5 h &rarr; <b class="text-ink-900">{{ rateFor(276.722) * 25.5 | number:'1.3-3' }} OMR</b></span>
+
+      <div class="surface-card p-5 h-full">
+        <div class="flex items-start gap-3">
+          <div class="w-10 h-10 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center shrink-0"><mat-icon>calendar_month</mat-icon></div>
+          <div class="min-w-0">
+            <h3 class="text-[14px] font-bold text-ink-900">Which days count as a holiday</h3>
+            <p class="text-xs text-ink-400 mt-0.5 leading-relaxed">The weekly rest day and any specific public holidays — overtime worked on either is priced at the holiday rate above. Changes here apply immediately.</p>
+          </div>
+        </div>
+
+        <div class="mt-5">
+          <span [class]="ui.lbl">Weekly off day(s)</span>
+          <div class="flex flex-wrap gap-2 mt-1.5">
+            @for (d of dow; track d.i) {
+              <button type="button" class="h-8 px-3 rounded-full text-xs font-semibold border border-solid transition-colors"
+                [class]="store.weeklyOffDays().includes(d.i) ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-ink-700 border-surface-border hover:bg-surface-subtle'"
+                (click)="toggleWeeklyOff(d.i)">{{ d.name }}</button>
+            }
+          </div>
+        </div>
+
+        <div class="mt-5">
+          <span [class]="ui.lbl">Official holidays</span>
+          <div class="grid grid-cols-1 sm:grid-cols-[1fr,2fr,auto] gap-2.5">
+            <input type="date" [class]="ui.field" [(ngModel)]="newHolidayDate" />
+            <input type="text" placeholder="e.g. Oman National Day" [class]="ui.field" [(ngModel)]="newHolidayLabel" />
+            <button type="button" [class]="ui.save" [disabled]="!newHolidayDate || !newHolidayLabel.trim()" (click)="addHoliday()"><mat-icon class="!text-[17px] !w-[17px] !h-[17px]">add</mat-icon>Add</button>
+          </div>
+          <div class="mt-3 divide-y divide-surface-border rounded-lg border border-surface-border overflow-hidden">
+            @for (h of store.officialHolidays(); track h.date) {
+              <div class="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                <div><span class="font-semibold text-ink-900">{{ h.label }}</span> <span class="text-ink-400 text-xs ml-1.5">{{ h.date | date:'d MMMM y' }}</span></div>
+                <button type="button" class="text-xs font-semibold text-status-red px-2 py-1 rounded-md hover:bg-red-50" (click)="store.removeOfficialHoliday(h.date)">Remove</button>
+              </div>
+            } @empty { <div class="px-3 py-6 text-center text-sm text-ink-400">No official holidays configured yet.</div> }
+          </div>
+        </div>
       </div>
     </div>
 
@@ -86,48 +149,7 @@ import { AGENT_VENDORS, SETTINGS_UI } from '../settings-ui';
     </div>
     }
 
-    <div class="surface-card overflow-hidden mb-4">
-      <div class="flex items-center justify-between gap-3 flex-wrap px-4 py-3.5 border-b border-surface-border">
-        <div>
-          <h3 class="text-[13.5px] font-bold text-ink-900">Overtime rate per agent</h3>
-          <p class="text-xs text-ink-400 mt-0.5">The rate used to price one overtime hour for each agent{{ dirty() ? ' (default shown with the unsaved values)' : '' }}.</p>
-        </div>
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 w-full lg:w-auto lg:min-w-[720px]">
-          <select [class]="ui.field" (change)="vendor.set($any($event.target).value)">
-            @for (v of vendors; track v) { <option [value]="v" [selected]="v === vendor()">{{ v === 'All' ? 'All vendors' : v }}</option> }
-          </select>
-          <select [class]="ui.field" (change)="contract.set($any($event.target).value)">
-            @for (c of contractOptions(); track c) { <option [value]="c" [selected]="c === contract()">{{ c === 'All' ? 'All contracts' : c === '—' ? 'No contract (OJT)' : c }}</option> }
-          </select>
-          <select [class]="ui.field" (change)="line.set($any($event.target).value)">
-            @for (l of lineOptions(); track l) { <option [value]="l" [selected]="l === line()">{{ l === 'All' ? 'All lines' : l }}</option> }
-          </select>
-          <input type="search" [class]="ui.field" placeholder="Search name or employee ID" [ngModel]="q()" (ngModelChange)="q.set($event)" />
-        </div>
-      </div>
-      <div class="overflow-x-auto">
-        <table class="crc-table w-full">
-          <thead><tr class="text-left"><th>Employee</th><th>Vendor</th><th>Contract</th><th>Rule</th><th class="text-right">Basic salary (OMR)</th><th class="text-right">Formula rate</th><th class="text-right">Overtime rate (OMR / hour)</th></tr></thead>
-          <tbody>
-            @for (r of rows(); track r.a.id) {
-              <tr>
-                <td><a class="font-semibold text-ink-900 hover:text-brand-700" [routerLink]="['/csr/directory', r.a.id]">{{ r.a.name }}</a><div class="text-[11px] text-ink-400">{{ r.a.employeeId }} &middot; {{ r.a.queue }}</div></td>
-                <td>{{ r.a.vendor }}</td>
-                <td>{{ r.contract === '—' ? 'No contract' : r.contract }}</td>
-                <td class="text-xs">{{ r.rule ? ruleLabel(r.rule) : 'Default' }}</td>
-                <td class="text-right tabular-nums">{{ r.basic | number:'1.3-3' }}</td>
-                <td class="text-right tabular-nums text-ink-400">{{ r.formula | number:'1.3-3' }}</td>
-                <td class="text-right whitespace-nowrap">
-                  @if (r.custom !== undefined) { <span class="status-chip status-chip--info mr-1.5">Own rate</span> }
-                  <span class="font-semibold text-ink-900 tabular-nums">{{ (r.custom ?? r.formula) | number:'1.3-3' }}</span>
-                </td>
-              </tr>
-            } @empty { <tr><td colspan="7" class="!text-center text-sm text-ink-400 !py-8">No agents match.</td></tr> }
-          </tbody>
-        </table>
-      </div>
-    </div>
-    <p class="text-xs text-ink-400">Each agent's overtime hours and pay month by month are on <a class="text-brand-600 font-medium" routerLink="/csr/performance-overtime">Performance &amp; Overtime</a>.</p>
+    <p class="text-xs text-ink-400">Each agent's own overtime rate is on <a class="text-brand-600 font-medium" routerLink="/csr/overtime-rates">Overtime Rates</a>; their overtime hours and pay month by month are on <a class="text-brand-600 font-medium" routerLink="/csr/performance-overtime">Performance, Overtime &amp; Incentive</a>.</p>
   `,
 })
 export class OvertimeSettingsComponent {
@@ -139,24 +161,16 @@ export class OvertimeSettingsComponent {
   days = signal(this.store.payrollRules().overtimeDays);
   hours = signal(this.store.payrollRules().overtimeHoursPerDay);
   premium = signal(this.store.payrollRules().overtimePremium);
-  vendor = signal('All');
-  contract = signal('All');
-  line = signal('All');
-  q = signal('');
+  holidayPremium = signal(this.store.payrollRules().holidayOvertimePremium);
+  readonly dow = DOW_NAMES.map((name, i) => ({ i, name: name.slice(0, 3) }));
+  newHolidayDate = '';
+  newHolidayLabel = '';
 
-  dirty = computed(() => { const r = this.store.payrollRules(); return this.days() !== r.overtimeDays || this.hours() !== r.overtimeHoursPerDay || this.premium() !== r.overtimePremium; });
-  valid = computed(() => this.days() >= 1 && this.hours() >= 1 && this.premium() >= 1);
-  /** The default on screen (possibly unsaved), for the formula-rate preview. */
-  private draft = computed(() => ({ ...this.store.payrollRules(), overtimeDays: this.days(), overtimeHoursPerDay: this.hours(), overtimePremium: this.premium() }));
-  private all = computed(() => this.store.agents().map((a) => ({
-    a, contract: this.store.contractOfAgent(a), rule: this.store.overtimeRuleFor(a), basic: this.store.payrollFor(a).basic,
-    formula: this.store.formulaOvertimeRate(a, this.draft()), custom: this.store.overtimeRates()[a.id],
-  })));
-  rows = computed(() => {
-    const q = this.q().trim().toLowerCase();
-    return this.all().filter((r) => (this.vendor() === 'All' || r.a.vendor === this.vendor()) && (this.contract() === 'All' || r.contract === this.contract())
-      && (this.line() === 'All' || r.a.queue === this.line()) && (!q || r.a.name.toLowerCase().includes(q) || r.a.employeeId.includes(q)));
-  });
+  dirty = computed(() => { const r = this.store.payrollRules(); return this.days() !== r.overtimeDays || this.hours() !== r.overtimeHoursPerDay || this.premium() !== r.overtimePremium || this.holidayPremium() !== r.holidayOvertimePremium; });
+  valid = computed(() => this.days() >= 1 && this.hours() >= 1 && this.premium() >= 1 && this.validHoliday());
+  validHoliday = computed(() => this.holidayPremium() >= 1);
+  /** Each agent's own contract and overtime rule — used to build the vendor/contract/line pickers on the rule dialog and to count agents per rule. */
+  private all = computed(() => this.store.agents().map((a) => ({ a, contract: this.store.contractOfAgent(a), rule: this.store.overtimeRuleFor(a) })));
   contractOptions = computed(() => ['All', ...new Set(this.all().map((r) => r.contract).sort())]);
   lineOptions = computed(() => ['All', ...new Set(this.store.agents().map((a) => a.queue).sort())]);
   rules = computed(() => this.store.overtimeRules().map((rule) => ({ rule, agents: this.all().filter((r) => r.rule?.id === rule.id).length })));
@@ -204,14 +218,30 @@ export class OvertimeSettingsComponent {
     return (basic / this.days() / this.hours()) * this.premium();
   }
 
+  holidayRateFor(basic: number) {
+    return (basic / this.days() / this.hours()) * this.holidayPremium();
+  }
+
+  toggleWeeklyOff(day: number) {
+    const current = this.store.weeklyOffDays();
+    this.store.setWeeklyOffDays(current.includes(day) ? current.filter((d) => d !== day) : [...current, day]);
+  }
+
+  addHoliday() {
+    if (!this.newHolidayDate || !this.newHolidayLabel.trim()) return;
+    this.store.addOfficialHoliday(this.newHolidayDate, this.newHolidayLabel.trim());
+    this.toast.toast('Official holiday added.');
+    this.newHolidayDate = ''; this.newHolidayLabel = '';
+  }
+
   reset() {
     const r = this.store.payrollRules();
-    this.days.set(r.overtimeDays); this.hours.set(r.overtimeHoursPerDay); this.premium.set(r.overtimePremium);
+    this.days.set(r.overtimeDays); this.hours.set(r.overtimeHoursPerDay); this.premium.set(r.overtimePremium); this.holidayPremium.set(r.holidayOvertimePremium);
   }
 
   save() {
     if (!this.valid()) return;
-    this.store.savePayrollRules({ ...this.store.payrollRules(), overtimeDays: this.days(), overtimeHoursPerDay: this.hours(), overtimePremium: this.premium() });
+    this.store.savePayrollRules({ ...this.store.payrollRules(), overtimeDays: this.days(), overtimeHoursPerDay: this.hours(), overtimePremium: this.premium(), holidayOvertimePremium: this.holidayPremium() });
     this.toast.toast('Overtime rate saved.');
   }
 }

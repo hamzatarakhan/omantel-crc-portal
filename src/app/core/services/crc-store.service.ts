@@ -12,8 +12,23 @@ import { attachmentsFor, childRecordsFor, enrichContract, infolineFirst, timelin
 import { seedChanges } from './contract-monitoring';
 
 export const CURRENT_USER = 'Hamza Tarkan';
+export const DOW_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+/** A single global setting for when/how/to whom a contract-expiry reminder goes out — distinct from the per-contract-type "Alert rules" escalation tiers. */
+export interface ContractExpirySettings {
+  /** How long before the contract's end date the reminder starts — the SRS's example is 7 months before a 31-Dec expiry starting 31-May. */
+  startMonths: number;
+  frequency: 'Daily' | 'Weekly' | 'Twice weekly' | 'Custom';
+  /** Only used when frequency is 'Custom'. */
+  customDays?: number;
+  recipients: string;
+  channel: string;
+  active: boolean;
+  continueUntilExpiry: boolean;
+}
+/** A specific calendar date the org observes as a public holiday — overtime worked on it is paid at the holiday rate. */
+export interface OfficialHoliday { date: string; label: string }
 
-export type WfoComponent = 'salary' | 'overtime' | 'performance' | 'incentive' | 'fee' | 'voice' | 'chat' | 'msIncentive' | 'yearlyPerformance';
+export type WfoComponent = 'salary' | 'overtime' | 'performance' | 'incentive' | 'fee' | 'voice' | 'chat' | 'msIncentive' | 'yearlyPerformance' | 'project';
 
 /** Admin-configured rules for the per-agent Performance and Overtime lines. */
 /** An overtime rate formula for a vendor, a contract, a line (queue) or any mix of them; 'All' means any. */
@@ -28,9 +43,11 @@ export interface PayrollRules {
   overtimePremium: number;
   overtimeDays: number;
   overtimeHoursPerDay: number;
+  /** Same formula, but for the hours worked on an official holiday — configurable, default 200% (×2). */
+  holidayOvertimePremium: number;
 }
-/** One agent's figures for one month (WFO / performance system): the performance score and the overtime hours worked. */
-export interface AgentMonth { performanceScore: number; overtimeHours: number }
+/** One agent's figures for one month (WFO / performance system): the performance score, the overtime hours worked, and how many of those were on an official holiday. */
+export interface AgentMonth { performanceScore: number; overtimeHours: number; holidayOvertimeHours: number }
 /** One line the vendor can invoice on a contract: calculated from WFO attendance, or the contract's monthly share. */
 export interface PayableLineItem {
   key: string;
@@ -71,8 +88,8 @@ export interface EmployeeCompareRow {
 export interface AgentBillRow { agent: Agent; kind: 'existing' | 'joiner'; rate: number; expected: number; billable: number; absent: number; /** Maternity leave (M/L) is not paid. */ maternity: number; amount: number; codes: string[] }
 /** One part of a Salary / Overtime figure: what we calculated against what the vendor's annexure says. */
 export interface AnnexureCompareRow { label: string; ours: number; theirs: number; oursDetail: string; theirsDetail: string }
-export const WFO_COMPONENTS: WfoComponent[] = ['salary', 'overtime', 'performance', 'incentive', 'fee', 'voice', 'chat', 'msIncentive', 'yearlyPerformance'];
-export const WFO_LABEL: Record<WfoComponent, string> = { salary: 'Salary', overtime: 'Overtime', performance: 'Performance', incentive: 'Incentive', fee: 'Management fee', voice: 'Voice', chat: 'Chat', msIncentive: 'Manage Service Incentive', yearlyPerformance: 'Yearly Performance' };
+export const WFO_COMPONENTS: WfoComponent[] = ['salary', 'overtime', 'performance', 'incentive', 'fee', 'voice', 'chat', 'msIncentive', 'yearlyPerformance', 'project'];
+export const WFO_LABEL: Record<WfoComponent, string> = { salary: 'Salary', overtime: 'Overtime', performance: 'Performance', incentive: 'Incentive', fee: 'Management fee', voice: 'Voice', chat: 'Chat', msIncentive: 'Manage Service Incentive', yearlyPerformance: 'Yearly Performance', project: 'Project' };
 /** One PO line (of every active contract) a user can link to a calculated component, so Reconciliation knows to bill it from WFO instead of the contract's yearly share. */
 export interface PayableLineCatalogItem { key: string; vendorName: string; contractRef: string; contractName: string; label: string; scope: string; component: WfoComponent | null }
 /** An invoice item added by hand from "Create Invoice Item" — sits alongside the ERP's own PO lines on Reconciliation and Payable Line Mapping. */
@@ -246,11 +263,20 @@ export class CrcStore {
     this.log('Contract Classified', reference, cls ? `Reported as ${cls} on the General Dashboard.` : 'Removed from the General Dashboard.');
   }
   transactionInvoiceFor(vendorName: string, channel: TxChannel): TransactionInvoiceImport | undefined {
-    return this.transactionInvoices()[`${vendorName}|${channel}`];
+    return this.transactionInvoices()[`${vendorName}|${channel}`]?.[0];
+  }
+
+  /** Every Voice/Chat invoice ever imported this session, across every vendor and month — newest first within each vendor+channel. */
+  transactionInvoiceHistory(): { vendorName: string; data: TransactionInvoiceImport }[] {
+    return Object.entries(this.transactionInvoices()).flatMap(([key, list]) => list.map((data) => ({ vendorName: key.split('|')[0], data })));
   }
 
   importTransactionInvoice(vendorName: string, data: TransactionInvoiceImport) {
-    this.transactionInvoices.update((m) => ({ ...m, [`${vendorName}|${data.channel}`]: data }));
+    const key = `${vendorName}|${data.channel}`;
+    this.transactionInvoices.update((m) => {
+      const rest = (m[key] ?? []).filter((x) => x.periodStart !== data.periodStart);
+      return { ...m, [key]: [data, ...rest].sort((a, b) => b.periodStart.localeCompare(a.periodStart)) };
+    });
     this.log('Transaction Invoice Imported', `${vendorName} · ${data.channel}`, `${data.fileName}: ${data.invoicedTransactions.toLocaleString('en-GB')} invoiced transactions, ${data.totalInvoicedAmount.toLocaleString('en-GB')} OMR, ${data.totalPenalty ? data.totalPenalty.toLocaleString('en-GB') + ' OMR penalty/incentive' : 'no penalty'}.`);
     this.notify(`${data.fileName} loaded — ${vendorName} ${data.channel} invoice compared for ${this.period()}.`, 'Invoicing & Payments', 'green', '/invoicing/reconciliation');
     // There is nothing of ours to check it against — the file's own total IS the figure on both sides — so it goes straight to Validated, ready to approve.
@@ -261,11 +287,19 @@ export class CrcStore {
 
   /** The vendor's claimed Manage Service Incentive total from their own workbook — undefined until one is imported. */
   msIncentiveClaim(vendorName: string): number | undefined {
-    return this.msIncentiveInvoices()[vendorName]?.total;
+    return this.msIncentiveInvoices()[vendorName]?.[0]?.total;
+  }
+
+  /** Every Manage Service Incentive file imported this session, across every vendor and month — newest first within each vendor. */
+  msIncentiveInvoiceHistory(): { vendorName: string; data: MsIncentiveImport }[] {
+    return Object.entries(this.msIncentiveInvoices()).flatMap(([vendorName, list]) => list.map((data) => ({ vendorName, data })));
   }
 
   importMsIncentiveInvoice(vendorName: string, data: MsIncentiveImport) {
-    this.msIncentiveInvoices.update((m) => ({ ...m, [vendorName]: data }));
+    this.msIncentiveInvoices.update((m) => {
+      const rest = (m[vendorName] ?? []).filter((x) => x.month !== data.month);
+      return { ...m, [vendorName]: [data, ...rest].sort((a, b) => b.month - a.month) };
+    });
     this.log('Manage Service Incentive Imported', vendorName, `${data.fileName}: ${data.rows.length} categor${data.rows.length === 1 ? 'y' : 'ies'}, ${data.total.toLocaleString('en-GB')} OMR claimed.`);
     this.notify(`${data.fileName} loaded — ${vendorName} Manage Service Incentive compared for ${this.period()}.`, 'Invoicing & Payments', 'green', '/invoicing/reconciliation');
     // There is nothing of ours to check it against — the file's own total IS the figure on both sides — so it goes straight to Validated, ready to approve.
@@ -336,6 +370,13 @@ export class CrcStore {
     ...WFO_REFERENCE.employees.map((e): Agent => ({ id: 'AG-' + e.id, employeeId: e.id, name: e.n, queue: e.q, vendor: 'Infoline', degree: e.d, nationality: e.nat, joinDate: e.j, status: 'Present', gender: hash(e.id) % 2 === 0 ? 'Male' : 'Female' })),
   ]);
   readonly attendanceDays = signal<string[]>(WFO_REFERENCE.days);
+  /** The weekly rest day(s), as JS Date.getDay() indices (0=Sunday … 6=Saturday). Default: Friday & Saturday. */
+  readonly weeklyOffDays = signal<number[]>([5, 6]);
+  /** Specific public-holiday dates on top of the weekly off days — both are paid at the holiday overtime rate when worked. */
+  readonly officialHolidays = signal<OfficialHoliday[]>([
+    { date: '2025-11-18', label: "Oman National Day" },
+    { date: '2026-01-01', label: "New Year's Day" },
+  ]);
   readonly attendance = signal<Record<string, string[]>>(this.seedAttendance());
   readonly idDocs = signal<Record<string, IdDocument>>(this.seedIdDocs());
   readonly snapshots: WorkforceSnapshot[] = this.mock.getWorkforceSnapshots();
@@ -347,12 +388,13 @@ export class CrcStore {
   readonly movementRequests = signal<MovementRequest[]>(this.seedMovementRequests());
 
   readonly payableRates: PayableLine[] = this.mock.getPayableLines();
-  /** The vendor's monthly transaction invoice (Voice or Chat), read once — replaces the contract-share estimate for that line, since there is no independent calculation for it. Keyed `${vendorName}|${channel}`. */
-  readonly transactionInvoices = signal<Record<string, TransactionInvoiceImport>>({});
+  /** The vendor's monthly transaction invoice (Voice or Chat), one history per vendor+channel, newest first — the [0] entry replaces the contract-share estimate for that line, since there is no independent calculation for it. Keyed `${vendorName}|${channel}`. */
+  readonly transactionInvoices = signal<Record<string, TransactionInvoiceImport[]>>({});
   /** The vendor's own monthly overtime workbook, one per vendor — compared against our WFO overtime calculation, employee by employee. */
   readonly overtimeInvoices = signal<Record<string, OvertimeImport>>({});
   /** The vendor's monthly Manage Service Incentive workbook, one per vendor — there is no independent calculation for it, so its own total is what is paid. */
-  readonly msIncentiveInvoices = signal<Record<string, MsIncentiveImport>>({});
+  /** One history per vendor, newest first — the [0] entry is the current claim. */
+  readonly msIncentiveInvoices = signal<Record<string, MsIncentiveImport[]>>({});
   /** Invoice items added by hand from "Create Invoice Item" — on top of whatever PO lines the ERP has for the contract. */
   readonly customInvoiceItems = signal<CustomInvoiceItem[]>([]);
   /** First day of the billing month. Our own agents, payroll and attendance are the WFO's (synced daily); an annexure import never changes them. */
@@ -362,7 +404,7 @@ export class CrcStore {
   readonly importInfo = signal<{ fileName: string; employees: number; days: number; resignations: number; period: string } | null>(null);
   /** The vendor's claimed amount per payable component, read from their annexure file — compared against our WFO calculation, never replacing it. */
   readonly vendorAnnexures = signal<Record<string, VendorAnnexureClaim>>({});
-  readonly payrollRules = signal<PayrollRules>({ omaniMinScore: 90, nonOmaniMinScore: 95, overtimePremium: 1.25, overtimeDays: 30, overtimeHoursPerDay: 8 });
+  readonly payrollRules = signal<PayrollRules>({ omaniMinScore: 90, nonOmaniMinScore: 95, overtimePremium: 1.25, overtimeDays: 30, overtimeHoursPerDay: 8, holidayOvertimePremium: 2 });
   /** Performance rates set by an admin on Performance Settings, replacing the seeded ones. */
   readonly performanceRates = signal<Record<string, number>>({});
   /** Overtime rates (OMR / hour) set for individual agents on Overtime Settings; everyone else follows the formula. */
@@ -555,12 +597,21 @@ export class CrcStore {
     if (r) this.log('Notification Rule Deleted', r.contractType, `${r.thresholdDays}-day rule removed.`);
   }
 
+  readonly contractExpirySettings = signal<ContractExpirySettings>({
+    startMonths: 7, frequency: 'Weekly', recipients: 'Contract owner, Contract Management team', channel: 'Email', active: true, continueUntilExpiry: true,
+  });
+
+  saveContractExpirySettings(next: ContractExpirySettings) {
+    this.contractExpirySettings.set(next);
+    this.log('Contract Expiry Notification Saved', 'CONTRACT-EXPIRY', `Starts ${next.startMonths} month(s) before expiry, ${next.frequency.toLowerCase()}${next.frequency === 'Custom' ? ` (every ${next.customDays} day(s))` : ''}, to ${next.recipients} via ${next.channel}${next.continueUntilExpiry ? ', continuing until expiry' : ''}.`);
+  }
+
   // ---------- CSR ----------
   addAgent(a: { name: string; queue: string; vendor: Agent['vendor']; degree: Agent['degree']; nationality: string }) {
     const n = this.next();
     const agent: Agent = { id: 'AG-' + (3000 + n), employeeId: String(4000 + n), name: a.name, queue: a.queue, vendor: a.vendor, degree: a.degree, nationality: a.nationality || 'Oman', joinDate: isoDay(0), status: 'Present' };
     this.agents.update((list) => [agent, ...list]);
-    this.attendance.update((att) => ({ ...att, [agent.id]: this.attendanceDays().map((d) => (new Date(d).getDay() >= 5 ? 'OFF' : 'P')) }));
+    this.attendance.update((att) => ({ ...att, [agent.id]: this.attendanceDays().map((d) => (this.isOffDay(d) ? 'OFF' : 'P')) }));
     this.log('Agent Added', agent.employeeId, `${agent.name} added to ${agent.queue} (${agent.vendor}).`);
     return agent;
   }
@@ -763,14 +814,66 @@ export class CrcStore {
     const mix = (x: number) => { x = Math.imul(x ^ (x >>> 16), 0x85ebca6b) >>> 0; x = Math.imul(x ^ (x >>> 13), 0xc2b2ae35) >>> 0; return (x ^ (x >>> 16)) >>> 0; };
     const h = current ? raw : mix(raw);
     const hours = [0, 0, 0, 0, 0, 0, 0, 8.5, 12, 25.5, 34, 16];
-    return { performanceScore: 84 + ((h >>> 5) % 17), overtimeHours: hours[(h >>> 11) % hours.length] };
+    const overtimeHours = hours[(h >>> 11) % hours.length];
+    // ponytail: WFO gives us one overtime-hours total for the month, not which day each hour fell on — so the share worked on an
+    // official holiday or the weekly off day is approximated from how much of the month those configured days make up.
+    const holidayOvertimeHours = overtimeHours > 0 ? Math.round(overtimeHours * this.offDayShare(month) * 10) / 10 : 0;
+    return { performanceScore: 84 + ((h >>> 5) % 17), overtimeHours, holidayOvertimeHours };
   }
 
-  /** Overtime pay from the hours worked: basic ÷ days ÷ hours per day × premium × hours — the formula of the June 2026 overtime sheet. */
-  overtimeFor(a: Agent, month?: string): { hours: number; rate: number; amount: number } {
-    const hours = this.agentMonthFor(a, month).overtimeHours;
+  /** The fraction of a month's days that are the weekly off day or a configured official holiday. */
+  private offDayShare(month: string): number {
+    const [y, m] = month.split('-').map(Number);
+    const daysInMonth = new Date(y, m, 0).getDate();
+    let offCount = 0;
+    for (let d = 1; d <= daysInMonth; d++) if (this.isOffDay(`${month}-${String(d).padStart(2, '0')}`)) offCount++;
+    return Math.min(offCount / daysInMonth, 0.5);
+  }
+
+  isWeeklyOff(day: string): boolean {
+    return this.weeklyOffDays().includes(new Date(day).getDay());
+  }
+
+  isOfficialHoliday(day: string): boolean {
+    return this.officialHolidays().some((h) => h.date === day);
+  }
+
+  isOffDay(day: string): boolean {
+    return this.isWeeklyOff(day) || this.isOfficialHoliday(day);
+  }
+
+  setWeeklyOffDays(days: number[]) {
+    this.weeklyOffDays.set([...new Set(days)].sort());
+    this.log('Weekly Off Days Changed', 'PAYROLL-RULES', `Weekly off day(s) set to ${days.map((d) => DOW_NAMES[d]).join(', ') || 'none'} — worked on these days is paid at the holiday overtime rate.`);
+  }
+
+  addOfficialHoliday(date: string, label: string) {
+    if (this.officialHolidays().some((h) => h.date === date)) return;
+    this.officialHolidays.update((list) => [...list, { date, label }].sort((a, b) => a.date.localeCompare(b.date)));
+    this.log('Official Holiday Added', date, `${label} (${date}) added — overtime worked that day is paid at the holiday rate.`);
+  }
+
+  removeOfficialHoliday(date: string) {
+    const h = this.officialHolidays().find((x) => x.date === date);
+    if (!h) return;
+    this.officialHolidays.update((list) => list.filter((x) => x.date !== date));
+    this.log('Official Holiday Removed', date, `${h.label} (${date}) removed.`);
+  }
+
+  /** The official-holiday overtime rate: basic ÷ days ÷ hours per day × the holiday premium — same days/hours as the ordinary formula, configurable separately in Overtime Settings. */
+  formulaHolidayOvertimeRate(a: Agent, def = this.payrollRules()): number {
+    const rule = this.overtimeRuleFor(a);
+    const [days, hours] = rule ? [rule.days, rule.hoursPerDay] : [def.overtimeDays, def.overtimeHoursPerDay];
+    return (this.payrollFor(a).basic / days / hours) * def.holidayOvertimePremium;
+  }
+
+  /** Overtime pay from the hours worked: basic ÷ days ÷ hours per day × premium × hours, with any official-holiday hours priced at the separate holiday premium instead. */
+  overtimeFor(a: Agent, month?: string): { hours: number; holidayHours: number; rate: number; holidayRate: number; amount: number } {
+    const { overtimeHours: hours, holidayOvertimeHours: holidayHours } = this.agentMonthFor(a, month);
     const rate = this.overtimeRateFor(a);
-    return { hours, rate, amount: Math.round(hours * rate * 1000) / 1000 };
+    const holidayRate = this.formulaHolidayOvertimeRate(a);
+    const amount = Math.round(((hours - holidayHours) * rate + holidayHours * holidayRate) * 1000) / 1000;
+    return { hours, holidayHours, rate, holidayRate, amount };
   }
 
   /** The contract an agent is billed on: their vendor's current billing contract ('—' for OJT, which has none). */
@@ -840,7 +943,7 @@ export class CrcStore {
   savePayrollRules(rules: PayrollRules) {
     const r = this.payrollRules();
     this.payrollRules.set(rules);
-    this.log('Payroll Rules Saved', 'PAYROLL-RULES', `Performance: Omani above ${rules.omaniMinScore}%, non-Omani above ${rules.nonOmaniMinScore}% (was ${r.omaniMinScore}% / ${r.nonOmaniMinScore}%). Overtime: basic ÷ ${rules.overtimeDays} ÷ ${rules.overtimeHoursPerDay} × ${rules.overtimePremium}.`);
+    this.log('Payroll Rules Saved', 'PAYROLL-RULES', `Performance: Omani above ${rules.omaniMinScore}%, non-Omani above ${rules.nonOmaniMinScore}% (was ${r.omaniMinScore}% / ${r.nonOmaniMinScore}%). Overtime: basic ÷ ${rules.overtimeDays} ÷ ${rules.overtimeHoursPerDay} × ${rules.overtimePremium} (× ${rules.holidayOvertimePremium} on an official holiday).`);
   }
 
   /**
@@ -933,7 +1036,7 @@ export class CrcStore {
 
   /** First-run guess at each line's component, by name (Salary/Overtime/Performance/Incentive/Management fee) — a starting point the user can change on Payable Line Mapping. */
   private seedLineMapping(): Record<string, WfoComponent> {
-    const guess: Array<[RegExp, WfoComponent]> = [[/^salary$/i, 'salary'], [/^over ?time$/i, 'overtime'], [/^performance$/i, 'performance'], [/^incentive$/i, 'incentive'], [/management fee/i, 'fee'], [/^voice$/i, 'voice'], [/^chat$/i, 'chat'], [/manage ?service incentive/i, 'msIncentive'], [/^yearly performance$/i, 'yearlyPerformance']];
+    const guess: Array<[RegExp, WfoComponent]> = [[/^salary$/i, 'salary'], [/^over ?time$/i, 'overtime'], [/^performance$/i, 'performance'], [/^incentive$/i, 'incentive'], [/management fee/i, 'fee'], [/^voice$/i, 'voice'], [/^chat$/i, 'chat'], [/manage ?service incentive/i, 'msIncentive'], [/^yearly performance$/i, 'yearlyPerformance'], [/^project$/i, 'project']];
     const map: Record<string, WfoComponent> = {};
     for (const c of this.contracts().filter((x) => x.status !== 'Cancelled')) {
       for (const l of this.currentLines(c)) {
@@ -1013,18 +1116,19 @@ export class CrcStore {
       const txChannel: TxChannel | undefined = mapped === 'voice' ? 'Voice' : mapped === 'chat' ? 'Chat' : undefined;
       const tx = txChannel ? this.transactionInvoiceFor(vendorName, txChannel) : undefined;
       const isMsIncentive = mapped === 'msIncentive';
-      const msi = isMsIncentive ? this.msIncentiveInvoices()[vendorName] : undefined;
+      const msi = isMsIncentive ? this.msIncentiveInvoices()[vendorName]?.[0] : undefined;
       const isYearlyPerf = mapped === 'yearlyPerformance';
+      const isProject = mapped === 'project';
       const share = Math.round((allocated / months) * 1000) / 1000;
       const calculated = txChannel ? (tx?.totalInvoicedAmount ?? 0) : isMsIncentive ? (msi?.total ?? 0) : share;
       const basis = txChannel
         ? (tx ? `From the imported ${txChannel} transaction invoice (${tx.fileName}) — ${tx.invoicedTransactions.toLocaleString('en-GB')} invoiced transactions × ${tx.rate} OMR` : `No ${txChannel} invoice imported yet — nothing to calculate until one is.`)
         : isMsIncentive
         ? (msi ? `From the imported Manage Service Incentive file (${msi.fileName}) — ${msi.rows.length} categor${msi.rows.length === 1 ? 'y' : 'ies'}` : 'No Manage Service Incentive file imported yet — nothing to calculate until one is.')
-        : isYearlyPerf
+        : isYearlyPerf || isProject
         ? 'Entered manually each month — no file, no independent calculation; whatever is entered is taken as our figure.'
         : shareBasis;
-      return { key, label, calculated, source: 'contract' as const, component: txChannel || isMsIncentive || isYearlyPerf ? mapped : undefined, txChannel, msIncentive: isMsIncentive || undefined, basis };
+      return { key, label, calculated, source: 'contract' as const, component: txChannel || isMsIncentive || isYearlyPerf || isProject ? mapped : undefined, txChannel, msIncentive: isMsIncentive || undefined, basis };
     };
     const lines: PayableLineItem[] = (year?.lines ?? []).map((l) =>
       buildLine(`${c.reference}|L${l.line}`, l.description, l.allocated, `${year!.description.split(' — ')[0]} allocation ${l.allocated.toLocaleString('en-GB')} OMR ÷ ${months} month${months === 1 ? '' : 's'}`));
@@ -1378,7 +1482,7 @@ export class CrcStore {
     const i = this.attendanceDays().indexOf(day);
     if (i >= 0) return this.attendance()[a.id]?.[i] ?? '';
     if (day > isoDay(0) || day < a.joinDate) return '';
-    if (new Date(day).getDay() >= 5) return 'OFF';
+    if (this.isOffDay(day)) return 'OFF';
     const h = hash(a.id + '|' + day) % 100;
     return h < 3 ? 'A' : h < 7 ? 'S/L' : h < 11 ? 'C/L' : 'P';
   }
@@ -1390,7 +1494,7 @@ export class CrcStore {
     agents.forEach((a, i) => {
       if (ref.has(a.id)) { rec[a.id] = ref.get(a.id)!; return; }
       rec[a.id] = this.attendanceDays().map((day, d) => {
-        if (new Date(day).getDay() >= 5) return 'OFF';
+        if (this.isOffDay(day)) return 'OFF';
         const last = d === this.attendanceDays().length - 1;
         if (a.status === 'On Leave' && d >= this.attendanceDays().length - 3) return LEAVE_CODE_BY_TYPE[a.leaveType ?? ''] ?? 'C/L';
         if (a.status === 'Absent' && last) return 'A';

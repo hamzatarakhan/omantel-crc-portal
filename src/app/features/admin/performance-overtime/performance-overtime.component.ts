@@ -16,16 +16,16 @@ const FIELD = 'w-full px-2.5 py-2 text-xs font-semibold rounded-lg border border
   imports: [CommonModule, FormsModule, RouterModule, MatIconModule, PageHeaderComponent, StatusChipComponent],
   template: `
     <app-page-header
-      title="Performance & Overtime"
-      subtitle="Each agent's score, performance and overtime, month by month"
-      [breadcrumbs]="[{ label: 'CSR Management', link: '/csr/directory' }, { label: 'Performance & Overtime' }]"
+      title="Performance, Overtime & Incentive"
+      subtitle="Each agent's score, performance and overtime month by month, and the vendor's own incentive"
+      [breadcrumbs]="[{ label: 'CSR Management', link: '/csr/directory' }, { label: 'Performance, Overtime & Incentive' }]"
     ></app-page-header>
 
     <div class="surface-card overflow-hidden mb-4">
       <div class="flex items-center justify-between gap-3 flex-wrap px-4 py-3.5 border-b border-surface-border">
         <div>
           <h3 class="text-[13.5px] font-bold text-ink-900">Performance rate per agent</h3>
-          <p class="text-xs text-ink-400 mt-0.5">{{ qualifiedCount() }} of {{ rows().length }} agents qualify in {{ monthLabel(month()) }} &middot; {{ performanceTotal() | number:'1.0-3' }} OMR performance &middot; {{ overtimeTotal() | number:'1.3-3' }} OMR overtime</p>
+          <p class="text-xs text-ink-400 mt-0.5">{{ qualifiedCount() }} of {{ rows().length }} agents qualify in {{ monthLabel(month()) }} &middot; {{ performanceTotal() | number:'1.0-3' }} OMR performance &middot; {{ overtimeTotal() | number:'1.3-3' }} OMR overtime@if (incentiveTotal() !== null) { &middot; {{ incentiveTotal() | number:'1.2-2' }} OMR incentive <span class="text-ink-300">(per vendor, not per agent)</span> }</p>
         </div>
         <div class="grid grid-cols-4 gap-2.5 w-full sm:w-auto sm:min-w-[700px]">
           <select [class]="field" (change)="monthNum.set(+$any($event.target).value)">
@@ -111,6 +111,15 @@ export class PerformanceOvertimeComponent {
   qualifiedCount = computed(() => this.rows().filter((r) => r.perf.eligible).length);
   performanceTotal = computed(() => this.rows().reduce((s, r) => s + r.perf.amount, 0));
   overtimeTotal = computed(() => this.rows().reduce((s, r) => s + r.ot.amount, 0));
+  /** The 3-Clicks incentive is calculated per vendor invoice, not per agent, and only for the live (current) month — nothing to show for a past one. */
+  isCurrentMonth = computed(() => this.month() === this.months[0]);
+  incentiveTotal = computed<number | null>(() => {
+    if (this.vendor() === 'OJT' || !this.isCurrentMonth()) return null;
+    let total = 0;
+    if (this.vendor() === 'All' || this.vendor() === 'Infoline') total += this.store.calculateInvoice('Infoline LLC').incentive;
+    if (this.vendor() === 'All' || this.vendor() === 'Green Umbrella') total += this.store.calculateInvoice('Green Umbrella Services').incentive;
+    return total;
+  });
 
   monthLabel(m: string) {
     const [y, mo] = m.split('-').map(Number);

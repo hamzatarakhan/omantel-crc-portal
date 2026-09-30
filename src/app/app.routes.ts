@@ -56,6 +56,7 @@ export const routes: Routes = [
       { path: 'invoicing/rules', loadComponent: () => import('./features/invoicing/rules/rules.component').then((m) => m.RulesComponent) },
       { path: 'invoicing/line-mapping', loadComponent: () => import('./features/invoicing/line-mapping/line-mapping.component').then((m) => m.LineMappingComponent) },
       { path: 'invoicing/create-item', loadComponent: () => import('./features/invoicing/create-item/create-item.component').then((m) => m.CreateInvoiceItemComponent) },
+      { path: 'invoicing/ms-incentive-review', loadComponent: () => import('./features/invoicing/ms-incentive-review/ms-incentive-review.component').then((m) => m.MsIncentiveReviewComponent) },
       { path: 'invoicing/tracking', loadComponent: () => import('./features/invoicing/tracking/tracking.component').then((m) => m.TrackingComponent) },
       { path: 'invoicing/dashboard', loadComponent: () => import('./features/invoicing/dashboard/payment-dashboard.component').then((m) => m.PaymentDashboardComponent) },
 
@@ -63,7 +64,9 @@ export const routes: Routes = [
       { path: 'admin/access-control', loadComponent: () => import('./features/admin/access-control/access-control.component').then((m) => m.AccessControlComponent) },
       { path: 'csr/performance-overtime', loadComponent: () => import('./features/admin/performance-overtime/performance-overtime.component').then((m) => m.PerformanceOvertimeComponent) },
       { path: 'csr/performance-settings', loadComponent: () => import('./features/admin/performance-settings/performance-settings.component').then((m) => m.PerformanceSettingsComponent) },
+      { path: 'csr/performance-rates', loadComponent: () => import('./features/admin/performance-rates/performance-rates.component').then((m) => m.PerformanceRatesComponent) },
       { path: 'csr/overtime-settings', loadComponent: () => import('./features/admin/overtime-settings/overtime-settings.component').then((m) => m.OvertimeSettingsComponent) },
+      { path: 'csr/overtime-rates', loadComponent: () => import('./features/admin/overtime-rates/overtime-rates.component').then((m) => m.OvertimeRatesComponent) },
       { path: 'admin/audit-log', loadComponent: () => import('./features/admin/audit-log/audit-log.component').then((m) => m.AuditLogComponent) },
 
       { path: '**', redirectTo: 'contracts-budget/dashboard' },

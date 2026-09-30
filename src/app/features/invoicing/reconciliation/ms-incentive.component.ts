@@ -5,12 +5,13 @@ import { CrcStore } from '../../../core/services/crc-store.service';
 import { UiService } from '../../../shared/services/ui.service';
 import { RequiresDirective } from '../../../shared/directives/requires.directive';
 import { parseMsIncentiveFile } from '../../../core/services/ms-incentive-import';
+import { MsIncentiveDetailComponent } from './ms-incentive-detail.component';
 
 /** The vendor's monthly Manage Service Incentive workbook: no independent calculation exists for it, so its own total by sales category is what is paid. */
 @Component({
   selector: 'app-ms-incentive',
   standalone: true,
-  imports: [CommonModule, MatIconModule, RequiresDirective],
+  imports: [CommonModule, MatIconModule, RequiresDirective, MsIncentiveDetailComponent],
   template: `
     <div class="surface-card px-4 py-3 mb-4 flex items-center gap-3 flex-wrap">
       <mat-icon class="!text-brand-600">upload_file</mat-icon>
@@ -32,28 +33,7 @@ import { parseMsIncentiveFile } from '../../../core/services/ms-incentive-import
     @if (loading()) { <div class="status-chip status-chip--info mb-4">Reading the workbook…</div> }
 
     @if (data(); as d) {
-      <div class="surface-card overflow-hidden mb-4">
-        <div class="px-4 py-3.5 border-b border-surface-border flex items-center justify-between">
-          <h3 class="text-[13.5px] font-bold text-ink-900">Sales incentive by category</h3>
-          <span class="text-xs font-semibold text-brand-700">{{ d.total | number:'1.2-2' }} OMR total</span>
-        </div>
-        <table class="crc-table w-full">
-          <thead><tr class="text-left"><th>Category</th><th class="text-right">Target</th><th class="text-right">Actual</th><th class="text-right">Achievement</th><th>Status</th><th class="text-right">Incentive (OMR)</th></tr></thead>
-          <tbody>
-            @for (r of d.rows; track r.category) {
-              <tr>
-                <td class="font-semibold text-ink-900">{{ r.category }}</td>
-                <td class="text-right tabular-nums">{{ r.target | number:'1.0-0' }}</td>
-                <td class="text-right tabular-nums">{{ r.actual | number:'1.0-0' }}</td>
-                <td class="text-right tabular-nums">{{ r.achievement | percent:'1.0-1' }}</td>
-                <td [class.text-status-green]="r.status.toLowerCase().includes('meets') || r.status.includes('✓')" [class.text-status-red]="r.status.toLowerCase().includes('below') || r.status.toLowerCase().includes('fail')">{{ r.status }}</td>
-                <td class="text-right tabular-nums font-semibold text-ink-900">{{ r.incentive | number:'1.2-2' }}</td>
-              </tr>
-            }
-          </tbody>
-          <tfoot><tr class="font-bold"><td colspan="5" class="!text-ink-900">Total</td><td class="text-right !text-brand-700">{{ d.total | number:'1.2-2' }}</td></tr></tfoot>
-        </table>
-      </div>
+      <app-ms-incentive-detail [data]="d"></app-ms-incentive-detail>
     }
   `,
 })
@@ -63,7 +43,7 @@ export class MsIncentiveComponent {
   vendor = input.required<string>();
   loading = signal(false);
 
-  data = computed(() => this.store.msIncentiveInvoices()[this.vendor()]);
+  data = computed(() => this.store.msIncentiveInvoices()[this.vendor()]?.[0]);
 
   async import(ev: Event) {
     const input = ev.target as HTMLInputElement;

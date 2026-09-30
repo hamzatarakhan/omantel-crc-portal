@@ -15,6 +15,8 @@ export interface FormField {
   min?: number;
   max?: number;
   rows?: number;
+  /** When provided, the field is only shown while this returns true for the form's current values — e.g. a "custom" detail field that only makes sense once a related select is set to "Custom". */
+  showIf?: (model: Record<string, any>) => boolean;
 }
 
 export interface FormDialogData {
@@ -49,6 +51,7 @@ const INPUT = 'w-full px-3 py-2.5 text-sm rounded-lg border border-surface-borde
 
       <form #f="ngForm" (ngSubmit)="submit()" class="px-6 py-5 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-4 max-h-[70vh] overflow-y-auto content-start">
         @for (fld of data.fields; track fld.key) {
+          @if (!fld.showIf || fld.showIf(model)) {
           <div [class.sm:col-span-2]="isFull(fld)">
             <label class="text-[13px] font-medium text-ink-700 block mb-1.5">{{ fld.label }} @if (fld.required) { <span class="text-status-red">*</span> }</label>
             @switch (fld.type) {
@@ -88,6 +91,7 @@ const INPUT = 'w-full px-3 py-2.5 text-sm rounded-lg border border-surface-borde
             }
             @if (fld.hint) { <p class="text-[11px] text-ink-400 mt-1">{{ fld.hint }}</p> }
           </div>
+          }
         }
       </form>
 

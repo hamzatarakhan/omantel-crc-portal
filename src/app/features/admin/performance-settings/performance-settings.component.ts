@@ -6,9 +6,9 @@ import { MatIconModule } from '@angular/material/icon';
 import { PageHeaderComponent } from '../../../shared/components/page-header/page-header.component';
 import { CrcStore } from '../../../core/services/crc-store.service';
 import { UiService } from '../../../shared/services/ui.service';
-import { AGENT_VENDORS, SETTINGS_UI } from '../settings-ui';
+import { SETTINGS_UI } from '../settings-ui';
 
-/** Set once: the score thresholds for the Performance line, and each agent's fixed performance rate. */
+/** Set once: the score thresholds for the Performance line. */
 @Component({
   selector: 'app-performance-settings',
   standalone: true,
@@ -49,57 +49,20 @@ import { AGENT_VENDORS, SETTINGS_UI } from '../settings-ui';
       </div>
     </div>
 
-    <div class="surface-card overflow-hidden mb-4">
-      <div class="flex items-center justify-between gap-3 flex-wrap px-4 py-3.5 border-b border-surface-border">
-        <div>
-          <h3 class="text-[13.5px] font-bold text-ink-900">Performance rate per agent</h3>
-          <p class="text-xs text-ink-400 mt-0.5">The fixed amount each agent earns in a month where they qualify. A change applies from the current month and is written to the audit log.</p>
-        </div>
-        <div class="grid grid-cols-2 gap-2.5 w-full sm:w-auto sm:min-w-[380px]">
-          <select [class]="ui.field" (change)="vendor.set($any($event.target).value)">
-            @for (v of vendors; track v) { <option [value]="v" [selected]="v === vendor()">{{ v === 'All' ? 'All vendors' : v }}</option> }
-          </select>
-          <input type="search" [class]="ui.field" placeholder="Search name or employee ID" [ngModel]="q()" (ngModelChange)="q.set($event)" />
-        </div>
-      </div>
-      <div class="overflow-x-auto">
-        <table class="crc-table w-full">
-          <thead><tr class="text-left"><th>Employee</th><th>Vendor</th><th>Nationality</th><th class="text-right">Qualifies with a score above</th><th class="text-right">Performance rate (OMR)</th></tr></thead>
-          <tbody>
-            @for (a of rows(); track a.id) {
-              <tr>
-                <td><a class="font-semibold text-ink-900 hover:text-brand-700" [routerLink]="['/csr/directory', a.id]">{{ a.name }}</a><div class="text-[11px] text-ink-400">{{ a.employeeId }} &middot; {{ a.queue }}</div></td>
-                <td>{{ a.vendor }}</td>
-                <td>{{ a.nationality }}</td>
-                <td class="text-right tabular-nums">{{ store.performanceFor(a).threshold }}%</td>
-                <td class="text-right"><input type="number" min="0" step="10" [class]="ui.num" [ngModel]="store.performanceRateFor(a)" (change)="setRate(a.id, $any($event.target).value)" /></td>
-              </tr>
-            } @empty { <tr><td colspan="5" class="!text-center text-sm text-ink-400 !py-8">No agents match.</td></tr> }
-          </tbody>
-        </table>
-      </div>
-    </div>
-    <p class="text-xs text-ink-400">Each agent's score and performance month by month are on <a class="text-brand-600 font-medium" routerLink="/csr/performance-overtime">Performance &amp; Overtime</a>.</p>
+    <p class="text-xs text-ink-400">Each agent's own performance rate is on <a class="text-brand-600 font-medium" routerLink="/csr/performance-rates">Performance Rates</a>; their score and performance month by month are on <a class="text-brand-600 font-medium" routerLink="/csr/performance-overtime">Performance, Overtime &amp; Incentive</a>.</p>
   `,
 })
 export class PerformanceSettingsComponent {
   store = inject(CrcStore);
   private toast = inject(UiService);
   readonly ui = SETTINGS_UI;
-  readonly vendors = AGENT_VENDORS;
 
   omani = signal(this.store.payrollRules().omaniMinScore);
   nonOmani = signal(this.store.payrollRules().nonOmaniMinScore);
-  vendor = signal('All');
-  q = signal('');
 
   dirty = computed(() => this.omani() !== this.store.payrollRules().omaniMinScore || this.nonOmani() !== this.store.payrollRules().nonOmaniMinScore);
   valid = computed(() => [this.omani(), this.nonOmani()].every((n) => Number.isFinite(n) && n >= 0 && n <= 100));
   preview = computed(() => this.store.agents().filter((a) => this.store.agentMonthFor(a).performanceScore > (/^oman/i.test(a.nationality ?? 'Oman') ? this.omani() : this.nonOmani())).length);
-  rows = computed(() => {
-    const q = this.q().trim().toLowerCase();
-    return this.store.agents().filter((a) => (this.vendor() === 'All' || a.vendor === this.vendor()) && (!q || a.name.toLowerCase().includes(q) || a.employeeId.includes(q)));
-  });
 
   reset() {
     this.omani.set(this.store.payrollRules().omaniMinScore);
@@ -110,11 +73,5 @@ export class PerformanceSettingsComponent {
     if (!this.valid()) return;
     this.store.savePayrollRules({ ...this.store.payrollRules(), omaniMinScore: this.omani(), nonOmaniMinScore: this.nonOmani() });
     this.toast.toast('Performance thresholds saved.');
-  }
-
-  setRate(id: string, v: string) {
-    const rate = Number(v);
-    if (!Number.isFinite(rate) || rate < 0) { this.toast.toast('A performance rate must be 0 or more.'); return; }
-    this.store.setPerformanceRate(id, rate);
   }
 }

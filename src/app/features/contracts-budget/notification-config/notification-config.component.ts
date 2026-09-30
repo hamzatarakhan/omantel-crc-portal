@@ -111,6 +111,33 @@ const join = (v: string[] | string, sep: string, order?: string[]) => (Array.isA
           </div>
         </div>
       </mat-tab>
+
+      <!-- ================= Contract Expiry ================= -->
+      <mat-tab label="Contract Expiry">
+        <div class="pt-4 grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
+          <div class="surface-card px-5 py-4 xl:col-span-2">
+            <div class="flex items-center justify-between gap-3 flex-wrap">
+              <h3 class="text-[13.5px] font-bold text-ink-900">Contract expiry reminders</h3>
+              <button mat-flat-button color="primary" (click)="expirySettingsForm()" appRequires="Manage Notifications"><mat-icon class="!text-base !mr-1">edit</mat-icon>Edit</button>
+            </div>
+            <dl class="grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-3 mt-4 text-sm">
+              <div><dt class="text-xs text-ink-400">Notification start</dt><dd class="font-medium text-ink-900">{{ expirySettings().startMonths }} month{{ expirySettings().startMonths === 1 ? '' : 's' }} before expiry</dd></div>
+              <div><dt class="text-xs text-ink-400">Frequency</dt><dd class="font-medium text-ink-900">{{ expirySettings().frequency }}{{ expirySettings().frequency === 'Custom' ? ' (every ' + expirySettings().customDays + ' day(s))' : '' }}</dd></div>
+              <div><dt class="text-xs text-ink-400">Channel</dt><dd class="font-medium text-ink-900">{{ expirySettings().channel }}</dd></div>
+              <div class="sm:col-span-2"><dt class="text-xs text-ink-400">Recipients</dt><dd class="font-medium text-ink-900">{{ expirySettings().recipients }}</dd></div>
+              <div><dt class="text-xs text-ink-400">Continue until expiry</dt><dd class="font-medium text-ink-900">{{ expirySettings().continueUntilExpiry ? 'Yes' : 'No' }}</dd></div>
+            </dl>
+            <p class="text-xs text-ink-500 mt-4 leading-relaxed">e.g. a contract expiring 31 Dec 2027 with a 7-month start would begin notifying on 31 May 2027. There is no live scheduler behind this yet in the prototype — the count on the right is computed live from today's contracts, but nothing is actually sent on a timer.</p>
+          </div>
+          <div class="surface-card px-5 py-4">
+            <h3 class="text-[13.5px] font-bold text-ink-900">Right now</h3>
+            <dl class="grid gap-y-3 mt-3 text-sm">
+              <div><dt class="text-xs text-ink-400">Status</dt><dd><app-status-chip [label]="expirySettings().active ? 'Active' : 'Inactive'" [level]="expirySettings().active ? 'normal' : 'neutral'"></app-status-chip></dd></div>
+              <div><dt class="text-xs text-ink-400">Contracts in the notification window</dt><dd class="font-medium text-status-amber">{{ inWindow() }}</dd></div>
+            </dl>
+          </div>
+        </div>
+      </mat-tab>
     </mat-tab-group>
   `,
 })
@@ -255,5 +282,37 @@ export class NotificationConfigComponent {
     if (!v) return;
     this.ops.setEscalationRule({ hours: Number(v['hours']), appliesTo: v['appliesTo'] ?? [], recipients: join(v['recipients'], ', ', RECIPIENTS) });
     this.ui.toast('Escalation rule saved.');
+  }
+
+  // ---------- contract expiry ----------
+  expirySettings = this.store.contractExpirySettings;
+  /** Every non-cancelled contract whose remaining days fall inside the configured notification window right now. */
+  inWindow = computed(() => {
+    const days = this.expirySettings().startMonths * 30;
+    return this.store.contracts().filter((c) => c.status !== 'Cancelled' && c.daysRemaining >= 0 && c.daysRemaining <= days).length;
+  });
+
+  async expirySettingsForm() {
+    if (!this.ui.requires('Manage Notifications')) return;
+    const s = this.expirySettings();
+    const v = await this.ui.form({
+      title: 'Contract expiry reminders', subtitle: 'One global setting for when expiry reminders start and who gets them', icon: 'event_busy', submitLabel: 'Save',
+      values: { startMonths: s.startMonths, frequency: s.frequency, customDays: s.customDays ?? 3, recipients: s.recipients.split(/,\s*/), channel: s.channel.split(' + '), continueUntilExpiry: s.continueUntilExpiry ? 'Yes' : 'No', active: s.active ? 'Active' : 'Inactive' },
+      fields: [
+        { key: 'startMonths', label: 'Notification start (months before expiry)', type: 'number', min: 1, max: 24, required: true },
+        { key: 'frequency', label: 'Frequency', type: 'select', options: ['Daily', 'Weekly', 'Twice weekly', 'Custom'], required: true },
+        { key: 'customDays', label: 'Custom frequency (every N days)', type: 'number', min: 1, hint: "Only used when frequency is 'Custom'.", showIf: (v) => v['frequency'] === 'Custom' },
+        { key: 'recipients', label: 'Recipients', type: 'multiselect', options: RECIPIENTS, required: true },
+        { key: 'channel', label: 'Notification channels', type: 'multiselect', options: CHANNELS, required: true },
+        { key: 'continueUntilExpiry', label: 'Continue until the contract expires', type: 'select', options: ['Yes', 'No'], required: true },
+        { key: 'active', label: 'Status', type: 'select', options: ['Active', 'Inactive'], required: true, hint: 'Whether these reminders are switched on at all.' },
+      ],
+    });
+    if (!v) return;
+    this.store.saveContractExpirySettings({
+      startMonths: Number(v['startMonths']), frequency: v['frequency'], customDays: v['frequency'] === 'Custom' ? Number(v['customDays']) : undefined,
+      recipients: join(v['recipients'], ', ', RECIPIENTS), channel: join(v['channel'], ' + ', CHANNELS), continueUntilExpiry: v['continueUntilExpiry'] === 'Yes', active: v['active'] === 'Active',
+    });
+    this.ui.toast('Contract expiry reminders saved.');
   }
 }

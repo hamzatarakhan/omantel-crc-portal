@@ -24,8 +24,6 @@ const LEAVE_LEGEND: Array<{ code: string; meaning: string; notes?: string }> = [
   { code: 'ST/L', meaning: 'Study Leave', notes: '15 days' },
   { code: 'AS', meaning: 'Accompanying Sick Family Member', notes: '15 days' },
 ];
-const CYCLE = ['P', 'A', 'S/L', 'C/L', 'OFF'];
-
 import { RequiresDirective } from '../../../shared/directives/requires.directive';
 
 @Component({
@@ -110,10 +108,8 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
                       <td class="sticky left-0 z-10 bg-white"><div class="font-semibold text-ink-900 text-[13px] truncate max-w-[200px]">{{ a.name }}</div><div class="text-[11px] text-ink-400 mt-0.5">{{ a.queue }}</div></td>
                       @for (d of monthDays(); track d) {
                         <td class="!px-1 !py-2 text-center">
-                          @if (liveIndex(d) >= 0) {
-                            <button (click)="cycle(a.id, liveIndex(d), store.attendanceOn(a, d))" class="block w-full max-w-[46px] mx-auto rounded-lg py-1.5 text-[11px] font-bold border border-transparent hover:border-brand-300 transition-colors" [class]="style(store.attendanceOn(a, d))">{{ store.attendanceOn(a, d) }}</button>
-                          } @else if (store.attendanceOn(a, d)) {
-                            <span class="block w-full max-w-[46px] mx-auto rounded-lg py-1.5 text-[11px] font-bold" [class]="style(store.attendanceOn(a, d))">{{ store.attendanceOn(a, d) }}</span>
+                          @if (store.attendanceOn(a, d); as code) {
+                            <span class="block w-full max-w-[46px] mx-auto rounded-lg py-1.5 text-[11px] font-bold" [class]="style(code)">{{ code }}</span>
                           } @else { <span class="text-ink-300 text-[11px]">&middot;</span> }
                         </td>
                       }
@@ -124,7 +120,7 @@ import { RequiresDirective } from '../../../shared/directives/requires.directive
                 </tbody>
               </table>
             </div>
-            <div class="p-3.5 border-t border-surface-border text-xs text-ink-400">The last 14 days come live from WFO and can be edited: click a cell to cycle P → A → S/L → C/L → OFF, or use “Record leave override” for other codes. Earlier days are history and read-only. Billable days used by the Reconciliation Workspace come from the live days.</div>
+            <div class="p-3.5 border-t border-surface-border text-xs text-ink-400">The attendance sheet is read-only, synced from WFO as-is. To change a day's code, use “Record leave override” — the source WFO record is not altered, and the override is kept and audited. Billable days used by the Reconciliation Workspace come from the live (last 14) days.</div>
           </div>
         </div>
       </mat-tab>
@@ -137,7 +133,6 @@ export class LeaveManagementComponent {
   private router = inject(Router);
 
   legend = LEAVE_LEGEND;
-  days = this.store.attendanceDays;
   q = signal('');
   vendor = signal('All');
   readonly months = [...this.store.payrollMonths()].reverse();
@@ -186,10 +181,6 @@ export class LeaveManagementComponent {
     { key: 'leaveDays', label: 'Leave days', type: 'number', align: 'right' },
   ];
 
-  liveIndex(day: string) {
-    return this.days().indexOf(day);
-  }
-
   monthLabel(m: string) {
     const [y, mo] = m.split('-').map(Number);
     return new Date(y, mo - 1, 1).toLocaleString('en-GB', { month: 'long', year: 'numeric' });
@@ -215,12 +206,6 @@ export class LeaveManagementComponent {
 
   style(code: string) {
     return CODE_STYLE[code] ?? 'bg-surface-subtle text-ink-500';
-  }
-
-  cycle(agentId: string, dayIndex: number, code: string) {
-    if (!this.ui.requires('Manage Leave & Attendance')) return;
-    const next = CYCLE[(CYCLE.indexOf(code) + 1) % CYCLE.length];
-    this.store.setAttendance(agentId, dayIndex, next);
   }
 
   async override() {

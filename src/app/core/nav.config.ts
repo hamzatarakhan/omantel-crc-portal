@@ -75,9 +75,11 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: 'Workforce Analytics', path: 'analytics', icon: 'insights', perms: VIEW_AGENTS },
       { label: 'Recruitment & Interview', path: 'recruitment', icon: 'person_search', perms: ['Manage Recruitment'] },
       { label: 'Performance Monitoring', path: 'performance', icon: 'speed', perms: VIEW_AGENTS },
-      { label: 'Performance & Overtime', path: 'performance-overtime', icon: 'query_stats', perms: VIEW_AGENTS },
+      { label: 'Performance, Overtime & Incentive', path: 'performance-overtime', icon: 'query_stats', perms: VIEW_AGENTS },
       { label: 'Performance Settings', path: 'performance-settings', icon: 'workspace_premium', perms: PAYROLL_SETTINGS, section: 'Payroll Settings' },
+      { label: 'Performance Rates', path: 'performance-rates', icon: 'payments', perms: PAYROLL_SETTINGS, section: 'Payroll Settings' },
       { label: 'Overtime Settings', path: 'overtime-settings', icon: 'more_time', perms: PAYROLL_SETTINGS, section: 'Payroll Settings' },
+      { label: 'Overtime Rates', path: 'overtime-rates', icon: 'payments', perms: PAYROLL_SETTINGS, section: 'Payroll Settings' },
     ],
   },
   {
@@ -99,6 +101,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: 'Reconciliation Workspace', path: 'reconciliation', icon: 'calculate', perms: ['Validate Invoice'] },
       { label: 'Create Invoice Item', path: 'create-item', icon: 'add_box', perms: ['Configure Payable Rules'] },
+      { label: 'Manage Service Incentive Files', path: 'ms-incentive-review', icon: 'fact_check', perms: ['Validate Invoice'] },
       { label: 'Payable Rule Config', path: 'rules', icon: 'tune', perms: ['Configure Payable Rules'] },
       { label: 'Payable Line Mapping', path: 'line-mapping', icon: 'link', perms: ['Configure Payable Rules'] },
       { label: 'Payment Tracking', path: 'tracking', icon: 'view_kanban', perms: ['Validate Invoice'] },
