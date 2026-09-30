@@ -167,7 +167,7 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Annexure needed': 'ambe
                     @if (l.note) { <span class="text-ink-400"> &middot; {{ l.note }}</span> }
                   </div>
                 </td>
-                <td class="text-right font-medium text-ink-900 tabular-nums">{{ needsTxInvoice(l) ? '—' : (l.calculated | number:'1.2-2') }}</td>
+                <td class="text-right font-medium text-ink-900 tabular-nums">{{ needsTxInvoice(l) ? '—' : (calculatedAmount(l) | number:'1.2-2') }}</td>
                 <td class="text-right">
                   @if (isSalary(l)) {
                     @if (annexureClaim(l) !== undefined) {
@@ -338,7 +338,7 @@ export class ReconciliationComponent {
   queryable = computed(() => this.lines().filter((l) => this.lineStatus(l.key) === 'Does not match' || this.lineStatus(l.key) === 'Queried with vendor'));
   approvedCount = computed(() => this.lines().length - this.openLines().length);
 
-  calculatedTotal = computed(() => this.lines().reduce((s, l) => s + l.calculated, 0));
+  calculatedTotal = computed(() => this.lines().reduce((s, l) => s + this.calculatedAmount(l), 0));
   vendorTotal = computed(() => this.lines().reduce((s, l) => s + this.vendorAmount(l.key), 0));
   diff = computed(() => this.vendorTotal() - this.calculatedTotal());
   diffLevel = computed<StatusLevel>(() => {
@@ -428,6 +428,10 @@ export class ReconciliationComponent {
   msIncentiveClaim(l: PayableLineItem) { return this.store.msIncentiveClaim(this.vendor()); }
   needsMsIncentive(l: PayableLineItem) { return this.isMsIncentiveLine(l) && this.msIncentiveClaim(l) === undefined; }
 
+  /** Yearly Performance has no file and no independent calculation — whatever the user types as the vendor invoice is taken as our figure too, so the two columns always agree. */
+  isYearlyPerformanceLine(l: PayableLineItem) { return l.component === 'yearlyPerformance'; }
+  calculatedAmount(l: PayableLineItem) { return this.isYearlyPerformanceLine(l) ? this.vendorAmount(l.key) : l.calculated; }
+
   isTxLine(l: PayableLineItem) { return !!l.txChannel; }
   txInvoice(l: PayableLineItem) { return l.txChannel ? this.store.transactionInvoiceFor(this.vendor(), l.txChannel) : undefined; }
   /** Voice and Chat have no independent calculation — the imported transaction invoice IS the figure, on both sides, until one is imported. */
@@ -446,11 +450,11 @@ export class ReconciliationComponent {
   }
 
   lineDiff(l: PayableLineItem) {
-    return this.vendorAmount(l.key) - l.calculated;
+    return this.vendorAmount(l.key) - this.calculatedAmount(l);
   }
 
   lineVariance(l: PayableLineItem) {
-    return l.calculated ? (this.lineDiff(l) / l.calculated) * 100 : 0;
+    const c = this.calculatedAmount(l); return c ? (this.lineDiff(l) / c) * 100 : 0;
   }
 
   same(l: PayableLineItem) {
@@ -510,7 +514,7 @@ export class ReconciliationComponent {
   }
 
   private details(keys: string[]): InvoiceLineDetail[] {
-    return this.lines().filter((l) => keys.includes(l.key)).map((l) => ({ key: l.key, label: l.label, calculated: l.calculated, vendorAmount: this.vendorAmount(l.key) }));
+    return this.lines().filter((l) => keys.includes(l.key)).map((l) => ({ key: l.key, label: l.label, calculated: this.calculatedAmount(l), vendorAmount: this.vendorAmount(l.key) }));
   }
 
   // ---------- actions ----------
@@ -549,7 +553,7 @@ export class ReconciliationComponent {
     const emp = l.component === 'salary' ? this.store.annexureEmployees(this.vendor()) : null;
     const employees = emp ? { fileName: emp.fileName, total: emp.rows.filter((r) => r.status !== 'Matches').length, rows: emp.rows.filter((r) => r.status !== 'Matches') } : undefined;
     const compare = this.store.annexureCompare(this.vendor(), l.component, this.lines().some((x) => x.component === 'fee')) ?? undefined;
-    return { key: l.key, label: l.label, linkedTo: l.component ? WFO_LABEL[l.component] : null, calculated: l.calculated, vendorAmount: this.vendorAmount(l.key), parts, basis: l.basis, note: l.note, compare, employees };
+    return { key: l.key, label: l.label, linkedTo: l.component ? WFO_LABEL[l.component] : null, calculated: this.calculatedAmount(l), vendorAmount: this.vendorAmount(l.key), parts, basis: l.basis, note: l.note, compare, employees };
   }
 
   /** The full explanation of one mismatched line, without sending anything. */

@@ -13,7 +13,7 @@ import { seedChanges } from './contract-monitoring';
 
 export const CURRENT_USER = 'Hamza Tarkan';
 
-export type WfoComponent = 'salary' | 'overtime' | 'performance' | 'incentive' | 'fee' | 'voice' | 'chat' | 'msIncentive';
+export type WfoComponent = 'salary' | 'overtime' | 'performance' | 'incentive' | 'fee' | 'voice' | 'chat' | 'msIncentive' | 'yearlyPerformance';
 
 /** Admin-configured rules for the per-agent Performance and Overtime lines. */
 /** An overtime rate formula for a vendor, a contract, a line (queue) or any mix of them; 'All' means any. */
@@ -71,8 +71,8 @@ export interface EmployeeCompareRow {
 export interface AgentBillRow { agent: Agent; kind: 'existing' | 'joiner'; rate: number; expected: number; billable: number; absent: number; /** Maternity leave (M/L) is not paid. */ maternity: number; amount: number; codes: string[] }
 /** One part of a Salary / Overtime figure: what we calculated against what the vendor's annexure says. */
 export interface AnnexureCompareRow { label: string; ours: number; theirs: number; oursDetail: string; theirsDetail: string }
-export const WFO_COMPONENTS: WfoComponent[] = ['salary', 'overtime', 'performance', 'incentive', 'fee', 'voice', 'chat', 'msIncentive'];
-export const WFO_LABEL: Record<WfoComponent, string> = { salary: 'Salary', overtime: 'Overtime', performance: 'Performance', incentive: 'Incentive', fee: 'Management fee', voice: 'Voice', chat: 'Chat', msIncentive: 'Manage Service Incentive' };
+export const WFO_COMPONENTS: WfoComponent[] = ['salary', 'overtime', 'performance', 'incentive', 'fee', 'voice', 'chat', 'msIncentive', 'yearlyPerformance'];
+export const WFO_LABEL: Record<WfoComponent, string> = { salary: 'Salary', overtime: 'Overtime', performance: 'Performance', incentive: 'Incentive', fee: 'Management fee', voice: 'Voice', chat: 'Chat', msIncentive: 'Manage Service Incentive', yearlyPerformance: 'Yearly Performance' };
 /** One PO line (of every active contract) a user can link to a calculated component, so Reconciliation knows to bill it from WFO instead of the contract's yearly share. */
 export interface PayableLineCatalogItem { key: string; vendorName: string; contractRef: string; contractName: string; label: string; scope: string; component: WfoComponent | null }
 const addMonthsIso = (iso: string, n: number) => { const [y, m] = iso.split('-').map(Number); const d = new Date(Date.UTC(y, m - 1 + n, 1)); return d.toISOString().slice(0, 10); };
@@ -929,7 +929,7 @@ export class CrcStore {
 
   /** First-run guess at each line's component, by name (Salary/Overtime/Performance/Incentive/Management fee) — a starting point the user can change on Payable Line Mapping. */
   private seedLineMapping(): Record<string, WfoComponent> {
-    const guess: Array<[RegExp, WfoComponent]> = [[/^salary$/i, 'salary'], [/^over ?time$/i, 'overtime'], [/^performance$/i, 'performance'], [/^incentive$/i, 'incentive'], [/management fee/i, 'fee'], [/^voice$/i, 'voice'], [/^chat$/i, 'chat'], [/manage ?service incentive/i, 'msIncentive']];
+    const guess: Array<[RegExp, WfoComponent]> = [[/^salary$/i, 'salary'], [/^over ?time$/i, 'overtime'], [/^performance$/i, 'performance'], [/^incentive$/i, 'incentive'], [/management fee/i, 'fee'], [/^voice$/i, 'voice'], [/^chat$/i, 'chat'], [/manage ?service incentive/i, 'msIncentive'], [/^yearly performance$/i, 'yearlyPerformance']];
     const map: Record<string, WfoComponent> = {};
     for (const c of this.contracts().filter((x) => x.status !== 'Cancelled')) {
       for (const l of this.currentLines(c)) {
@@ -985,14 +985,17 @@ export class CrcStore {
       const tx = txChannel ? this.transactionInvoiceFor(vendorName, txChannel) : undefined;
       const isMsIncentive = mapped === 'msIncentive';
       const msi = isMsIncentive ? this.msIncentiveInvoices()[vendorName] : undefined;
+      const isYearlyPerf = mapped === 'yearlyPerformance';
       const share = Math.round((l.allocated / months) * 1000) / 1000;
       const calculated = txChannel ? (tx?.totalInvoicedAmount ?? 0) : isMsIncentive ? (msi?.total ?? 0) : share;
       const basis = txChannel
         ? (tx ? `From the imported ${txChannel} transaction invoice (${tx.fileName}) — ${tx.invoicedTransactions.toLocaleString('en-GB')} invoiced transactions × ${tx.rate} OMR` : `No ${txChannel} invoice imported yet — nothing to calculate until one is.`)
         : isMsIncentive
         ? (msi ? `From the imported Manage Service Incentive file (${msi.fileName}) — ${msi.rows.length} categor${msi.rows.length === 1 ? 'y' : 'ies'}` : 'No Manage Service Incentive file imported yet — nothing to calculate until one is.')
+        : isYearlyPerf
+        ? 'Entered manually each month — no file, no independent calculation; whatever is entered is taken as our figure.'
         : `${year!.description.split(' — ')[0]} allocation ${l.allocated.toLocaleString('en-GB')} OMR ÷ ${months} month${months === 1 ? '' : 's'}`;
-      return { key, label: l.description, calculated, source: 'contract' as const, component: txChannel || isMsIncentive ? mapped : undefined, txChannel, msIncentive: isMsIncentive || undefined, basis };
+      return { key, label: l.description, calculated, source: 'contract' as const, component: txChannel || isMsIncentive || isYearlyPerf ? mapped : undefined, txChannel, msIncentive: isMsIncentive || undefined, basis };
     });
     if (!billing) return lines;
 
