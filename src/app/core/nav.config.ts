@@ -98,6 +98,7 @@ export const NAV_GROUPS: NavGroup[] = [
     basePath: '/invoicing',
     items: [
       { label: 'Reconciliation Workspace', path: 'reconciliation', icon: 'calculate', perms: ['Validate Invoice'] },
+      { label: 'Create Invoice Item', path: 'create-item', icon: 'add_box', perms: ['Configure Payable Rules'] },
       { label: 'Payable Rule Config', path: 'rules', icon: 'tune', perms: ['Configure Payable Rules'] },
       { label: 'Payable Line Mapping', path: 'line-mapping', icon: 'link', perms: ['Configure Payable Rules'] },
       { label: 'Payment Tracking', path: 'tracking', icon: 'view_kanban', perms: ['Validate Invoice'] },

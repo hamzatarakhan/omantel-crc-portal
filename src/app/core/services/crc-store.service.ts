@@ -75,6 +75,8 @@ export const WFO_COMPONENTS: WfoComponent[] = ['salary', 'overtime', 'performanc
 export const WFO_LABEL: Record<WfoComponent, string> = { salary: 'Salary', overtime: 'Overtime', performance: 'Performance', incentive: 'Incentive', fee: 'Management fee', voice: 'Voice', chat: 'Chat', msIncentive: 'Manage Service Incentive', yearlyPerformance: 'Yearly Performance' };
 /** One PO line (of every active contract) a user can link to a calculated component, so Reconciliation knows to bill it from WFO instead of the contract's yearly share. */
 export interface PayableLineCatalogItem { key: string; vendorName: string; contractRef: string; contractName: string; label: string; scope: string; component: WfoComponent | null }
+/** An invoice item added by hand from "Create Invoice Item" — sits alongside the ERP's own PO lines on Reconciliation and Payable Line Mapping. */
+export interface CustomInvoiceItem { id: string; contractRef: string; vendorName: string; label: string; scope: string; allocated: number; component: WfoComponent | null; createdAt: string; createdBy: string }
 const addMonthsIso = (iso: string, n: number) => { const [y, m] = iso.split('-').map(Number); const d = new Date(Date.UTC(y, m - 1 + n, 1)); return d.toISOString().slice(0, 10); };
 /** The contract's flat management fee per employee per month (OMR). */
 export const FLAT_MANAGEMENT_FEE = 116;
@@ -351,6 +353,8 @@ export class CrcStore {
   readonly overtimeInvoices = signal<Record<string, OvertimeImport>>({});
   /** The vendor's monthly Manage Service Incentive workbook, one per vendor — there is no independent calculation for it, so its own total is what is paid. */
   readonly msIncentiveInvoices = signal<Record<string, MsIncentiveImport>>({});
+  /** Invoice items added by hand from "Create Invoice Item" — on top of whatever PO lines the ERP has for the contract. */
+  readonly customInvoiceItems = signal<CustomInvoiceItem[]>([]);
   /** First day of the billing month. Our own agents, payroll and attendance are the WFO's (synced daily); an annexure import never changes them. */
   readonly periodStart = signal(WFO_REFERENCE.periodStart);
   readonly payroll = signal<Record<string, PayrollLine>>(this.seedPayroll());
@@ -943,13 +947,20 @@ export class CrcStore {
   /** Every PO line of every active contract, and which calculated component (if any) it is linked to — the full list for Payable Line Mapping. */
   payableLineCatalog(): PayableLineCatalogItem[] {
     const mapping = this.lineMapping();
+    const customs = this.customInvoiceItems();
     return this.contracts()
       .filter((c) => c.status !== 'Cancelled')
       .sort((a, b) => infolineFirst(a.vendorName, b.vendorName) || a.reference.localeCompare(b.reference))
-      .flatMap((c) => this.currentLines(c).map((l): PayableLineCatalogItem => {
-        const key = `${c.reference}|L${l.line}`;
-        return { key, vendorName: c.vendorName, contractRef: c.reference, contractName: c.name, label: l.description, scope: l.scope, component: mapping[key] ?? null };
-      }));
+      .flatMap((c) => [
+        ...this.currentLines(c).map((l): PayableLineCatalogItem => {
+          const key = `${c.reference}|L${l.line}`;
+          return { key, vendorName: c.vendorName, contractRef: c.reference, contractName: c.name, label: l.description, scope: l.scope, component: mapping[key] ?? null };
+        }),
+        ...customs.filter((i) => i.contractRef === c.reference).map((i): PayableLineCatalogItem => {
+          const key = `${c.reference}|C${i.id}`;
+          return { key, vendorName: c.vendorName, contractRef: c.reference, contractName: c.name, label: i.label, scope: i.scope, component: mapping[key] ?? i.component ?? null };
+        }),
+      ]);
   }
 
   /** Links (or unlinks) one PO line to a calculated component from the Payable Line Mapping screen. */
@@ -961,6 +972,25 @@ export class CrcStore {
     });
     this.invoiceRuns.set({});
     this.log('Payable Line Mapping Changed', key, component ? `Linked to ${WFO_LABEL[component]}. Invoices must be re-validated.` : 'Unlinked — this line goes back to its contract share. Invoices must be re-validated.');
+  }
+
+  /** Adds a new invoice item by hand, alongside whatever PO lines the ERP already has for the contract. */
+  addInvoiceItem(input: { contractRef: string; vendorName: string; label: string; scope: string; allocated: number; component: WfoComponent | null }): string {
+    const id = 'CI-' + this.next();
+    const item: CustomInvoiceItem = { ...input, id, createdAt: new Date().toISOString(), createdBy: CURRENT_USER };
+    this.customInvoiceItems.update((list) => [...list, item]);
+    if (input.component) this.setLineMapping(`${input.contractRef}|C${id}`, input.component);
+    this.log('Invoice Item Created', input.label, `${input.vendorName} · ${input.contractRef}: ${input.allocated.toLocaleString('en-GB')} OMR/year${input.component ? ', linked to ' + WFO_LABEL[input.component] : ', contract share'}.`);
+    this.notify(`New invoice item "${input.label}" added for ${input.vendorName}.`, 'Invoicing & Payments', 'info', '/invoicing/reconciliation');
+    return id;
+  }
+
+  removeInvoiceItem(id: string) {
+    const item = this.customInvoiceItems().find((i) => i.id === id);
+    if (!item) return;
+    this.customInvoiceItems.update((list) => list.filter((i) => i.id !== id));
+    this.setLineMapping(`${item.contractRef}|C${id}`, null);
+    this.log('Invoice Item Removed', item.label, `${item.vendorName} · ${item.contractRef}.`);
   }
 
   /**
@@ -978,15 +1008,14 @@ export class CrcStore {
     const year = yearlyBudgetFor(c, kids).find((y) => y.startDate <= period && y.endDate >= period) ?? yearlyBudgetFor(c, kids).slice(-1)[0];
     const months = year ? Math.max(1, Math.round((new Date(year.endDate).getTime() - new Date(year.startDate).getTime()) / 2629800000)) : 1;
     const mapping = this.lineMapping();
-    const lines: PayableLineItem[] = (year?.lines ?? []).map((l) => {
-      const key = `${c.reference}|L${l.line}`;
+    const buildLine = (key: string, label: string, allocated: number, shareBasis: string): PayableLineItem => {
       const mapped = mapping[key];
       const txChannel: TxChannel | undefined = mapped === 'voice' ? 'Voice' : mapped === 'chat' ? 'Chat' : undefined;
       const tx = txChannel ? this.transactionInvoiceFor(vendorName, txChannel) : undefined;
       const isMsIncentive = mapped === 'msIncentive';
       const msi = isMsIncentive ? this.msIncentiveInvoices()[vendorName] : undefined;
       const isYearlyPerf = mapped === 'yearlyPerformance';
-      const share = Math.round((l.allocated / months) * 1000) / 1000;
+      const share = Math.round((allocated / months) * 1000) / 1000;
       const calculated = txChannel ? (tx?.totalInvoicedAmount ?? 0) : isMsIncentive ? (msi?.total ?? 0) : share;
       const basis = txChannel
         ? (tx ? `From the imported ${txChannel} transaction invoice (${tx.fileName}) — ${tx.invoicedTransactions.toLocaleString('en-GB')} invoiced transactions × ${tx.rate} OMR` : `No ${txChannel} invoice imported yet — nothing to calculate until one is.`)
@@ -994,9 +1023,15 @@ export class CrcStore {
         ? (msi ? `From the imported Manage Service Incentive file (${msi.fileName}) — ${msi.rows.length} categor${msi.rows.length === 1 ? 'y' : 'ies'}` : 'No Manage Service Incentive file imported yet — nothing to calculate until one is.')
         : isYearlyPerf
         ? 'Entered manually each month — no file, no independent calculation; whatever is entered is taken as our figure.'
-        : `${year!.description.split(' — ')[0]} allocation ${l.allocated.toLocaleString('en-GB')} OMR ÷ ${months} month${months === 1 ? '' : 's'}`;
-      return { key, label: l.description, calculated, source: 'contract' as const, component: txChannel || isMsIncentive || isYearlyPerf ? mapped : undefined, txChannel, msIncentive: isMsIncentive || undefined, basis };
-    });
+        : shareBasis;
+      return { key, label, calculated, source: 'contract' as const, component: txChannel || isMsIncentive || isYearlyPerf ? mapped : undefined, txChannel, msIncentive: isMsIncentive || undefined, basis };
+    };
+    const lines: PayableLineItem[] = (year?.lines ?? []).map((l) =>
+      buildLine(`${c.reference}|L${l.line}`, l.description, l.allocated, `${year!.description.split(' — ')[0]} allocation ${l.allocated.toLocaleString('en-GB')} OMR ÷ ${months} month${months === 1 ? '' : 's'}`));
+    // Invoice items added manually from "Create Invoice Item" — their own approved yearly allocation, on top of the ERP's PO lines.
+    for (const item of this.customInvoiceItems().filter((i) => i.contractRef === contractRef)) {
+      lines.push(buildLine(`${c.reference}|C${item.id}`, item.label, item.allocated, `Approved allocation ${item.allocated.toLocaleString('en-GB')} OMR/year ÷ ${months} month${months === 1 ? '' : 's'}`));
+    }
     if (!billing) return lines;
 
     const calc = this.calculateInvoice(vendorName);
