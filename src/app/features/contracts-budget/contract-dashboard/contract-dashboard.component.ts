@@ -62,6 +62,7 @@ const AGENT_VENDORS = ['Infoline', 'Green Umbrella', 'OJT'] as const;
       </div>
     }
 
+    @if (!store.ownVendor()) {
     <div [class]="'grid grid-cols-2 gap-3 mb-4 ' + (showSyncErrorsCard ? 'lg:grid-cols-4' : 'lg:grid-cols-3')">
       <a routerLink="/contracts-budget/sync-history" class="surface-card px-4 py-3 hover:border-brand-300 transition-colors" title="Open the run history"><div class="text-xs text-ink-400">Automated synchronization</div><div class="text-sm font-semibold mt-0.5" [class]="syncHealthy() ? 'text-status-normal' : 'text-status-red'">{{ !ops.syncConfig().enabled ? 'Switched off' : syncHealthy() ? 'Running · ' + ops.syncConfig().frequency.toLowerCase() : 'Last run failed — data retained' }}</div></a>
       <div class="surface-card px-4 py-3"><div class="text-xs text-ink-400">Last synchronization</div><div class="text-sm font-semibold text-ink-900 mt-0.5">{{ lastSync() }}</div></div>
@@ -70,6 +71,7 @@ const AGENT_VENDORS = ['Infoline', 'Green Umbrella', 'OJT'] as const;
         <a routerLink="/contracts-budget/sync-errors" class="surface-card px-4 py-3 hover:border-brand-300 transition-colors" title="Open the error log"><div class="text-xs text-ink-400">Synchronization errors</div><div class="text-sm font-semibold mt-0.5" [class]="openErrors() ? 'text-status-red' : 'text-status-normal'">{{ openErrors() }} open · {{ ops.errorLog().length }} logged</div></a>
       }
     </div>
+    }
 
     <!-- Counts across contracts only mean something when more than one contract is in view. -->
     @if (!selectedContract()) {

@@ -39,7 +39,7 @@ export const NAV_GROUPS: NavGroup[] = [
     sections: { Monitoring: 'fact_check', Synchronization: 'sync', Budget: 'account_balance_wallet', 'CSR Forecast': 'query_stats' },
     items: [
       { label: 'General Dashboard', path: 'general-dashboard', icon: 'space_dashboard', perms: ['View General Dashboard'] },
-      { label: 'Contract Dashboard', path: 'dashboard', icon: 'dashboard', perms: ['View Dashboards'] },
+      { label: 'Contract Dashboard', path: 'dashboard', icon: 'dashboard', perms: ['View Dashboards', 'View Contract Details'] },
       { label: 'Contract Trends', path: 'trends', icon: 'show_chart', perms: ['View Dashboards'] },
       { label: 'Contract List', path: 'contracts', icon: 'list_alt', perms: VIEW_CONTRACTS },
       { label: 'Contract Reports', path: 'reports', icon: 'summarize', perms: VIEW_CONTRACTS },
