@@ -508,10 +508,10 @@ export class CrcStore {
     if (!ref) return;
     const lines = this.payableLines(vendorName, ref);
     const docs = [
-      { kind: 'Invoice', name: 'infoline-invoice-jan-2026.pdf', size: 184000 },
-      { kind: 'Payment Certificate', name: 'infoline-payment-certificate-jan-2026.pdf', size: 96000 },
-      { kind: 'Other', name: 'infoline-supporting-documents.pdf', size: 64000 },
-    ];
+      { kind: 'Invoice', name: 'infoline-invoice-jan-2026.pdf', size: 1 },
+      { kind: 'Payment Certificate', name: 'infoline-payment-certificate-jan-2026.pdf', size: 1 },
+      { kind: 'Other', name: 'infoline-supporting-documents.pdf', size: 1 },
+    ].map((d) => ({ ...d, ...this.demoPdf(d.kind === 'Other' ? 'Supporting document' : d.kind, vendorName) }));
     const seed = (component: WfoComponent, status: 'Submitted for approval' | 'Rejected', rejectReason?: string): InvoiceRun[] => {
       const l = lines.find((x) => x.component === component);
       if (!l) return [];
@@ -519,6 +519,19 @@ export class CrcStore {
     };
     const runs = [...seed('performance', 'Submitted for approval'), ...seed('incentive', 'Submitted for approval'), ...seed('yearlyPerformance', 'Submitted for approval'), ...seed('project', 'Rejected', 'The amount is not supported by the attached documents.')];
     if (runs.length) this.invoiceRuns.set({ [vendorName]: runs });
+  }
+
+  /** A small real PDF so the seeded documents can be opened and downloaded. ponytail: stand-in for the document store — replace with the stored file's URL. */
+  private demoPdf(title: string, vendor: string): { size: number; url: string } {
+    const text = `${title} (demo) - ${vendor} - ${this.period()}`.replace(/[()\\]/g, '');
+    const stream = `BT /F1 16 Tf 50 750 Td (${text}) Tj ET`;
+    const objs = ['<</Type/Catalog/Pages 2 0 R>>', '<</Type/Pages/Kids[3 0 R]/Count 1>>', '<</Type/Page/Parent 2 0 R/MediaBox[0 0 595 842]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>', `<</Length ${stream.length}>>\nstream\n${stream}\nendstream`, '<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>'];
+    let pdf = '%PDF-1.4\n';
+    const offs: number[] = [];
+    objs.forEach((o, i) => { offs.push(pdf.length); pdf += `${i + 1} 0 obj\n${o}\nendobj\n`; });
+    const x = pdf.length;
+    pdf += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n` + offs.map((o) => String(o).padStart(10, '0') + ' 00000 n \n').join('') + `trailer<</Size ${objs.length + 1}/Root 1 0 R>>\nstartxref\n${x}\n%%EOF`;
+    return { size: pdf.length, url: URL.createObjectURL(new Blob([pdf], { type: 'application/pdf' })) };
   }
 
   /** A vendor sends validated lines to Billing with the invoice and payment certificate attached — only while the claiming period is open. */
