@@ -643,7 +643,7 @@ export class CrcStore {
     const allowed = (perms?: string[]) => !perms || perms.some((p) => grid[`${p}|${role}`]);
     return NAV_GROUPS
       .filter((g) => !g.hidden && (!g.adminOnly || role === 'System Admin'))
-      .map((g) => ({ ...g, items: g.items.filter((i) => !i.hidden && allowed(i.perms)) }))
+      .map((g) => ({ ...g, items: g.items.filter((i) => !i.hidden && allowed(i.perms)).map((i) => (role === VENDOR_ROLE && i.vendorLabel ? { ...i, label: i.vendorLabel } : i)) }))
       .filter((g) => g.items.length > 0);
   });
 

@@ -8,6 +8,8 @@ export interface NavItem {
   section?: string;
   /** Not in the SRS: kept in the code but removed from the menu and from direct links. */
   hidden?: boolean;
+  /** The name a vendor sees instead of `label`. */
+  vendorLabel?: string;
 }
 
 export interface NavGroup {
@@ -99,7 +101,7 @@ export const NAV_GROUPS: NavGroup[] = [
     icon: 'receipt_long',
     basePath: '/invoicing',
     items: [
-      { label: 'Reconciliation Workspace', path: 'reconciliation', icon: 'calculate', perms: ['Validate Invoice', 'Approve Invoice'] },
+      { label: 'Reconciliation Workspace', vendorLabel: 'Claiming', path: 'reconciliation', icon: 'calculate', perms: ['Validate Invoice', 'Approve Invoice'] },
       { label: 'Create Invoice Item', path: 'create-item', icon: 'add_box', perms: ['Configure Payable Rules'] },
       { label: 'Manage Service Incentive Files', path: 'ms-incentive-review', icon: 'fact_check', perms: ['Validate Invoice', 'Approve Invoice'] },
       { label: 'Payable Rule Config', path: 'rules', icon: 'tune', perms: ['Configure Payable Rules'] },

@@ -37,9 +37,9 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Annexure needed': 'ambe
   imports: [RequiresDirective, AnnexureComponent, TransactionInvoiceComponent, OvertimeFileComponent, MsIncentiveComponent, CommonModule, FormsModule, RouterModule, MatIconModule, PageHeaderComponent, StatusChipComponent, KpiCardComponent],
   template: `
     <app-page-header
-      title="Reconciliation Workspace"
-      subtitle="Check what a vendor invoiced on a contract against our calculation, line by line — approve what matches, query the rest with the vendor"
-      [breadcrumbs]="[{ label: 'Invoicing & Payments', link: '/invoicing/reconciliation' }, { label: 'Reconciliation Workspace' }]"
+      [title]="store.ownVendor() ? 'Claiming' : 'Reconciliation Workspace'"
+      [subtitle]="store.ownVendor() ? 'Claim your invoice line by line — import your files, validate against our calculation, then submit for approval' : 'Check what a vendor invoiced on a contract against our calculation, line by line — approve what matches, query the rest with the vendor'"
+      [breadcrumbs]="[{ label: 'Invoicing & Payments', link: '/invoicing/reconciliation' }, { label: store.ownVendor() ? 'Claiming' : 'Reconciliation Workspace' }]"
     >
       @if (store.ownVendor()) {
         <span class="status-chip" [class]="claimingClosed() ? 'status-chip--neutral' : 'status-chip--normal'">{{ claimingClosed() ? 'Claiming closed' : 'Claiming open until ' + (store.claimingPeriod().endAt | date:'d MMM, HH:mm') }}</span>
