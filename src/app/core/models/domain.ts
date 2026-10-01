@@ -263,7 +263,7 @@ export interface VendorQuery {
   sentBy: string;
 }
 
-export type InvoiceRunStatus = 'Not started' | 'Validated' | 'Flagged for review' | 'Approved for payment';
+export type InvoiceRunStatus = 'Not started' | 'Validated' | 'Flagged for review' | 'Submitted for approval' | 'Rejected' | 'Approved for payment';
 
 /** One payable line (Salary, Overtime, Performance Incentive, ...) as validated: the system's own figure next to what the vendor is claiming. */
 export interface InvoiceLineDetail {
@@ -271,6 +271,35 @@ export interface InvoiceLineDetail {
   label: string;
   calculated: number;
   vendorAmount: number;
+}
+
+/** A manual Addition or Deduction the vendor adds to the invoice before submitting it (e.g. a sick-leave correction from a previous month), with the reason in free text. */
+export interface InvoiceAdjustment {
+  type: 'Addition' | 'Deduction';
+  amount: number;
+  reason: string;
+  /** Set when the adjustment was added automatically from a previous-month attendance change. */
+  changeId?: string;
+}
+
+/** A previous-month attendance record changed after it was reported, with the pay adjustment it caused — kept for reconciliation and audit. */
+export interface AttendanceChange {
+  id: string;
+  agentId: string;
+  employeeId: string;
+  agentName: string;
+  vendor: Agent['vendor'];
+  date: string;
+  original: string;
+  updated: string;
+  note: string;
+  type: 'Addition' | 'Deduction';
+  amount: number;
+  reason: string;
+  detectedAt: string;
+  status: 'Pending' | 'Included in claim';
+  /** What was sent to the agent: an SMS and an email, each in English and Arabic. */
+  notifications: Array<{ channel: 'SMS' | 'Email'; to: string; text: string }>;
 }
 
 /** A validate/approve pass over a chosen subset of a vendor's payable lines — a vendor can be paid one line, or several, at a time. */
@@ -283,6 +312,12 @@ export interface InvoiceRun {
   variancePct: number;
   status: InvoiceRunStatus;
   paymentId?: string;
+  /** What the vendor attached when submitting the line for approval: the invoice, the payment certificate and any other documents. */
+  documents?: Array<{ kind: string; name: string; size: number; url?: string }>;
+  submittedAt?: string;
+  rejectReason?: string;
+  /** The vendor's manual adjustments to the invoice, carried by the first line of the submission. */
+  adjustments?: InvoiceAdjustment[];
 }
 
 export interface AppUser {
@@ -291,6 +326,17 @@ export interface AppUser {
   email: string;
   role: string;
   active: boolean;
+  /** Which vendor this user represents — set only for role === 'Vendor'. */
+  vendorName?: string;
+}
+
+// ---------- Vendor claiming portal ----------
+export interface ClaimingPeriod {
+  startAt: string;
+  endAt: string;
+  active: boolean;
+  /** 'All' or a list of contract references the window applies to. */
+  contractRefs: string[] | 'All';
 }
 
 export const ATTENDANCE_CODES = ['P', 'OFF', 'A', 'S/L', 'C/L', 'M/L', 'P/L', 'SP', 'ST/L', 'AS'] as const;

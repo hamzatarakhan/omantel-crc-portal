@@ -54,6 +54,7 @@ export class MsIncentiveComponent {
     try {
       const data = await parseMsIncentiveFile(file);
       this.store.importMsIncentiveInvoice(this.vendor(), data);
+      this.store.rememberFile(this.vendor() + '|msIncentive', file);
       this.ui.toast(`Loaded ${data.rows.length} categories, ${data.total.toLocaleString('en-GB')} OMR, from ${file.name} — ready to approve.`, 6000);
     } catch (e) {
       this.ui.toast(e instanceof Error ? e.message : 'The workbook could not be read.', 6000);

@@ -138,6 +138,31 @@ const join = (v: string[] | string, sep: string, order?: string[]) => (Array.isA
           </div>
         </div>
       </mat-tab>
+
+      <!-- ================= Claiming Period ================= -->
+      <mat-tab label="Claiming Period">
+        <div class="pt-4 grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
+          <div class="surface-card px-5 py-4 xl:col-span-2">
+            <div class="flex items-center justify-between gap-3 flex-wrap">
+              <h3 class="text-[13.5px] font-bold text-ink-900">Vendor invoice claiming window</h3>
+              <button mat-flat-button color="primary" (click)="claimingPeriodForm()" appRequires="Configure Claiming Period"><mat-icon class="!text-base !mr-1">edit</mat-icon>Edit</button>
+            </div>
+            <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 mt-4 text-sm">
+              <div><dt class="text-xs text-ink-400">Opens</dt><dd class="font-medium text-ink-900">{{ claimingPeriod().startAt | date:'d MMM y, h:mm a' }}</dd></div>
+              <div><dt class="text-xs text-ink-400">Closes</dt><dd class="font-medium text-ink-900">{{ claimingPeriod().endAt | date:'d MMM y, h:mm a' }}</dd></div>
+              <div class="sm:col-span-2"><dt class="text-xs text-ink-400">Applies to</dt><dd class="font-medium text-ink-900">{{ scopeText() }}</dd></div>
+            </dl>
+            <p class="text-xs text-ink-500 mt-4 leading-relaxed">While open, vendors signed in to the vendor claiming portal can submit invoice claims against their own active contracts. Outside this window, submission is blocked. Opening the window is meant to email every vendor user — there is no live mailbox in this prototype, so that step is simulated in the audit log only.</p>
+          </div>
+          <div class="surface-card px-5 py-4">
+            <h3 class="text-[13.5px] font-bold text-ink-900">Right now</h3>
+            <dl class="grid gap-y-3 mt-3 text-sm">
+              <div><dt class="text-xs text-ink-400">Status</dt><dd><app-status-chip [label]="store.isClaimingOpen() ? 'Open' : 'Closed'" [level]="store.isClaimingOpen() ? 'normal' : 'neutral'"></app-status-chip></dd></div>
+              <div><dt class="text-xs text-ink-400">Active contracts eligible</dt><dd class="font-medium text-status-amber">{{ claimableContracts() }}</dd></div>
+            </dl>
+          </div>
+        </div>
+      </mat-tab>
     </mat-tab-group>
   `,
 })
@@ -314,5 +339,43 @@ export class NotificationConfigComponent {
       recipients: join(v['recipients'], ', ', RECIPIENTS), channel: join(v['channel'], ' + ', CHANNELS), continueUntilExpiry: v['continueUntilExpiry'] === 'Yes', active: v['active'] === 'Active',
     });
     this.ui.toast('Contract expiry reminders saved.');
+  }
+
+  // ---------- claiming period ----------
+  claimingPeriod = this.store.claimingPeriod;
+  claimableContracts = computed(() => {
+    const scope = this.claimingPeriod().contractRefs;
+    return this.store.contracts().filter((c) => c.recordType === 'Contract' && (c.status === 'Active' || c.status === 'Expiring Soon') && (scope === 'All' || scope.includes(c.reference))).length;
+  });
+  scopeText = computed(() => { const s = this.claimingPeriod().contractRefs; return s === 'All' ? 'All contracts' : s.length + ' selected contract' + (s.length === 1 ? '' : 's') + ': ' + s.join(', '); });
+
+  /** Converts an ISO instant to the value a <input type="datetime-local"> form field needs ("YYYY-MM-DDTHH:mm"), and back. */
+  private toLocalInput(iso: string) {
+    const d = new Date(iso);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  async claimingPeriodForm() {
+    if (!this.ui.requires('Configure Claiming Period')) return;
+    const p = this.claimingPeriod();
+    const v = await this.ui.form({
+      title: 'Vendor invoice claiming window', subtitle: 'Vendors can submit claims only while this window is open and active', icon: 'event_available', submitLabel: 'Save',
+      values: { startAt: this.toLocalInput(p.startAt), endAt: this.toLocalInput(p.endAt), active: p.active ? 'Active' : 'Inactive', scope: p.contractRefs === 'All' ? 'All contracts' : 'Selected contracts', contracts: p.contractRefs === 'All' ? [] : p.contractRefs },
+      fields: [
+        { key: 'startAt', label: 'Opens', type: 'datetime-local', required: true },
+        { key: 'endAt', label: 'Closes', type: 'datetime-local', required: true },
+        { key: 'scope', label: 'Applies to', type: 'select', options: ['All contracts', 'Selected contracts'], required: true },
+        { key: 'contracts', label: 'Contracts', type: 'multiselect', options: this.store.contracts().filter((c) => c.recordType === 'Contract' && (c.status === 'Active' || c.status === 'Expiring Soon')).map((c) => ({ value: c.reference, label: c.reference + ' — ' + c.vendorName })), showIf: (m) => m['scope'] === 'Selected contracts' },
+        { key: 'active', label: 'Status', type: 'select', options: ['Active', 'Inactive'], required: true, hint: 'Switch off to block claiming even inside the window above.' },
+      ],
+    });
+    if (!v) return;
+    if (v['scope'] === 'Selected contracts' && !(v['contracts'] as string[]).length) { this.ui.toast('Pick at least one contract, or choose All contracts.'); return; }
+    const startAt = new Date(v['startAt']).toISOString();
+    const endAt = new Date(v['endAt']).toISOString();
+    if (new Date(endAt) <= new Date(startAt)) { this.ui.toast('The closing date must be after the opening date.'); return; }
+    this.store.saveClaimingPeriod({ startAt, endAt, active: v['active'] === 'Active', contractRefs: v['scope'] === 'Selected contracts' ? (v['contracts'] as string[]) : 'All' });
+    this.ui.toast('Claiming window saved.');
   }
 }

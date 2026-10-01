@@ -3,12 +3,15 @@ import { ShellComponent } from './core/layout/shell/shell.component';
 import { roleGuard } from './core/role.guard';
 
 export const routes: Routes = [
+  { path: 'login', loadComponent: () => import('./features/vendor-portal/login/vendor-login.component').then((m) => m.VendorLoginComponent) },
   {
     path: '',
     component: ShellComponent,
     canActivateChild: [roleGuard],
     children: [
       { path: '', pathMatch: 'full', redirectTo: 'contracts-budget/dashboard' },
+
+
 
       // Contracts & Budget
       { path: 'contracts-budget/general-dashboard', loadComponent: () => import('./features/contracts-budget/general-dashboard/general-dashboard.component').then((m) => m.GeneralDashboardComponent) },

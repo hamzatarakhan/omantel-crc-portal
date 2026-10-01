@@ -1,8 +1,8 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { WFO_REFERENCE } from './wfo-reference';
 import {
-  Agent, AnnexureImport, AppNotification, AppUser, AuditEntry, BudgetLine, Candidate, CandidateStatus, Contract, IdDocument,
-  InterviewQuestion, InvoiceLineDetail, InvoiceRun, MovementAnnouncement, MovementRequest, NotificationRule, PayableLine,
+  Agent, AnnexureImport, AppNotification, AppUser, AuditEntry, BudgetLine, Candidate, CandidateStatus, ClaimingPeriod, Contract, IdDocument,
+  InterviewQuestion, AttendanceChange, InvoiceAdjustment, InvoiceLineDetail, InvoiceRun, MovementAnnouncement, MovementRequest, NotificationRule, PayableLine,
   PayableRules, PaymentRecord, PayrollLine, PerformanceRecord, ResignationRecord, SyncRun, VendorQuery, WorkforceSnapshot,
 } from '../models/domain';
 import { StatusLevel, daysRemainingToLevel } from '../models/status';
@@ -109,19 +109,15 @@ export interface OvertimeCompareRow {
 export const VENDOR_CONTACT: Record<string, string> = { 'Infoline LLC': 'accounts@infoline.om', 'Green Umbrella Services': 'billing@greenumbrella.om' };
 export type ServiceClass = 'Secondment' | 'Managed Services · Voice' | 'Managed Services · Non Voice';
 export const SERVICE_CLASSES: ServiceClass[] = ['Secondment', 'Managed Services · Voice', 'Managed Services · Non Voice'];
+const LEAVE_EN: Record<string, string> = { P: 'Present', OFF: 'Off day', A: 'Absent', 'S/L': 'Sick Leave', 'C/L': 'Annual Leave', 'M/L': 'Maternity Leave', 'P/L': 'Paternity Leave', SP: 'Compassionate Leave', 'ST/L': 'Study Leave', AS: 'Accompanying a sick family member' };
+const LEAVE_AR: Record<string, string> = { P: 'حاضر', OFF: 'يوم عطلة', A: 'غائب', 'S/L': 'إجازة مرضية', 'C/L': 'إجازة سنوية', 'M/L': 'إجازة أمومة', 'P/L': 'إجازة أبوة', SP: 'إجازة ظرفية', 'ST/L': 'إجازة دراسية', AS: 'مرافقة مريض' };
 export const ROLE_SUMMARY: Record<string, string> = {
-  'Top Management': 'The General Dashboard: budgets, expense, savings and active projects across contracts',
-  'Contract Mgmt Team': 'Contracts, budgets and forecasts',
-  'Contract Mgmt Manager': 'Contract risk, escalations and notification rules',
-  'Budget Owner': 'Contracts and budget approval',
-  'Line Manager': 'Adds and updates their own project requests and views past submissions',
-  'Project Manager': 'Project budget requests and their head count',
-  'Budget Team': 'Receives and reviews the submitted budget and team forecasts',
-  'Finance': 'Budgets, invoices, payments and the accrual forecast',
-  'Read-Only User': 'Views authorized contracts, budgets, projects and forecasts, without changing anything',
   'System Admin': 'Everything, plus access control and audit',
+  'Vendor': 'Imports, validates and submits invoice lines for their own contracts',
+  'Billing': 'Reviews submitted lines: approves or rejects, and sets the claiming period',
 };
-export const ROLES = ['Top Management', 'Contract Mgmt Team', 'Contract Mgmt Manager', 'Budget Owner', 'Line Manager', 'Project Manager', 'Finance', 'Budget Team', 'Read-Only User', 'System Admin'];
+export const ROLES = ['Vendor', 'Billing', 'System Admin'];
+export const VENDOR_ROLE = 'Vendor';
 
 export interface Permission { permission: string; module: string; }
 export const PERMISSIONS: Permission[] = [
@@ -153,31 +149,22 @@ export const PERMISSIONS: Permission[] = [
   { permission: 'View Agent Profiles', module: 'CSR Management' },
   { permission: 'Manage Recruitment', module: 'CSR Management' },
   { permission: 'View Employee Salary', module: 'CSR Management' },
+  { permission: 'View Leave & Attendance', module: 'CSR Management' },
   { permission: 'Manage Leave & Attendance', module: 'CSR Management' },
   { permission: 'Create Movement Announcement', module: 'Internal Project Movement' },
   { permission: 'Review/Approve Movement Requests', module: 'Internal Project Movement' },
   { permission: 'Validate Invoice', module: 'Invoicing & Payments' },
   { permission: 'Configure Payable Rules', module: 'Invoicing & Payments' },
+  { permission: 'Approve Invoice', module: 'Invoicing & Payments' },
+  { permission: 'Configure Claiming Period', module: 'Invoicing & Payments' },
 ];
 
-/** Who holds the permissions whose default (the whole module) does not fit. Finance is not a Contract Tracking actor. */
-const CT_ROLES = ['Contract Mgmt Team', 'Contract Mgmt Manager', 'Budget Owner'];
-const RO = 'Read-Only User';
-const SPECIAL: Record<string, string[]> = {
-  'View General Dashboard': ['Top Management', 'Budget Owner', 'Contract Mgmt Manager'], 'Classify Contracts': ['Contract Mgmt Team', 'Contract Mgmt Manager'],
-  'View Contracts': [...CT_ROLES, RO, 'Top Management'], 'View Contract Details': [...CT_ROLES, RO], 'View Sync History': CT_ROLES, 'View Attachments': [...CT_ROLES, RO], 'View Dashboards': [...CT_ROLES, RO, 'Top Management'], 'Export Contract Data': CT_ROLES,
-  'View Budget': ['Contract Mgmt Team', 'Contract Mgmt Manager', 'Budget Owner', 'Finance', 'Budget Team', 'Read-Only User'],
-  'Prepare/Edit Draft Budget': ['Contract Mgmt Team', 'Budget Owner'],
-  'Manage Budget Cycle': ['Budget Owner', 'Contract Mgmt Manager'],
-  'Submit Project Requests': ['Line Manager', 'Project Manager'],
-  'Approve Projects': ['Budget Owner'],
-  'View Accrual Forecast': ['Finance', 'Contract Mgmt Team', 'Contract Mgmt Manager', 'Budget Owner', 'Budget Team', RO],
-  'Edit Forecast': ['Contract Mgmt Team', 'Contract Mgmt Manager'],
-  'Configure Forecast': ['Contract Mgmt Manager'],
-  'Export Forecast': ['Finance', 'Contract Mgmt Team', 'Contract Mgmt Manager'],
-  'View Team Forecast': ['Contract Mgmt Team', 'Contract Mgmt Manager', 'Budget Owner', 'Budget Team', RO],
-  'View Transaction Forecast': ['Finance', 'Contract Mgmt Team', 'Contract Mgmt Manager', 'Budget Owner', 'Budget Team', RO],
+/** What each role may do, from the Vendor Invoice Claiming SRS. System Admin has everything. A vendor imports, validates and submits their own invoice lines (Validate Invoice); Billing, the CRC team, reviews the files and approves or rejects them (Approve Invoice). */
+const ROLE_GRANTS: Record<string, string[]> = {
+  Vendor: ['View Contracts', 'View Contract Details', 'View Leave & Attendance', 'Validate Invoice'],
+  Billing: ['View Contracts', 'View Contract Details', 'View Attachments', 'View Agent Profiles', 'View Leave & Attendance', 'Manage Leave & Attendance', 'Approve Invoice', 'Configure Payable Rules', 'Configure Claiming Period'],
 };
+
 
 export const INTERVIEW_QUESTIONS: InterviewQuestion[] = [
   { id: 'q1', category: 'Communication', text: 'Explain a billing charge to a customer who is upset, in clear simple language.' },
@@ -411,7 +398,7 @@ export class CrcStore {
   readonly overtimeRates = signal<Record<string, number>>({});
   /** Overtime formulas scoped to a vendor / contract / line; agents no rule covers use the default in payrollRules. */
   readonly overtimeRules = signal<OvertimeRule[]>([]);
-  readonly payableRules = signal<PayableRules>({ thresholdSeconds: 10, deviationPct: 2, perVendor: false, includeIncentive: false });
+  readonly payableRules = signal<PayableRules>({ thresholdSeconds: 10, deviationPct: 0, perVendor: false, includeIncentive: false });
   /** Which calculated component (if any) each PO line is billed from, keyed `${contractRef}|L${line}` — set on Payable Line Mapping, used by payableLines(). */
   readonly lineMapping = signal<Record<string, WfoComponent>>(this.seedLineMapping());
   /** Every validate/approve pass, per vendor, oldest first — a vendor can have several, one per subset of lines paid over time. */
@@ -422,12 +409,142 @@ export class CrcStore {
 
   readonly users = signal<AppUser[]>([
     { id: 'U1', name: 'Hamza Tarkan', email: 'hamza.tarkan@omantel.om', role: 'System Admin', active: true },
-    { id: 'U2', name: 'Salim Al-Habsi', email: 'salim.alhabsi@omantel.om', role: 'Contract Mgmt Team', active: true },
-    { id: 'U3', name: 'Mariam Al-Kindi', email: 'mariam.alkindi@omantel.om', role: 'Budget Owner', active: true },
-    { id: 'U4', name: 'Khalid Al-Farsi', email: 'khalid.alfarsi@omantel.om', role: 'Finance', active: true },
-    { id: 'U5', name: 'Noor Al-Rawahi', email: 'noor.alrawahi@omantel.om', role: 'Project Manager', active: true },
-    { id: 'U6', name: 'Talal Al-Amri', email: 'talal.alamri@omantel.om', role: 'Line Manager', active: false },
+    { id: 'U2', name: 'Salim Al-Habsi', email: 'salim.alhabsi@omantel.om', role: 'Billing', active: true },
+    { id: 'U3', name: 'Mariam Al-Kindi', email: 'mariam.alkindi@omantel.om', role: 'Billing', active: true },
+    { id: 'U4', name: 'Khalid Al-Farsi', email: 'khalid.alfarsi@omantel.om', role: 'Billing', active: true },
+    { id: 'U5', name: 'Noor Al-Rawahi', email: 'noor.alrawahi@omantel.om', role: 'Billing', active: true },
+    { id: 'U6', name: 'Talal Al-Amri', email: 'talal.alamri@omantel.om', role: 'Billing', active: false },
+    { id: 'U7', name: 'Infoline LLC', email: 'accounts@infoline.om', role: VENDOR_ROLE, active: true, vendorName: 'Infoline LLC' },
+    { id: 'U8', name: 'Green Umbrella Services', email: 'billing@greenumbrella.om', role: VENDOR_ROLE, active: true, vendorName: 'Green Umbrella Services' },
   ]);
+
+  // ---------- vendor claiming portal ----------
+  /** Set once a vendor signs in at /login; null means no vendor is currently signed in. Separate from currentRole/switchRole, which internal CRC staff use to preview other CRC roles. */
+  readonly vendorSession = signal<AppUser | null>(null);
+
+  /** Which claiming-sheet templates the signed-in user has downloaded this session (`vendor|kind`) — an import unlocks only after its template. */
+  readonly templatesDownloaded = signal<Set<string>>(new Set());
+  markTemplate(key: string) { this.templatesDownloaded.update((s) => new Set(s).add(key)); }
+
+  /** The one vendor this session may see and claim for: the signed-in vendor, or Infoline LLC when the Vendor role is only previewed from the account menu. Null for every other role. */
+  readonly ownVendor = computed<string | null>(() => (this.currentRole() === VENDOR_ROLE ? this.vendorSession()?.vendorName ?? 'Infoline LLC' : null));
+
+  /** Looks up an active Vendor-role user by email (any password is accepted — no real auth backend exists anywhere in this app). Returns null for an unknown/inactive email. */
+  vendorLogin(email: string): AppUser | null {
+    const user = this.users().find((u) => u.role === VENDOR_ROLE && u.active && u.email.toLowerCase() === email.trim().toLowerCase());
+    if (!user) return null;
+    this.vendorSession.set(user);
+    this.currentRole.set(VENDOR_ROLE);
+    this.log('Vendor Signed In', user.vendorName ?? user.name, `${user.name} signed in to the vendor claiming portal.`, 'Success', user.name);
+    return user;
+  }
+
+  vendorLogout() {
+    const user = this.vendorSession();
+    if (user) this.log('Vendor Signed Out', user.vendorName ?? user.name, `${user.name} signed out of the vendor claiming portal.`, 'Success', user.name);
+    this.vendorSession.set(null);
+    this.currentRole.set('System Admin');
+  }
+
+  readonly claimingPeriod = signal<ClaimingPeriod>({
+    startAt: new Date(Date.now() - 2 * 86400000).toISOString(),
+    endAt: new Date(Date.now() + 10 * 86400000).toISOString(),
+    active: true,
+    contractRefs: 'All',
+  });
+
+  /** The clock the claiming window is judged against; ticks every 30 seconds so the window opens and closes on its own. */
+  private readonly now = signal(Date.now());
+  private wasClaimingOpen = true;
+
+  readonly isClaimingOpen = computed(() => {
+    const p = this.claimingPeriod();
+    const now = this.now();
+    return p.active && now >= new Date(p.startAt).getTime() && now <= new Date(p.endAt).getTime();
+  });
+
+  /** Open for one contract: the window is open and either covers every contract or lists this one. */
+  isClaimingOpenFor(contractRef: string): boolean {
+    const scope = this.claimingPeriod().contractRefs;
+    return this.isClaimingOpen() && (scope === 'All' || scope.includes(contractRef));
+  }
+
+  /** Called on every clock tick and every save: the moment the window turns open, the vendor users are emailed (simulated, like every email in the demo). */
+  private checkClaimingWindow() {
+    this.now.set(Date.now());
+    const open = this.isClaimingOpen();
+    if (open && !this.wasClaimingOpen) {
+      const scope = this.claimingPeriod().contractRefs;
+      const vendors = scope === 'All' ? null : new Set(this.contracts().filter((c) => scope.includes(c.reference)).map((c) => c.vendorName));
+      const to = this.users().filter((u) => u.role === VENDOR_ROLE && u.active && (!vendors || vendors.has(u.vendorName ?? ''))).map((u) => u.email);
+      this.log('Vendor Emailed', 'Claiming Period', `Invoice claiming is open until ${new Date(this.claimingPeriod().endAt).toLocaleString()} — email sent to ${to.join(', ')}.`, 'Success', 'System Scheduler');
+      this.notify(`Claiming period is open — ${to.length} vendor user(s) emailed.`, 'Invoicing & Payments', 'info');
+    }
+    this.wasClaimingOpen = open;
+  }
+
+  saveClaimingPeriod(next: ClaimingPeriod) {
+    this.claimingPeriod.set(next);
+    this.log('Claiming Period Updated', 'Claiming Period', `Window set to ${new Date(next.startAt).toLocaleString()} → ${new Date(next.endAt).toLocaleString()} (${next.active ? 'Active' : 'Inactive'}).`);
+    this.checkClaimingWindow();
+  }
+
+  /** A vendor's own live contracts only (Active or Expiring Soon) — never another vendor's, and never an expired or cancelled one. */
+  vendorContracts(vendorName: string) {
+    return this.contracts().filter((c) => c.vendorName === vendorName && (c.status === 'Active' || c.status === 'Expiring Soon'));
+  }
+
+  constructor() {
+    this.seedSubmissions();
+    this.seedWfoFeed();
+    this.wasClaimingOpen = this.isClaimingOpen();
+    setInterval(() => { this.checkClaimingWindow(); this.syncWfo(); }, 30000);
+  }
+
+  /** Demo data so Billing opens the Reconciliation list with lines the vendor has already submitted (and one it rejected) to review, approve or reject. */
+  private seedSubmissions() {
+    const vendorName = 'Infoline LLC';
+    const ref = this.vendorContracts(vendorName)[0]?.reference;
+    if (!ref) return;
+    const lines = this.payableLines(vendorName, ref);
+    const docs = [
+      { kind: 'Invoice', name: 'infoline-invoice-jan-2026.pdf', size: 184000 },
+      { kind: 'Payment Certificate', name: 'infoline-payment-certificate-jan-2026.pdf', size: 96000 },
+      { kind: 'Other', name: 'infoline-supporting-documents.pdf', size: 64000 },
+    ];
+    const seed = (component: WfoComponent, status: 'Submitted for approval' | 'Rejected', rejectReason?: string): InvoiceRun[] => {
+      const l = lines.find((x) => x.component === component);
+      if (!l) return [];
+      return [{ vendor: vendorName, period: this.period(), lines: [{ key: l.key, label: l.label, calculated: l.calculated, vendorAmount: l.calculated }], calculatedTotal: l.calculated, vendorInvoiceAmount: l.calculated, variancePct: 0, status, documents: docs, submittedAt: new Date(Date.now() - 86400000).toISOString(), rejectReason }];
+    };
+    const runs = [...seed('performance', 'Submitted for approval'), ...seed('incentive', 'Submitted for approval'), ...seed('yearlyPerformance', 'Submitted for approval'), ...seed('project', 'Rejected', 'The amount is not supported by the attached documents.')];
+    if (runs.length) this.invoiceRuns.set({ [vendorName]: runs });
+  }
+
+  /** A vendor sends validated lines to Billing with the invoice and payment certificate attached — only while the claiming period is open. */
+  submitLines(vendorName: string, contractRef: string, keys: string[], documents: Array<{ kind: string; name: string; size: number; url?: string }>, adjustments: InvoiceAdjustment[] = []): { ok: true; count: number } | { ok: false; reason: string } {
+    if (this.ownVendor() && !this.isClaimingOpenFor(contractRef)) return { ok: false, reason: 'The claiming period is closed for this contract.' };
+    const runs = keys.map((k) => this.lineRun(vendorName, k)).filter((r): r is InvoiceRun => r?.status === 'Validated');
+    if (!runs.length) return { ok: false, reason: 'Validate the lines first — only lines that match can be submitted.' };
+    const submittedAt = new Date().toISOString();
+    this.invoiceRuns.update((m) => ({ ...m, [vendorName]: (m[vendorName] ?? []).map((r) => (runs.includes(r) ? { ...r, status: 'Submitted for approval', documents, submittedAt, rejectReason: undefined, adjustments: r === runs[0] ? adjustments : undefined } : r)) }));
+    const included = adjustments.map((a) => a.changeId).filter((id): id is string => !!id);
+    if (included.length) this.attendanceChanges.update((l) => l.map((c) => (included.includes(c.id) ? { ...c, status: 'Included in claim' } : c)));
+    const names = runs.map((r) => r.lines[0].label).join(', ');
+    this.log('Invoice Submitted', vendorName, `${names} submitted for approval with ${documents.length} document(s): ${documents.map((d) => (d.kind === 'Other' ? d.name : d.kind)).join(', ')}${adjustments.length ? `; ${adjustments.length} adjustment(s), net ${adjustments.reduce((t, a) => t + (a.type === 'Addition' ? a.amount : -a.amount), 0).toFixed(2)} OMR` : ''}.`, 'Success', vendorName);
+    this.notify(`${vendorName} submitted ${names} for approval.`, 'Invoicing & Payments', 'info', '/invoicing/reconciliation');
+    return { ok: true, count: runs.length };
+  }
+
+  /** Billing sends submitted lines back to the vendor, who can correct and validate them again. */
+  rejectLines(vendorName: string, keys: string[], reason: string) {
+    const runs = keys.map((k) => this.lineRun(vendorName, k)).filter((r): r is InvoiceRun => r?.status === 'Submitted for approval');
+    if (!runs.length) return;
+    this.invoiceRuns.update((m) => ({ ...m, [vendorName]: (m[vendorName] ?? []).map((r) => (runs.includes(r) ? { ...r, status: 'Rejected', rejectReason: reason } : r)) }));
+    const names = runs.map((r) => r.lines[0].label).join(', ');
+    this.log('Invoice Rejected', vendorName, `${names} rejected. Reason: ${reason}`);
+    this.notify(`${names} was rejected — ${reason}`, 'Invoicing & Payments', 'red', '/invoicing/reconciliation');
+  }
 
   readonly audit = signal<AuditEntry[]>(this.seedAudit());
   readonly notifications = signal<AppNotification[]>([
@@ -638,6 +755,132 @@ export class CrcStore {
     this.setAttendance(agentId, this.attendanceDays().length - 1, code);
     const a = this.agents().find((x) => x.id === agentId);
     if (a) this.log('Leave Override', a.employeeId, `${a.name}: today reclassified to ${code}${note ? ' — ' + note : ''}.`);
+  }
+
+
+  // ---------- WFO sync → previous-month changes → salary adjustments → agent notifications ----------
+  /** Our synced copy of previous-month days that the WFO later changed, keyed `${agentId}|${day}` (everything else is the archive as first reported). */
+  readonly pastCorrections = signal<Record<string, string>>({});
+  /** Every previous-month change that moved an agent's pay: the original record, the updated record and the resulting adjustment, kept for reconciliation and audit. */
+  readonly attendanceChanges = signal<AttendanceChange[]>([]);
+  /** The latest WFO sync of attendance and leave: when it ran and how many previous-month records it found changed. */
+  readonly wfoSync = signal<{ at: string; changes: number } | null>(null);
+  /**
+   * What the WFO system now holds for previous-month days that were changed there after we first synced them.
+   * ponytail: stand-in for the WFO attendance/leave API until it is connected — replace this with the real feed and syncWfo() stays as it is.
+   */
+  private readonly wfoFeed = signal<Record<string, { code: string; note: string }>>({});
+
+  /** The month before the current billing period ('YYYY-MM'). */
+  previousMonth(): string {
+    const [y, m] = this.periodStart().split('-').map(Number);
+    return new Date(Date.UTC(y, m - 2, 1)).toISOString().slice(0, 7);
+  }
+
+  /**
+   * The daily WFO sync: every previous-month record held by the WFO is compared with the one we already have. A record that differs
+   * (e.g. Absent later changed to Sick Leave) is a change: its pay effect is worked out, it waits as an Addition/Deduction for the vendor's
+   * next Salary claim, and the agent is told by SMS and email in Arabic and English. Returns how many changes it found.
+   */
+  syncWfo(): number {
+    const prev = this.previousMonth();
+    const [y, m] = prev.split('-').map(Number);
+    const days = new Date(y, m, 0).getDate();
+    const feed = this.wfoFeed();
+    let found = 0;
+    for (const a of this.agents()) {
+      for (let d = 1; d <= days; d++) {
+        const day = `${prev}-${String(d).padStart(2, '0')}`;
+        const ours = this.attendanceOn(a, day);
+        if (!ours) continue;
+        const key = `${a.id}|${day}`;
+        const theirs = feed[key]?.code ?? ours;
+        if (theirs !== ours && this.applyPreviousMonthChange(a, day, ours, theirs, feed[key]?.note ?? '')) found++;
+      }
+    }
+    this.wfoSync.set({ at: new Date().toISOString(), changes: found });
+    if (found) this.log('WFO Sync', 'Attendance & leave', `Previous-month records compared with the WFO: ${found} change(s) affecting salary found.`, 'Success', 'System Scheduler');
+    return found;
+  }
+
+  /** ponytail: a day's pay = the agent's billing rate ÷ days in that month; a paid day is anything except Absent, Maternity Leave and Off — confirm the formula with Omantel. */
+  private applyPreviousMonthChange(a: Agent, day: string, original: string, code: string, note: string): boolean {
+    const paid = (c: string) => (c !== 'A' && c !== 'M/L' && c !== 'OFF' ? 1 : 0);
+    const [y, m] = day.split('-').map(Number);
+    const delta = paid(code) - paid(original);
+    const amount = Math.round((Math.abs(delta) * this.payrollFor(a).billingRate / new Date(y, m, 0).getDate()) * 1000) / 1000;
+    this.pastCorrections.update((c) => ({ ...c, [`${a.id}|${day}`]: code }));
+    this.log('Previous-Month Change', a.employeeId, `${a.name}, ${day}: ${original} → ${code}${note ? ' — ' + note : ''}.${delta ? ` Salary ${delta > 0 ? 'addition' : 'deduction'} of ${amount.toFixed(3)} OMR.` : ' No pay effect.'}`);
+    if (!delta) return true;
+    const type: AttendanceChange['type'] = delta > 0 ? 'Addition' : 'Deduction';
+    const reason = `Attendance on ${day} corrected from ${LEAVE_EN[original] ?? original} to ${LEAVE_EN[code] ?? code}${note ? ' (' + note + ')' : ''}`;
+    const change: AttendanceChange = { id: 'ACH-' + this.next(), agentId: a.id, employeeId: a.employeeId, agentName: a.name, vendor: a.vendor, date: day, original, updated: code, note, type, amount, reason, detectedAt: new Date().toISOString(), status: 'Pending', notifications: [] };
+    change.notifications = this.notifyAgent(a, change);
+    this.attendanceChanges.update((l) => [change, ...l]);
+    this.notify(`${a.name}: ${type.toLowerCase()} of ${amount.toFixed(3)} OMR from a previous-month change.`, 'CSR Management', 'info', '/csr/leave');
+    return true;
+  }
+
+  /** SMS and email to the agent, each carrying the English and the Arabic text: type, amount, month and reason. Simulated and logged like every other message in the demo. */
+  private notifyAgent(a: Agent, c: AttendanceChange): AttendanceChange['notifications'] {
+    const month = this.periodLabel(this.periodStart().slice(0, 7));
+    const monthAr = new Date(this.periodStart()).toLocaleString('ar-OM', { month: 'long', year: 'numeric' });
+    const en = `Dear ${a.name}, a salary ${c.type.toLowerCase()} of ${c.amount.toFixed(3)} OMR has been applied for ${month}. Reason: ${c.reason}.`;
+    const ar = `عزيزي ${a.name}، تم تطبيق ${c.type === 'Addition' ? 'إضافة' : 'خصم'} على راتبك بقيمة ${c.amount.toFixed(3)} ريال عماني عن شهر ${monthAr}. السبب: تم تصحيح سجل حضورك بتاريخ ${c.date} من ${LEAVE_AR[c.original] ?? c.original} إلى ${LEAVE_AR[c.updated] ?? c.updated}.`;
+    const domain = a.vendor === 'Infoline' ? 'infoline.om' : 'greenumbrella.om';
+    const phone = '+968 9' + String(hash(a.id) % 10000000).padStart(7, '0');
+    const sent: AttendanceChange['notifications'] = [
+      { channel: 'SMS', to: phone, text: `${en}\n${ar}` },
+      { channel: 'Email', to: `${a.employeeId}@agents.${domain}`, text: `Subject: Salary ${c.type.toLowerCase()} / ${c.type === 'Addition' ? 'إضافة' : 'خصم'} — ${month}\n\n${en}\n\n${ar}` },
+    ];
+    for (const s of sent) this.log('Agent Notified', a.employeeId, `${s.channel} to ${s.to} (English + Arabic): ${c.type} ${c.amount.toFixed(3)} OMR for ${month}.`);
+    return sent;
+  }
+
+  /** The adjustments waiting for a vendor's next Salary claim, one per previous-month change not yet included in a submission. */
+  pendingAdjustments(vendorName: string): InvoiceAdjustment[] {
+    const short = vendorName.startsWith('Green') ? 'Green Umbrella' : vendorName.startsWith('Infoline') ? 'Infoline' : 'OJT';
+    return this.attendanceChanges().filter((c) => c.status === 'Pending' && c.vendor === short).map((c) => ({ type: c.type, amount: c.amount, reason: `${c.agentName} (${c.employeeId}): ${c.reason}`, changeId: c.id }));
+  }
+
+  /** Demo: three late corrections already sitting in the WFO when the daily sync first runs. */
+  private seedWfoFeed() {
+    const prev = this.previousMonth();
+    const [y, m] = prev.split('-').map(Number);
+    const days = new Date(y, m, 0).getDate();
+    const wanted: Array<[string, string, string]> = [['A', 'S/L', 'Medical certificate received after the month closed'], ['A', 'S/L', 'Medical certificate received after the month closed'], ['S/L', 'A', 'Sick leave not supported by a certificate']];
+    const used = new Set<string>();
+    const feed: Record<string, { code: string; note: string }> = {};
+    for (const [from, to, note] of wanted) {
+      outer: for (const a of this.agents().filter((x) => x.vendor === 'Infoline')) {
+        if (used.has(a.id)) continue;
+        for (let d = 1; d <= days; d++) {
+          const day = `${prev}-${String(d).padStart(2, '0')}`;
+          if (this.attendanceOn(a, day) === from) { used.add(a.id); feed[`${a.id}|${day}`] = { code: to, note }; break outer; }
+        }
+      }
+    }
+    this.wfoFeed.set(feed);
+    this.syncWfo();
+    // two more corrections reach the WFO after that first sync: the next sync (the 30-second tick, or Sync now) picks them up
+    const later: Record<string, { code: string; note: string }> = { ...feed };
+    const late: Array<[string, string, string]> = [['A', 'S/L', 'Hospital report submitted late'], ['S/L', 'P', 'Agent worked the day, leave cancelled']];
+    for (const [from, to, note] of late) {
+      outer: for (const a of this.agents().filter((x) => x.vendor === 'Green Umbrella' || x.vendor === 'Infoline')) {
+        if (used.has(a.id)) continue;
+        for (let d = 1; d <= days; d++) {
+          const day = `${prev}-${String(d).padStart(2, '0')}`;
+          if (this.attendanceOn(a, day) === from) { used.add(a.id); later[`${a.id}|${day}`] = { code: to, note }; break outer; }
+        }
+      }
+    }
+    this.wfoFeed.set(later);
+  }
+
+  /** The original file behind each import (kept as a browser link for this session), keyed `${vendor}|annexure|overtime|msIncentive|Voice|Chat`. */
+  readonly importedFiles = signal<Record<string, { name: string; url: string }>>({});
+  rememberFile(key: string, file: File) {
+    this.importedFiles.update((m) => ({ ...m, [key]: { name: file.name, url: URL.createObjectURL(file) } }));
   }
 
   private syncAgentStatusFromCode(agentId: string, code: string) {
@@ -1314,10 +1557,10 @@ export class CrcStore {
   /** Validates one line or several at once; each line is checked against the tolerance on its own. Approved lines are skipped. */
   validateLines(vendorName: string, lines: InvoiceLineDetail[]) {
     const tol = this.payableRules().deviationPct;
-    const todo = lines.filter((l) => this.lineRun(vendorName, l.key)?.status !== 'Approved for payment');
+    const todo = lines.filter((l) => !['Approved for payment', 'Submitted for approval'].includes(this.lineRun(vendorName, l.key)?.status ?? ''));
     const runs: InvoiceRun[] = todo.map((l) => {
       const variancePct = l.calculated ? ((l.vendorAmount - l.calculated) / l.calculated) * 100 : 0;
-      return { vendor: vendorName, period: this.period(), lines: [l], calculatedTotal: l.calculated, vendorInvoiceAmount: l.vendorAmount, variancePct, status: Math.abs(variancePct) > tol || (l.key.endsWith('|salary') && this.annexureDuplicates(vendorName).length) ? 'Flagged for review' : 'Validated' };
+      return { vendor: vendorName, period: this.period(), lines: [l], calculatedTotal: l.calculated, vendorInvoiceAmount: l.vendorAmount, variancePct, status: (Math.abs(l.vendorAmount - l.calculated) >= 0.0005 && Math.abs(variancePct) > tol) || (l.key.endsWith('|salary') && this.annexureDuplicates(vendorName).length) ? 'Flagged for review' : 'Validated' };
     });
     if (!runs.length) return runs;
     this.invoiceRuns.update((m) => ({ ...m, [vendorName]: [...(m[vendorName] ?? []), ...runs] }));
@@ -1330,12 +1573,14 @@ export class CrcStore {
     return runs;
   }
 
-  /** Approves one matching line or several at once; together they become one payment. A line that does not match is queried with the vendor instead. */
-  approveLines(vendorName: string, keys: string[], contractRef: string, documents: Array<{ kind: string; name: string; size: number; url?: string }> = []) {
-    const runs = keys.map((k) => this.lineRun(vendorName, k)).filter((r): r is InvoiceRun => r?.status === 'Validated');
+  /** Approves lines the vendor has submitted, one or several at once; together they become one payment, with the documents the vendor attached. */
+  approveLines(vendorName: string, keys: string[], contractRef: string) {
+    const runs = keys.map((k) => this.lineRun(vendorName, k)).filter((r): r is InvoiceRun => r?.status === 'Submitted for approval');
     if (!runs.length) return;
+    const documents = runs.flatMap((r) => r.documents ?? []).filter((d, i, all) => all.findIndex((x) => x.name === d.name) === i);
     const names = runs.map((r) => r.lines[0].label).join(', ');
-    const amount = runs.reduce((sum, r) => sum + r.vendorInvoiceAmount, 0);
+    const net = runs.flatMap((r) => r.adjustments ?? []).reduce((t, a) => t + (a.type === 'Addition' ? a.amount : -a.amount), 0);
+    const amount = runs.reduce((sum, r) => sum + r.vendorInvoiceAmount, 0) + net;
     const mapping = this.lineMapping();
     const items = runs.map((r) => {
       const l = r.lines[0], tail = l.key.split('|')[1] as WfoComponent;
@@ -1398,22 +1643,10 @@ export class CrcStore {
     return ++this.seq;
   }
 
+  /** System Admin has everything; Vendor and Billing get only what ROLE_GRANTS lists — editable afterwards on Access Control. */
   private seedPermissions(): Record<string, boolean> {
-    const granted = (p: Permission, role: string): boolean => {
-      if (role === 'System Admin') return true;
-      if (SPECIAL[p.permission]) return SPECIAL[p.permission].includes(role);
-      if (p.permission === 'View Employee Salary') return role === 'Finance';
-      if (p.module === 'Contracts & Budget') {
-        if (p.permission === 'Manage Sync Configuration') return false;
-        if (['Manage Notifications', 'Manage Escalations'].includes(p.permission)) return role === 'Contract Mgmt Manager';
-        if (['Manual Contract Sync', 'Manage Monitoring Actions', 'View Audit History'].includes(p.permission)) return role === 'Contract Mgmt Team' || role === 'Contract Mgmt Manager';
-        return role === 'Contract Mgmt Team' || role === 'Contract Mgmt Manager' || role === 'Budget Owner' || role === 'Finance';
-      }
-      if (p.module === 'Invoicing & Payments') return role === 'Finance';
-      return false;
-    };
     const grid: Record<string, boolean> = {};
-    for (const p of PERMISSIONS) for (const r of ROLES) grid[`${p.permission}|${r}`] = granted(p, r);
+    for (const p of PERMISSIONS) for (const r of ROLES) grid[`${p.permission}|${r}`] = r === 'System Admin' || (ROLE_GRANTS[r] ?? []).includes(p.permission);
     return grid;
   }
 
@@ -1482,6 +1715,11 @@ export class CrcStore {
     const i = this.attendanceDays().indexOf(day);
     if (i >= 0) return this.attendance()[a.id]?.[i] ?? '';
     if (day > isoDay(0) || day < a.joinDate) return '';
+    return this.pastCorrections()[a.id + '|' + day] ?? this.historyCode(a, day);
+  }
+
+  /** The archived code for a past day, as the WFO first reported it. */
+  private historyCode(a: Agent, day: string): string {
     if (this.isOffDay(day)) return 'OFF';
     const h = hash(a.id + '|' + day) % 100;
     return h < 3 ? 'A' : h < 7 ? 'S/L' : h < 11 ? 'C/L' : 'P';

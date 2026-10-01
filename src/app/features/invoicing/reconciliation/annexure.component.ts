@@ -25,11 +25,30 @@ import { parseAnnexure } from '../../../core/services/annexure-import';
           <div class="text-xs text-ink-500">Import the vendor's monthly annexure workbook (.xlsx) to compare their claimed amount against our WFO calculation below. The file is read in your browser only — nothing is uploaded or stored, and it never changes our own data.</div>
         }
       </div>
-      <label class="inline-flex items-center gap-2 px-3.5 py-2 text-sm font-semibold rounded-lg border border-brand-600 text-brand-600 hover:bg-brand-50 cursor-pointer transition-colors" appRequires="Validate Invoice">
-        <mat-icon class="!text-lg">folder_open</mat-icon>{{ store.importInfo() ? 'Import another workbook' : 'Import annexure workbook' }}
-        <input type="file" accept=".xlsx" class="hidden" (change)="import($event)" />
+      <div class="flex items-center gap-2 flex-wrap">
+      @if (store.can('Validate Invoice')) {
+        <button type="button" [class]="'inline-flex items-center gap-2 px-3.5 py-2 text-sm font-semibold rounded-lg transition-colors ' + (templateReady() ? 'border border-surface-border text-ink-700 hover:bg-surface-subtle' : 'bg-brand-600 text-white hover:bg-brand-700')" (click)="downloadTemplate()">
+          @if (templateReady()) { <mat-icon class="!text-lg">check_circle</mat-icon> } @else { <span class="w-5 h-5 rounded-full bg-white text-brand-700 text-xs font-bold flex items-center justify-center">1</span> }{{ templateReady() ? 'Template downloaded' : 'Download template' }}
+        </button>
+        <mat-icon class="!text-lg text-ink-300">arrow_forward</mat-icon>
+      }
+      <label [class]="'inline-flex items-center gap-2 px-3.5 py-2 text-sm font-semibold rounded-lg border transition-colors ' + (importLocked() ? 'border-surface-border text-ink-400 bg-surface-subtle cursor-not-allowed' : 'border-brand-600 text-brand-600 hover:bg-brand-50 cursor-pointer')" appRequires="Validate Invoice" [attr.title]="importLocked() ? 'Download the template first, fill it in, then import it' : ''">
+        <span class="w-5 h-5 rounded-full border text-xs font-bold flex items-center justify-center" [class]="importLocked() ? 'border-ink-300' : 'border-brand-600'">2</span>{{ store.importInfo() ? 'Import another workbook' : 'Import annexure workbook' }}
+        <input type="file" accept=".xlsx" class="hidden" [disabled]="importLocked()" (change)="import($event)" />
       </label>
+      </div>
     </div>
+
+    @if (store.annexureDuplicates(vendor()).length; as dupCount) {
+      <div class="surface-card px-4 py-3.5 mb-4 !border-red-200">
+        <div class="flex items-center gap-2 text-sm font-bold text-status-red"><mat-icon class="!text-lg">content_copy</mat-icon>{{ dupCount }} duplicated employee{{ dupCount === 1 ? '' : 's' }} on this annexure</div>
+        <p class="text-xs text-ink-500 mt-1">The same employee cannot appear twice. Remove the duplicate rows from your sheet and import it again — the Salary line cannot be submitted until you do.</p>
+        <table class="crc-table w-full mt-2">
+          <thead><tr class="text-left"><th>Employee</th><th>Employee ID</th><th class="text-right">Times listed</th></tr></thead>
+          <tbody>@for (d of store.annexureDuplicates(vendor()); track d.employeeId) { <tr><td class="font-semibold text-ink-900">{{ d.name }}</td><td>{{ d.employeeId }}</td><td class="text-right tabular-nums text-status-red font-semibold">{{ d.times }}</td></tr> }</tbody>
+        </table>
+      </div>
+    }
 
     @if (loading()) {
       <div class="status-chip status-chip--info mb-4">Reading the workbook…</div>
@@ -156,6 +175,21 @@ export class AnnexureComponent {
   store = inject(CrcStore);
   private ui = inject(UiService);
   vendor = input.required<string>();
+
+  /** The predefined Salary Claiming Sheet: the headers this importer reads, with this vendor's agents listed ready to fill in. */
+
+  /** The vendor downloads the template before the import unlocks; a file that is already imported keeps it unlocked. */
+  templateReady = computed(() => this.store.templatesDownloaded().has(this.vendor() + '|Salary') || !!this.store.importInfo());
+  importLocked = computed(() => this.store.can('Validate Invoice') && !this.templateReady());
+
+  downloadTemplate() {
+    this.store.markTemplate(this.vendor() + '|Salary');
+    const short = this.vendor().startsWith('Green') ? 'Green Umbrella' : this.vendor().startsWith('Infoline') ? 'Infoline' : 'OJT';
+    const blank = { 'Employee ID': '', 'Employees Name': '', Queue: '', Degree: '', Nationality: '', 'Date of Joining': '', 'Basic Salary': 0, 'House Rent Allowance': 0, 'Conveyance Allowance': 0, 'Special Allowance (Fixed)': 0, 'Other Allowances': 0, 'Management Fees': 0, Additional: 0, Deduction: 0, 'Billing Rate': 0 };
+    const rows = this.store.agents().filter((a) => a.vendor === short).map((a) => ({ ...blank, 'Employee ID': a.employeeId, 'Employees Name': a.name, Queue: a.queue, Degree: a.degree, Nationality: a.nationality, 'Date of Joining': a.joinDate }));
+    const name = this.ui.xlsx('salary-claiming-sheet-template', rows.length ? rows : [blank], 'Employees', false);
+    this.ui.toast(`Downloaded ${name}.`);
+  }
   loading = signal(false);
 
   tab = signal(0);
@@ -244,6 +278,7 @@ export class AnnexureComponent {
     try {
       const data = await parseAnnexure(file);
       this.store.importAnnexure(data);
+      this.store.rememberFile(this.vendor() + '|annexure', file);
       this.ui.toast(`Loaded ${data.employees.length} employees, ${data.attendance.days.length} attendance days and ${data.resignations.length} resignation(s) from ${file.name}.`, 6000);
     } catch (e) {
       this.ui.toast(e instanceof Error ? e.message : 'The workbook could not be read.', 6000);

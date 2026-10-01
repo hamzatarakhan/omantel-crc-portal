@@ -1,11 +1,11 @@
-import { Component, EventEmitter, Output, inject, signal } from '@angular/core';
+import { Component, EventEmitter, Output, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterModule } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatBadgeModule } from '@angular/material/badge';
-import { CrcStore, ROLES, ROLE_SUMMARY, timeAgo } from '../../services/crc-store.service';
+import { CrcStore, ROLE_SUMMARY, timeAgo } from '../../services/crc-store.service';
 import { UiService } from '../../../shared/services/ui.service';
 import { ContractOps } from '../../services/contract-ops.service';
 import { AppNotification } from '../../models/domain';
@@ -124,9 +124,9 @@ interface SearchResult {
         </mat-menu>
 
         <button class="flex items-center gap-2 pl-1.5 pr-2 sm:pr-3 py-1.5 rounded-lg border border-transparent hover:border-surface-border hover:bg-surface-subtle transition-colors" [matMenuTriggerFor]="profileMenu">
-          <div class="w-8 h-8 rounded-full bg-brand-gradient text-white flex items-center justify-center text-xs font-bold shrink-0">HT</div>
+          <div class="w-8 h-8 rounded-full bg-brand-gradient text-white flex items-center justify-center text-xs font-bold shrink-0">{{ initials() }}</div>
           <div class="text-left leading-tight hidden md:block">
-            <div class="text-xs font-semibold text-ink-900">Hamza Tarkan</div>
+            <div class="text-xs font-semibold text-ink-900">{{ displayName() }}</div>
             <div class="text-[11px] text-ink-400">{{ store.currentRole() }}</div>
           </div>
           <mat-icon class="!text-base !text-ink-400 hidden sm:block">expand_more</mat-icon>
@@ -134,24 +134,32 @@ interface SearchResult {
         <mat-menu #profileMenu="matMenu" xPosition="before" class="app-menu-panel">
           <div class="w-72">
             <div class="flex items-center gap-3 px-4 py-3.5 border-b border-surface-border">
-              <div class="w-10 h-10 rounded-full bg-brand-gradient text-white flex items-center justify-center text-sm font-bold shrink-0">HT</div>
+              <div class="w-10 h-10 rounded-full bg-brand-gradient text-white flex items-center justify-center text-sm font-bold shrink-0">{{ initials() }}</div>
               <div class="min-w-0">
-                <div class="text-sm font-semibold text-ink-900 truncate">Hamza Tarkan</div>
-                <div class="text-[11px] text-ink-400 truncate">Signed in via Tawasul SSO</div>
+                <div class="text-sm font-semibold text-ink-900 truncate">{{ displayName() }}</div>
+                <div class="text-[11px] text-ink-400 truncate">{{ store.vendorSession() ? 'Vendor Claiming Portal' : 'Signed in via Tawasul SSO' }}</div>
               </div>
             </div>
-            <div class="px-4 pt-3 pb-1 text-[10.5px] font-bold uppercase tracking-wider text-ink-400">View portal as (demo)</div>
+            <div class="px-4 pt-3 pb-1 text-[10.5px] font-bold uppercase tracking-wider text-ink-400">Switch portal (demo)</div>
             <div class="pb-1.5">
-              @for (r of roles; track r) {
-                <button (click)="switchRole(r)" class="w-full flex items-center gap-2.5 px-4 py-1.5 text-left hover:bg-surface-subtle transition-colors" [class.bg-brand-50]="r === store.currentRole()">
-                  <mat-icon class="!text-lg" [class.!text-brand-600]="r === store.currentRole()" [class.!text-ink-400]="r !== store.currentRole()">{{ r === store.currentRole() ? 'radio_button_checked' : 'radio_button_unchecked' }}</mat-icon>
+              @for (p of portals; track p.role) {
+                <button (click)="switchPortal(p.role)" class="w-full flex items-center gap-2.5 px-4 py-1.5 text-left hover:bg-surface-subtle transition-colors" [class.bg-brand-50]="p.role === store.currentRole()">
+                  <mat-icon class="!text-lg" [class.!text-brand-600]="p.role === store.currentRole()" [class.!text-ink-400]="p.role !== store.currentRole()">{{ p.role === store.currentRole() ? 'radio_button_checked' : 'radio_button_unchecked' }}</mat-icon>
                   <span class="min-w-0">
-                    <span class="block text-[13px]" [class.text-brand-700]="r === store.currentRole()" [class.font-semibold]="r === store.currentRole()" [class.text-ink-700]="r !== store.currentRole()">{{ r }}</span>
-                    <span class="block text-[11px] text-ink-400 truncate">{{ summary[r] }}</span>
+                    <span class="block text-[13px]" [class.text-brand-700]="p.role === store.currentRole()" [class.font-semibold]="p.role === store.currentRole()" [class.text-ink-700]="p.role !== store.currentRole()">{{ p.label }}</span>
+                    <span class="block text-[11px] text-ink-400 truncate">{{ summary[p.role] }}</span>
                   </span>
                 </button>
               }
             </div>
+            @if (!store.vendorSession()) {
+              <div class="py-1.5 border-t border-surface-border">
+                <a routerLink="/login" class="w-full flex items-center gap-2.5 px-4 py-2 text-[13px] text-ink-700 hover:bg-surface-subtle transition-colors">
+                  <mat-icon class="!text-lg !text-ink-400">storefront</mat-icon>
+                  Vendor Claiming Portal (sign in)
+                </a>
+              </div>
+            }
             <div class="py-1.5 border-t border-surface-border">
               <button (click)="help()" class="w-full flex items-center gap-2.5 px-4 py-2 text-[13px] text-ink-700 hover:bg-surface-subtle transition-colors">
                 <mat-icon class="!text-lg !text-ink-400">help_outline</mat-icon>
@@ -213,7 +221,8 @@ export class TopbarComponent {
   store = inject(CrcStore);
   private ops = inject(ContractOps);
   private ui = inject(UiService);
-  roles = ROLES;
+  /** The three portals a demo user can step into from the account menu. */
+  portals = [{ role: 'System Admin', label: 'Admin portal' }, { role: 'Billing', label: 'Billing portal' }, { role: 'Vendor', label: 'Vendor portal' }];
   summary = ROLE_SUMMARY;
 
   query = '';
@@ -221,6 +230,9 @@ export class TopbarComponent {
   mobileSearchOpen = signal(false);
 
   results = signal<SearchResult[]>([]);
+
+  displayName = computed(() => this.store.vendorSession()?.name ?? 'Hamza Tarkan');
+  initials = computed(() => this.displayName().split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase());
 
   private updateResults() {
     const q = this.query.trim().toLowerCase();
@@ -270,7 +282,10 @@ export class TopbarComponent {
     if (n.link) this.router.navigateByUrl(n.link);
   }
 
-  switchRole(role: string) {
+  /** A signed-in vendor leaves their session first, so stepping into the Admin or Billing portal is never limited to their own company. */
+  switchPortal(role: string) {
+    if (role === this.store.currentRole()) return;
+    if (this.store.vendorSession()) this.store.vendorLogout();
     this.store.switchRole(role);
   }
 
@@ -280,8 +295,13 @@ export class TopbarComponent {
   }
 
   signOut() {
-    this.ui.confirm({ title: 'Sign out?', message: 'You will be signed out of the CRC portal. (Demo: the session simply continues after you confirm.)', confirmLabel: 'Sign out', danger: true, icon: 'logout' })
-      .then((ok) => { if (ok) this.ui.toast('Signed out — demo session restored.'); });
+    if (this.store.vendorSession()) {
+      this.ui.confirm({ title: 'Sign out?', message: 'You will be signed out of the vendor claiming portal.', confirmLabel: 'Sign out', danger: true, icon: 'logout' })
+        .then((ok) => { if (ok) { this.store.vendorLogout(); this.router.navigateByUrl('/login'); } });
+      return;
+    }
+    this.ui.confirm({ title: 'Sign out?', message: 'You will be signed out of the CRC portal.', confirmLabel: 'Sign out', danger: true, icon: 'logout' })
+      .then((ok) => { if (ok) this.router.navigateByUrl('/login'); });
   }
 
   badgeClass(level: AppNotification['level']): string {

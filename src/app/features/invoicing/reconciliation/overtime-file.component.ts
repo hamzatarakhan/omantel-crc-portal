@@ -119,6 +119,7 @@ export class OvertimeFileComponent {
     try {
       const data = await parseOvertimeFile(file);
       this.store.importOvertimeInvoice(this.vendor(), data);
+      this.store.rememberFile(this.vendor() + '|overtime', file);
       this.ui.toast(`Loaded ${data.rows.length} employees, ${data.total.toLocaleString('en-GB')} OMR claimed, from ${file.name}.`, 6000);
     } catch (e) {
       this.ui.toast(e instanceof Error ? e.message : 'The workbook could not be read.', 6000);

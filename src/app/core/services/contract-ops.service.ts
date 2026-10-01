@@ -1,6 +1,6 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { Contract, ContractRecord, PurchaseOrder, SyncRun } from '../models/domain';
-import { CURRENT_USER, CrcStore } from './crc-store.service';
+import { CURRENT_USER, CrcStore, VENDOR_ROLE } from './crc-store.service';
 import { addDays, attachmentsFor, childRecordsFor, purchaseOrdersFor } from './contract-data';
 import {
   ContractChange, DataIssue, EscalationEvent, EscalationRule, EscalationStatus, ListRow, MonitoringAction, NotificationTemplate, SEED_TEMPLATES, SyncConfig,
@@ -54,7 +54,11 @@ export class ContractOps {
   private failOnce = new Set(['CT-1006']);
 
   // ---------- access scope (SRS 1.20) ----------
-  scopeFor(role: string): DataScope { return this.roleScopes()[role] ?? ALL_SCOPE; }
+  /** A vendor only ever sees their own company's contracts, whatever scope is set on Access Control. */
+  scopeFor(role: string): DataScope {
+    const s = this.roleScopes()[role] ?? ALL_SCOPE;
+    return role === VENDOR_ROLE ? { ...s, vendor: this.store.vendorSession()?.vendorName ?? 'Infoline LLC' } : s;
+  }
 
   setScope(role: string, patch: Partial<DataScope>) {
     const before = this.scopeFor(role);

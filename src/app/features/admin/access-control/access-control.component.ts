@@ -157,7 +157,7 @@ export class AccessControlComponent {
     if (!this.admin()) return;
     const v = await this.ui.form({
       title: 'Add user', subtitle: 'Users sign in through Tawasul SSO; this sets their CRC role', icon: 'person_add', submitLabel: 'Add user',
-      values: { role: 'Contract Mgmt Team' },
+      values: { role: 'Billing' },
       fields: [
         { key: 'name', label: 'Full name', required: true },
         { key: 'email', label: 'Email', type: 'email', required: true, placeholder: 'name@omantel.om' },

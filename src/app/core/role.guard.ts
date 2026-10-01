@@ -3,7 +3,7 @@ import { CanActivateChildFn, Router } from '@angular/router';
 import { CrcStore } from './services/crc-store.service';
 import { UiService } from '../shared/services/ui.service';
 
-/** Blocks screens the current role has no access to (e.g. a notification link to a screen outside the role). */
+/** Blocks screens the current role has no access to (e.g. a notification link to a screen outside the role, or a signed-in vendor typing a CRC-internal URL — the Vendor role has no permission for anything outside Vendor Portal). */
 export const roleGuard: CanActivateChildFn = (_route, state) => {
   const store = inject(CrcStore);
   if (store.canAccessUrl(state.url)) return true;

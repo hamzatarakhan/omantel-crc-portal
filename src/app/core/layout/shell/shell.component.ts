@@ -17,7 +17,13 @@ import { ForecastService } from '../../services/forecast.service';
       <div class="flex-1 flex flex-col min-w-0">
         <app-topbar (menuClick)="mobileNavOpen.set(true)"></app-topbar>
 
-        @if (store.currentRole() !== 'System Admin') {
+        @if (store.vendorSession(); as v) {
+          <div class="shrink-0 flex items-center gap-2 px-4 sm:px-6 py-2 bg-brand-50 border-b border-brand-100 text-xs text-brand-800">
+            <mat-icon class="!text-base shrink-0">storefront</mat-icon>
+            <span class="flex-1 min-w-0">Signed in as <strong>{{ v.name }}</strong> &mdash; Vendor Claiming Portal.</span>
+            <button class="font-semibold underline underline-offset-2 whitespace-nowrap hover:text-brand-900" (click)="signOut()">Sign out</button>
+          </div>
+        } @else if (store.currentRole() !== 'System Admin') {
           <div class="shrink-0 flex items-center gap-2 px-4 sm:px-6 py-2 bg-brand-50 border-b border-brand-100 text-xs text-brand-800">
             <mat-icon class="!text-base shrink-0">visibility</mat-icon>
             <span class="flex-1 min-w-0">Viewing the portal as <strong>{{ store.currentRole() }}</strong> &mdash; you only see the screens and actions this role is allowed.</span>
@@ -52,6 +58,11 @@ export class ShellComponent {
   mobileNavOpen = signal(false);
 
   private lastRole = this.store.currentRole();
+
+  signOut() {
+    this.store.vendorLogout();
+    this.router.navigateByUrl('/login');
+  }
 
   constructor() {
     // When the role (or the permission matrix) changes and the open screen is no longer allowed, move to the role's home.

@@ -18,8 +18,9 @@ import { TxChannel } from '../../../core/services/transaction-invoice-import';
 import { OvertimeFileComponent } from './overtime-file.component';
 import { MsIncentiveComponent } from './ms-incentive.component';
 import { VendorQueryDialogComponent } from './vendor-query-dialog.component';
-import { PaymentDocumentsDialogComponent, PaymentDocument } from './payment-documents-dialog.component';
+import { PaymentDocumentsDialogComponent, SubmitPackage } from './payment-documents-dialog.component';
 import { MismatchDetailsDialogComponent } from './mismatch-details-dialog.component';
+import { ReviewFilesDialogComponent, ReviewFilesData, ReviewFilesOpen } from './review-files-dialog.component';
 import { QueryDialogData, QueryDialogResult, QueryLine } from './mismatch';
 import { DIALOG_SIZE } from '../../../shared/dialog-sizes';
 
@@ -27,8 +28,8 @@ const VENDORS = ['Infoline LLC', 'Green Umbrella Services'];
 const FIELD = 'w-full px-2.5 py-2 text-xs font-semibold rounded-lg border border-surface-border bg-white text-ink-700 focus:outline-none focus:border-brand-400';
 
 /** Where a line is in its journey: validate it, then approve it if it matches — or email the vendor if it does not. */
-type LineStatus = 'Annexure needed' | 'Invoice needed' | 'Overtime needed' | 'MS Incentive needed' | 'Not validated' | 'Matches' | 'Does not match' | 'Queried with vendor' | 'Approved for payment';
-const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Annexure needed': 'amber', 'Invoice needed': 'amber', 'Overtime needed': 'amber', 'MS Incentive needed': 'amber', 'Not validated': 'neutral', Matches: 'normal', 'Does not match': 'red', 'Queried with vendor': 'amber', 'Approved for payment': 'info' };
+type LineStatus = 'Annexure needed' | 'Invoice needed' | 'Overtime needed' | 'MS Incentive needed' | 'Not validated' | 'Matches' | 'Does not match' | 'Queried with vendor' | 'Submitted for approval' | 'Rejected' | 'Approved for payment';
+const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Annexure needed': 'amber', 'Invoice needed': 'amber', 'Overtime needed': 'amber', 'MS Incentive needed': 'amber', 'Not validated': 'neutral', Matches: 'normal', 'Does not match': 'red', 'Queried with vendor': 'amber', 'Submitted for approval': 'amber', Rejected: 'red', 'Approved for payment': 'info' };
 
 @Component({
   selector: 'app-reconciliation',
@@ -40,6 +41,9 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Annexure needed': 'ambe
       subtitle="Check what a vendor invoiced on a contract against our calculation, line by line — approve what matches, query the rest with the vendor"
       [breadcrumbs]="[{ label: 'Invoicing & Payments', link: '/invoicing/reconciliation' }, { label: 'Reconciliation Workspace' }]"
     >
+      @if (store.ownVendor()) {
+        <span class="status-chip" [class]="claimingClosed() ? 'status-chip--neutral' : 'status-chip--normal'">{{ claimingClosed() ? 'Claiming closed' : 'Claiming open until ' + (store.claimingPeriod().endAt | date:'d MMM, HH:mm') }}</span>
+      }
       <span class="status-chip status-chip--neutral">{{ periodLabel(period()) }}</span>
       @if (isCurrentPeriod()) { <app-status-chip [label]="status()" [level]="statusLevel()"></app-status-chip> }
       @else { <span class="status-chip status-chip--neutral">History &middot; read-only</span> }
@@ -50,9 +54,13 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Annexure needed': 'ambe
     <div class="surface-card px-4 py-3.5 mb-4">
       <div class="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
         <label class="block"><span class="text-[10.5px] font-bold text-ink-400 uppercase tracking-wide">Vendor</span>
+          @if (store.ownVendor()) {
+            <div [class]="field + ' mt-1 !bg-surface-subtle !text-ink-600'">{{ vendor() }}</div>
+          } @else {
           <select [class]="field + ' mt-1'" (change)="vendor.set($any($event.target).value)">
             @for (v of vendors; track v) { <option [value]="v" [selected]="v === vendor()">{{ v }}</option> }
           </select>
+          }
         </label>
         <label class="block"><span class="text-[10.5px] font-bold text-ink-400 uppercase tracking-wide">Month</span>
           <select [class]="field + ' mt-1'" (change)="period.set($any($event.target).value)">
@@ -126,16 +134,33 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Annexure needed': 'ambe
         <div class="min-w-0">
           <h3 class="text-[13.5px] font-bold text-ink-900">Payable lines &middot; {{ contract()?.reference }}</h3>
           <ol class="flex items-center gap-1.5 flex-wrap list-none p-0 m-0 mt-1 text-[11px] text-ink-400">
-            <li><b class="text-ink-600">1</b> Enter the vendor's amount</li><li class="text-ink-300">›</li>
-            <li><b class="text-ink-600">2</b> Validate</li><li class="text-ink-300">›</li>
-            <li><b class="text-ink-600">3</b> Approve if it matches (within {{ store.payableRules().deviationPct }}%) — otherwise email the vendor</li>
+            @if (canValidate()) {
+              <li><b class="text-ink-600">1</b> Import the file or enter the amount</li><li class="text-ink-300">›</li>
+              <li><b class="text-ink-600">2</b> Validate ({{ store.payableRules().deviationPct ? 'within ' + store.payableRules().deviationPct + '% of our calculation' : 'must match our calculation exactly' }})</li><li class="text-ink-300">›</li>
+              <li><b class="text-ink-600">3</b> Submit for approval with the invoice and payment certificate</li>
+            }
+            @if (canValidate() && canApprove()) { <li class="text-ink-300">›</li> }
+            @if (canApprove()) {
+              <li><b class="text-ink-600">{{ canValidate() ? 4 : 1 }}</b> Review the files, then approve or reject — or email the vendor if it does not match</li>
+            }
           </ol>
         </div>
         <div class="flex items-center gap-2 flex-wrap">
-          <a routerLink="/invoicing/line-mapping" class="inline-flex items-center gap-1 text-xs font-semibold text-brand-600 hover:underline" appRequires="Configure Payable Rules"><mat-icon class="!text-base">link</mat-icon>Payable Line Mapping</a>
-          <button type="button" [class]="btnSecondary" (click)="validate(validatable())" appRequires="Validate Invoice" [disabled]="!validatable().length"><mat-icon [class]="ico">fact_check</mat-icon>Validate selected @if (validatable().length) { <span [class]="pill">{{ validatable().length }}</span> }</button>
-          <button type="button" [class]="btnPrimary" (click)="approve(approvable())" appRequires="Validate Invoice" [disabled]="!approvable().length"><mat-icon [class]="ico">task_alt</mat-icon>Approve selected @if (approvable().length) { <span class="bg-white/25 rounded-full px-1.5 text-[10px] leading-4">{{ approvable().length }}</span> }</button>
-          <button type="button" [class]="btnDanger" (click)="emailVendor()" appRequires="Validate Invoice" [disabled]="!queryable().length"><mat-icon [class]="ico">mail</mat-icon>Email vendor @if (queryable().length) { <span class="bg-status-red text-white rounded-full px-1.5 text-[10px] leading-4">{{ queryable().length }}</span> }</button>
+          @if (store.can('Configure Payable Rules')) {
+            <a routerLink="/invoicing/line-mapping" class="inline-flex items-center gap-1 text-xs font-semibold text-brand-600 hover:underline"><mat-icon class="!text-base">link</mat-icon>Payable Line Mapping</a>
+          }
+          @if (canValidate()) {
+            <button type="button" [class]="btnSecondary" (click)="validate(validatable())" [disabled]="!validatable().length"><mat-icon [class]="ico">fact_check</mat-icon>Validate selected @if (validatable().length) { <span [class]="pill">{{ validatable().length }}</span> }</button>
+            <button type="button" [class]="btnPrimary" (click)="submit(submittable())" [disabled]="!submittable().length || claimingClosed()" [attr.title]="claimingClosed() ? 'The claiming period is closed' : ''"><mat-icon [class]="ico">outbox</mat-icon>Submit for approval @if (submittable().length) { <span class="bg-white/25 rounded-full px-1.5 text-[10px] leading-4">{{ submittable().length }}</span> }</button>
+          }
+          @if (canApprove()) {
+            <button type="button" [class]="btnPrimary" (click)="approve(approvable())" [disabled]="!approvable().length"><mat-icon [class]="ico">task_alt</mat-icon>Approve selected @if (approvable().length) { <span class="bg-white/25 rounded-full px-1.5 text-[10px] leading-4">{{ approvable().length }}</span> }</button>
+            <button type="button" [class]="btnDanger" (click)="reject(approvable())" [disabled]="!approvable().length"><mat-icon [class]="ico">block</mat-icon>Reject selected</button>
+            <!-- Hidden: the SRS leaves the email-to-vendor step out of the current scope unless it is separately enabled. -->
+            @if (false) {
+            <button type="button" [class]="btnDanger" (click)="emailVendor()" [disabled]="!queryable().length"><mat-icon [class]="ico">mail</mat-icon>Email vendor @if (queryable().length) { <span class="bg-status-red text-white rounded-full px-1.5 text-[10px] leading-4">{{ queryable().length }}</span> }</button>
+            }
+          }
         </div>
       </div>
 
@@ -171,7 +196,9 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Annexure needed': 'ambe
                 </td>
                 <td class="text-right font-medium text-ink-900 tabular-nums">{{ needsTxInvoice(l) ? '—' : (calculatedAmount(l) | number:'1.2-2') }}</td>
                 <td class="text-right">
-                  @if (isSalary(l)) {
+                  @if (!canValidate()) {
+                    <div class="text-sm font-semibold tabular-nums text-ink-900">{{ needsTxInvoice(l) ? '—' : (vendorAmount(l.key) | number:'1.2-2') }}</div>
+                  } @else if (isSalary(l)) {
                     @if (annexureClaim(l) !== undefined) {
                       <div class="text-sm font-semibold tabular-nums text-ink-900">{{ vendorAmount(l.key) | number:'1.2-2' }}</div>
                       <button type="button" class="text-[11px] font-semibold text-brand-600 hover:underline mt-0.5" (click)="view.set('annexure')">From the annexure &middot; view</button>
@@ -203,7 +230,8 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Annexure needed': 'ambe
                       <button type="button" class="inline-flex items-center gap-1 h-7 px-2 text-xs font-semibold rounded-md border border-solid border-brand-200 text-brand-700 bg-white hover:bg-brand-50" (click)="view.set('msIncentive')"><mat-icon class="!text-sm !w-4 !h-4">upload_file</mat-icon>Import file</button>
                     }
                   } @else {
-                  <input type="number" step="0.01" min="0" class="w-32 h-8 text-right text-sm font-medium tabular-nums bg-white border border-surface-border rounded-lg px-2.5 focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 disabled:bg-surface-subtle disabled:text-ink-500 disabled:border-transparent" [ngModel]="vendorAmount(l.key)" (ngModelChange)="setVendorAmount(l.key, +$event)" [disabled]="isApproved(l.key)" />
+                  <input type="number" step="0.01" min="0" class="w-32 h-8 text-right text-sm font-medium tabular-nums bg-white border border-surface-border rounded-lg px-2.5 focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 disabled:bg-surface-subtle disabled:text-ink-500 disabled:border-transparent" [ngModel]="vendorAmount(l.key)" (ngModelChange)="setVendorAmount(l.key, +$event)" [disabled]="isLocked(l.key)" />
+                  @if (isCapped(l)) { <div class="text-[11px] text-ink-400 mt-0.5">Up to {{ l.calculated | number:'1.2-2' }}</div> }
                   @if (fromAnnexure(l.key)) { <div class="text-[11px] text-brand-600 mt-0.5">From the vendor's annexure</div> }
                   }
                 </td>
@@ -217,19 +245,34 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Annexure needed': 'ambe
                 <td class="!whitespace-normal">
                   <app-status-chip [label]="lineStatus(l.key)" [level]="statusLevels[lineStatus(l.key)]"></app-status-chip>
                   @if (lineStatus(l.key) === 'Queried with vendor') { <div class="text-[11px] text-ink-400 mt-1">Emailed {{ queriedAt(l.key) | date:'d MMM, HH:mm' }} — update the amount when they reply</div> }
+                  @if (lineStatus(l.key) === 'Rejected') { <div class="text-[11px] text-status-red mt-1">{{ store.lineRun(vendor(), l.key)?.rejectReason }}</div> }
+                  @if (lineStatus(l.key) === 'Submitted for approval') { <div class="text-[11px] text-ink-400 mt-1">Submitted {{ store.lineRun(vendor(), l.key)?.submittedAt | date:'d MMM, HH:mm' }}</div> }
+                  @if (store.lineRun(vendor(), l.key)?.adjustments?.length) { <div class="text-[11px] font-semibold mt-0.5" [class]="adjustmentNet(l.key) >= 0 ? 'text-status-normal' : 'text-status-red'">Adjustments {{ adjustmentNet(l.key) >= 0 ? '+' : '−' }}{{ adjustmentAbs(l.key) | number:'1.2-3' }} OMR ({{ store.lineRun(vendor(), l.key)?.adjustments?.length }})</div> }
                 </td>
                 <td class="text-right">
                   <div class="inline-flex items-center gap-1">
                     @switch (lineStatus(l.key)) {
                       @case ('Approved for payment') { <a routerLink="/invoicing/tracking" [class]="rowBtn + ' text-brand-700 hover:bg-brand-50'" title="Open the payment in Payment Tracking"><mat-icon [class]="icoSm">receipt_long</mat-icon>{{ store.lineRun(vendor(), l.key)?.paymentId }}</a> }
-                      @case ('Matches') { <button type="button" [class]="rowBtn + ' text-white bg-brand-600 hover:bg-brand-700'" (click)="approve([l.key])" appRequires="Validate Invoice"><mat-icon [class]="icoSm">task_alt</mat-icon>Approve</button> }
-                      @case ('Does not match') { <button type="button" [class]="rowBtn + ' text-white bg-status-red hover:bg-red-700'" (click)="emailVendor(l.key)" appRequires="Validate Invoice"><mat-icon [class]="icoSm">mail</mat-icon>Email vendor</button> }
-                      @case ('Queried with vendor') { <button type="button" [class]="rowBtn + ' text-status-red border border-solid border-red-200 bg-white hover:bg-red-50'" (click)="emailVendor(l.key)" appRequires="Validate Invoice"><mat-icon [class]="icoSm">forward_to_inbox</mat-icon>Email again</button> }
-                      @case ('Annexure needed') { <button type="button" [class]="rowBtn + ' text-brand-700 border border-solid border-brand-200 bg-white hover:bg-brand-50'" disabled title="Import the vendor's annexure first" style="opacity:.45;cursor:not-allowed"><mat-icon [class]="icoSm">fact_check</mat-icon>Validate</button> }
-                      @case ('Invoice needed') { <button type="button" [class]="rowBtn + ' text-brand-700 border border-solid border-brand-200 bg-white hover:bg-brand-50'" disabled title="Import the invoice first" style="opacity:.45;cursor:not-allowed"><mat-icon [class]="icoSm">task_alt</mat-icon>Approve</button> }
-                      @case ('Overtime needed') { <button type="button" [class]="rowBtn + ' text-brand-700 border border-solid border-brand-200 bg-white hover:bg-brand-50'" disabled title="Import the overtime file first" style="opacity:.45;cursor:not-allowed"><mat-icon [class]="icoSm">fact_check</mat-icon>Validate</button> }
-                      @case ('MS Incentive needed') { <button type="button" [class]="rowBtn + ' text-brand-700 border border-solid border-brand-200 bg-white hover:bg-brand-50'" disabled title="Import the Manage Service Incentive file first" style="opacity:.45;cursor:not-allowed"><mat-icon [class]="icoSm">task_alt</mat-icon>Approve</button> }
-                      @default { <button type="button" [class]="rowBtn + ' text-brand-700 border border-solid border-brand-200 bg-white hover:bg-brand-50'" (click)="validate([l.key])" appRequires="Validate Invoice"><mat-icon [class]="icoSm">fact_check</mat-icon>Validate</button> }
+                      @case ('Submitted for approval') {
+                        @if (canApprove()) {
+                          <button type="button" [class]="rowBtn + ' text-white bg-brand-600 hover:bg-brand-700'" (click)="approve([l.key])"><mat-icon [class]="icoSm">task_alt</mat-icon>Approve</button>
+                          <button type="button" [class]="rowBtn + ' text-status-red border border-solid border-red-200 bg-white hover:bg-red-50'" (click)="reject([l.key])"><mat-icon [class]="icoSm">block</mat-icon>Reject</button>
+                        } @else { <span class="text-[11px] text-ink-400 px-1">Awaiting approval</span> }
+                      }
+                      @case ('Matches') {
+                        @if (canValidate()) { <button type="button" [class]="rowBtn + ' text-white bg-brand-600 hover:bg-brand-700'" (click)="submit([l.key])" [disabled]="claimingClosed()" [attr.title]="claimingClosed() ? 'The claiming period is closed' : ''" [style.opacity]="claimingClosed() ? .45 : 1"><mat-icon [class]="icoSm">outbox</mat-icon>Submit</button> }
+                        @else { <span class="text-[11px] text-ink-400 px-1">Not submitted yet</span> }
+                      }
+                      @case ('Does not match') { @if (false && canApprove()) { <button type="button" [class]="rowBtn + ' text-white bg-status-red hover:bg-red-700'" (click)="emailVendor(l.key)"><mat-icon [class]="icoSm">mail</mat-icon>Email vendor</button> } }
+                      @case ('Queried with vendor') { @if (false && canApprove()) { <button type="button" [class]="rowBtn + ' text-status-red border border-solid border-red-200 bg-white hover:bg-red-50'" (click)="emailVendor(l.key)"><mat-icon [class]="icoSm">forward_to_inbox</mat-icon>Email again</button> } }
+                      @case ('Annexure needed') { @if (canValidate()) { <button type="button" [class]="rowBtn + ' text-brand-700 border border-solid border-brand-200 bg-white hover:bg-brand-50'" disabled title="Import the vendor's annexure first" style="opacity:.45;cursor:not-allowed"><mat-icon [class]="icoSm">fact_check</mat-icon>Validate</button> } }
+                      @case ('Invoice needed') { @if (canValidate()) { <button type="button" [class]="rowBtn + ' text-brand-700 border border-solid border-brand-200 bg-white hover:bg-brand-50'" disabled title="Import the invoice first" style="opacity:.45;cursor:not-allowed"><mat-icon [class]="icoSm">fact_check</mat-icon>Validate</button> } }
+                      @case ('Overtime needed') { @if (canValidate()) { <button type="button" [class]="rowBtn + ' text-brand-700 border border-solid border-brand-200 bg-white hover:bg-brand-50'" disabled title="Import the overtime file first" style="opacity:.45;cursor:not-allowed"><mat-icon [class]="icoSm">fact_check</mat-icon>Validate</button> } }
+                      @case ('MS Incentive needed') { @if (canValidate()) { <button type="button" [class]="rowBtn + ' text-brand-700 border border-solid border-brand-200 bg-white hover:bg-brand-50'" disabled title="Import the Manage Service Incentive file first" style="opacity:.45;cursor:not-allowed"><mat-icon [class]="icoSm">fact_check</mat-icon>Validate</button> } }
+                      @default { @if (canValidate()) { <button type="button" [class]="rowBtn + ' text-brand-700 border border-solid border-brand-200 bg-white hover:bg-brand-50'" (click)="validate([l.key])"><mat-icon [class]="icoSm">fact_check</mat-icon>Validate</button> } }
+                    }
+                    @if (hasSubmission(l.key)) {
+                      <button type="button" [class]="iconBtn" (click)="reviewFiles(l)" title="Review the files"><mat-icon class="!text-lg !w-[18px] !h-[18px]">folder_open</mat-icon></button>
                     }
                     <button type="button" [class]="iconBtn" (click)="toggleExpand(l.key)" [title]="isExpanded(l.key) ? 'Hide how it was calculated' : 'Show how it was calculated'"><mat-icon class="!text-lg !w-[18px] !h-[18px] transition-transform" [class.rotate-180]="isExpanded(l.key)">expand_more</mat-icon></button>
                   </div>
@@ -309,7 +352,13 @@ export class ReconciliationComponent {
   readonly rowBtn = 'inline-flex items-center justify-center gap-1 h-8 min-w-[112px] px-2.5 text-xs font-semibold rounded-lg transition-colors';
   readonly iconBtn = 'w-8 h-8 inline-flex items-center justify-center rounded-lg text-ink-400 hover:bg-surface-subtle hover:text-ink-700 transition-colors';
 
-  vendor = signal(VENDORS[0]);
+  /** The vendor imports, validates and submits (Validate Invoice); Billing reviews the files and approves or rejects (Approve Invoice). */
+  canValidate = computed(() => this.store.can('Validate Invoice'));
+  canApprove = computed(() => this.store.can('Approve Invoice'));
+  /** A vendor cannot submit outside the claiming period (admin and Billing are never blocked). */
+  claimingClosed = computed(() => !!this.store.ownVendor() && !this.store.isClaimingOpenFor(this.contract()?.reference ?? ''));
+
+  vendor = signal(this.store.ownVendor() ?? VENDORS[0]);
   view = signal<'calc' | 'annexure' | 'transaction' | 'overtime' | 'msIncentive'>('calc');
   txChannelView = signal<TxChannel | null>(null);
   /** 'YYYY-MM', defaults to the current month; a past month shows read-only history instead of a live calculation. */
@@ -324,7 +373,7 @@ export class ReconciliationComponent {
   periodLabel = (m: string) => this.store.periodLabel(m);
   historicalRuns = computed(() => (this.store.invoiceRuns()[this.vendor()] ?? []).filter((r) => r.period === this.periodLabel(this.period())));
 
-  contracts = computed(() => this.store.payableContracts(this.vendor()));
+  contracts = computed(() => (this.store.ownVendor() ? this.store.vendorContracts(this.vendor()).map((c) => ({ ...c, billing: true })) : this.store.payableContracts(this.vendor())));
   contract = computed(() => { const list = this.contracts(); return list.find((c) => c.reference === this.contractByVendor()[this.vendor()]) ?? list[0]; });
   private ctx = computed(() => `${this.vendor()}|${this.contract()?.reference}`);
   calc = computed(() => this.store.calculateInvoice(this.vendor()));
@@ -335,8 +384,11 @@ export class ReconciliationComponent {
   openLines = computed(() => this.lines().filter((l) => !this.isApproved(l.key)));
   selected = computed(() => this.selectedBy()[this.ctx()] ?? new Set(this.openLines().map((l) => l.key)));
   allSelected = computed(() => this.openLines().length > 0 && this.openLines().every((l) => this.selected().has(l.key)));
-  validatable = computed(() => this.openLines().filter((l) => this.isSelected(l.key) && !this.needsAnnexure(l) && !this.needsTxInvoice(l) && !this.needsOvertimeFile(l) && !this.needsMsIncentive(l)).map((l) => l.key));
-  approvable = computed(() => this.validatable().filter((k) => this.lineStatus(k) === 'Matches'));
+  validatable = computed(() => this.openLines().filter((l) => this.isSelected(l.key) && this.lineStatus(l.key) !== 'Submitted for approval' && !this.needsAnnexure(l) && !this.needsTxInvoice(l) && !this.needsOvertimeFile(l) && !this.needsMsIncentive(l)).map((l) => l.key));
+  /** Validated lines the vendor can send to Billing. */
+  submittable = computed(() => this.openLines().filter((l) => this.isSelected(l.key) && this.lineStatus(l.key) === 'Matches').map((l) => l.key));
+  /** Lines the vendor has submitted — what Billing approves or rejects. */
+  approvable = computed(() => this.openLines().filter((l) => this.isSelected(l.key) && this.lineStatus(l.key) === 'Submitted for approval').map((l) => l.key));
   queryable = computed(() => this.lines().filter((l) => this.lineStatus(l.key) === 'Does not match' || this.lineStatus(l.key) === 'Queried with vendor'));
   approvedCount = computed(() => this.lines().length - this.openLines().length);
 
@@ -365,6 +417,20 @@ export class ReconciliationComponent {
   // ---------- per line ----------
   isApproved(key: string) {
     return this.store.lineRun(this.vendor(), key)?.status === 'Approved for payment';
+  }
+
+  /** Once a line is submitted or approved its amount is locked. */
+  isLocked(key: string) {
+    const st = this.store.lineRun(this.vendor(), key)?.status;
+    return st === 'Approved for payment' || st === 'Submitted for approval';
+  }
+
+  adjustmentNet(key: string) { return (this.store.lineRun(this.vendor(), key)?.adjustments ?? []).reduce((t, a) => t + (a.type === 'Addition' ? a.amount : -a.amount), 0); }
+  adjustmentAbs(key: string) { return Math.abs(this.adjustmentNet(key)); }
+
+  hasSubmission(key: string) {
+    const st = this.store.lineRun(this.vendor(), key)?.status;
+    return st === 'Submitted for approval' || st === 'Approved for payment' || st === 'Rejected';
   }
 
   isSelected(key: string) {
@@ -400,7 +466,7 @@ export class ReconciliationComponent {
   /** Approved (locked) > manually typed (override) > the vendor's own claim from their imported annexure > our calculation (assumed to match until told otherwise). */
   vendorAmount(key: string): number {
     const run = this.store.lineRun(this.vendor(), key);
-    if (run?.status === 'Approved for payment') return run.lines[0].vendorAmount;
+    if (run?.status === 'Approved for payment' || run?.status === 'Submitted for approval') return run.lines[0].vendorAmount;
     const line = this.lines().find((l) => l.key === key);
     if (line && this.isSalary(line)) return this.annexureClaim(line) ?? line.calculated;
     if (line && this.isOvertimeLine(line)) return this.overtimeClaim(line) ?? line.calculated;
@@ -446,7 +512,7 @@ export class ReconciliationComponent {
 
   /** True once the vendor invoice field on screen reflects their imported annexure and hasn't been overridden. */
   fromAnnexure(key: string): boolean {
-    if (this.typed()[key] !== undefined || this.store.lineRun(this.vendor(), key)?.status === 'Approved for payment') return false;
+    if (this.typed()[key] !== undefined || this.isLocked(key)) return false;
     const line = this.lines().find((l) => l.key === key);
     return this.store.vendorClaim(this.vendor(), line?.component) !== undefined;
   }
@@ -476,14 +542,16 @@ export class ReconciliationComponent {
   lineStatus(key: string): LineStatus {
     const run = this.store.lineRun(this.vendor(), key);
     const own = this.lines().find((x) => x.key === key);
-    if (own && this.needsAnnexure(own) && run?.status !== 'Approved for payment') return 'Annexure needed';
-    if (own && this.needsTxInvoice(own) && run?.status !== 'Approved for payment') return 'Invoice needed';
-    if (own && this.needsOvertimeFile(own) && run?.status !== 'Approved for payment') return 'Overtime needed';
-    if (own && this.needsMsIncentive(own) && run?.status !== 'Approved for payment') return 'MS Incentive needed';
+    const settled = run?.status === 'Approved for payment' || run?.status === 'Submitted for approval';
+    if (own && this.needsAnnexure(own) && !settled) return 'Annexure needed';
+    if (own && this.needsTxInvoice(own) && !settled) return 'Invoice needed';
+    if (own && this.needsOvertimeFile(own) && !settled) return 'Overtime needed';
+    if (own && this.needsMsIncentive(own) && !settled) return 'MS Incentive needed';
     if (!run) return 'Not validated';
-    if (run.status === 'Approved for payment') return run.status;
+    if (run.status === 'Approved for payment' || run.status === 'Submitted for approval') return run.status;
     const checked = run.lines[0], now = this.lines().find((x) => x.key === key);
     if (!now || Math.abs(checked.vendorAmount - this.vendorAmount(key)) >= 0.005 || Math.abs(checked.calculated - now.calculated) >= 0.005) return 'Not validated';
+    if (run.status === 'Rejected') return 'Rejected';
     if (run.status === 'Validated') return 'Matches';
     return this.lastQuery(key, checked) ? 'Queried with vendor' : 'Does not match';
   }
@@ -524,16 +592,43 @@ export class ReconciliationComponent {
   }
 
   // ---------- actions ----------
+  /** A line with no file and no calculation of its own can be claimed up to our calculated amount, never above it. */
+  isCapped(l: PayableLineItem) {
+    return !this.isSalary(l) && !this.isOvertimeLine(l) && !this.isTxLine(l) && !this.isMsIncentiveLine(l) && !this.isPerformanceLine(l) && !this.isIncentiveLine(l);
+  }
+
+  private overCeiling(l: PayableLineItem) {
+    return this.isCapped(l) && this.vendorAmount(l.key) - l.calculated >= 0.005;
+  }
+
   validate(keys: string[]) {
     if (!this.ui.requires('Validate Invoice')) return;
-    const runs = this.store.validateLines(this.vendor(), this.details(keys));
+    const over = this.lines().filter((l) => keys.includes(l.key) && this.overCeiling(l)).map((l) => l.label);
+    if (over.length) this.ui.toast(`${over.join(', ')}: the amount cannot be above our calculated amount.`, 5000);
+    const allowed = keys.filter((k) => !this.lines().some((l) => l.key === k && this.overCeiling(l)));
+    if (!allowed.length) return;
+    const runs = this.store.validateLines(this.vendor(), this.details(allowed));
     if (!runs.length) return;
     const off = runs.filter((r) => r.status === 'Flagged for review').map((r) => r.lines[0].label);
     const what = runs.length === 1 ? runs[0].lines[0].label : `${runs.length} lines`;
-    this.ui.toast(off.length ? `${what} validated — ${off.join(', ')} ${off.length === 1 ? 'does' : 'do'} not match. Email the vendor with the details.` : `${what} validated — ready to approve.`, 5000);
+    this.ui.toast(off.length ? `${what} validated — ${off.join(', ')} ${off.length === 1 ? 'does' : 'do'} not match. Correct it and validate again.` : `${what} validated — ready to submit for approval.`, 5000);
   }
 
-  async approve(keys: string[]) {
+  /** The vendor's imported file for the lines being submitted (annexure for Salary, the Voice/Chat invoice, the overtime or incentive file) — attached to the claim as its claiming sheet. */
+  private claimingSheetFor(keys: string[]): { name: string; url?: string } | undefined {
+    const v = this.vendor();
+    for (const k of keys) {
+      const l = this.lines().find((x) => x.key === k);
+      if (!l) continue;
+      const key = this.isSalary(l) ? v + '|annexure' : this.isOvertimeLine(l) ? v + '|overtime' : l.txChannel ? v + '|' + l.txChannel : this.isMsIncentiveLine(l) ? v + '|msIncentive' : '';
+      const f = key ? this.store.importedFiles()[key] : undefined;
+      if (f) return f;
+    }
+    return undefined;
+  }
+
+  /** The vendor sends validated lines to Billing, attaching the invoice and payment certificate (and any other documents). */
+  async submit(keys: string[]) {
     if (!this.ui.requires('Validate Invoice')) return;
     const c = this.contract();
     const ok = keys.filter((k) => this.lineStatus(k) === 'Matches');
@@ -541,16 +636,60 @@ export class ReconciliationComponent {
     const d = this.details(ok);
     const names = d.map((l) => l.label).join(', ');
     const total = Math.round(d.reduce((s, l) => s + l.vendorAmount, 0)).toLocaleString();
+    const pack: SubmitPackage | undefined = await this.dialog.open(PaymentDocumentsDialogComponent, { data: { summary: `${names} · ${total} OMR on ${c.reference}`, claimingSheet: this.claimingSheetFor(ok), prefill: ok.some((k) => this.lines().find((l) => l.key === k)?.component === 'salary') ? this.store.pendingAdjustments(this.vendor()) : [] }, panelClass: 'app-dialog-panel', autoFocus: false, ...DIALOG_SIZE.form }).afterClosed().toPromise();
+    if (!pack) return;
+    const r = this.store.submitLines(this.vendor(), c.reference, ok, pack.documents, pack.adjustments);
+    this.ui.toast(r.ok ? `${names} submitted for approval.` : r.reason, 5000);
+  }
+
+  /** Billing approves what the vendor submitted; the documents the vendor attached travel with the payment. */
+  async approve(keys: string[]) {
+    if (!this.ui.requires('Approve Invoice')) return;
+    const c = this.contract();
+    const ok = keys.filter((k) => this.lineStatus(k) === 'Submitted for approval');
+    if (!c || !ok.length) return;
+    const d = this.details(ok);
+    const names = d.map((l) => l.label).join(', ');
+    const net = ok.flatMap((k) => this.store.lineRun(this.vendor(), k)?.adjustments ?? []).reduce((t, a) => t + (a.type === 'Addition' ? a.amount : -a.amount), 0);
+    const total = Math.round(d.reduce((s, l) => s + l.vendorAmount, 0) + net).toLocaleString();
     const yes = await this.ui.confirm({
       title: ok.length === 1 ? `Approve ${names} for payment?` : `Approve ${ok.length} lines for payment?`,
-      message: `One payment of ${total} OMR on ${c.reference} (${names}) is created and tracked from Pending.`,
+      message: `One payment of ${total} OMR on ${c.reference} (${names}) is created and tracked from Pending, with the documents the vendor attached${net ? ` and a net adjustment of ${net > 0 ? '+' : ''}${net.toFixed(2)} OMR` : ''}.`,
       confirmLabel: 'Approve', icon: 'payments',
     });
     if (!yes) return;
-    const documents: PaymentDocument[] | undefined = await this.dialog.open(PaymentDocumentsDialogComponent, { data: { summary: `${names} · ${total} OMR on ${c.reference}` }, panelClass: 'app-dialog-panel', autoFocus: false, ...DIALOG_SIZE.form }).afterClosed().toPromise();
-    if (!documents) return;
-    const p = this.store.approveLines(this.vendor(), ok, c.reference, documents);
+    const p = this.store.approveLines(this.vendor(), ok, c.reference);
     this.ui.toast(`Approved — ${p?.id} added to Payment Tracking.`);
+  }
+
+  async reject(keys: string[]) {
+    if (!this.ui.requires('Approve Invoice')) return;
+    const ok = keys.filter((k) => this.lineStatus(k) === 'Submitted for approval');
+    if (!ok.length) return;
+    const names = this.details(ok).map((l) => l.label).join(', ');
+    const v = await this.ui.form({ title: `Reject ${names}?`, subtitle: 'The vendor is told why and can correct and submit again', icon: 'block', submitLabel: 'Reject', fields: [{ key: 'reason', label: 'Reason', type: 'textarea', required: true }] });
+    if (!v) return;
+    this.store.rejectLines(this.vendor(), ok, v['reason']);
+    this.ui.toast('Rejected — the vendor can correct and submit again.');
+  }
+
+  /** The files behind a submitted line: the vendor's imported file and the documents they attached. */
+  async reviewFiles(l: PayableLineItem) {
+    const v = this.vendor(), run = this.store.lineRun(v, l.key);
+    const imported: ReviewFilesData['imported'] = [];
+    if (this.isSalary(l)) { const f = this.store.vendorAnnexures()[v]?.fileName; if (f) imported.push({ label: 'Annexure (claiming sheet)', file: f, url: this.store.importedFiles()[v + '|annexure']?.url, open: { view: 'annexure' } }); }
+    if (this.isOvertimeLine(l)) { const f = this.store.overtimeInvoices()[v]?.fileName; if (f) imported.push({ label: 'Overtime file', file: f, url: this.store.importedFiles()[v + '|overtime']?.url, open: { view: 'overtime' } }); }
+    if (l.txChannel) { const f = this.store.transactionInvoiceFor(v, l.txChannel)?.fileName; if (f) imported.push({ label: `${l.txChannel} transaction invoice`, file: f, url: this.store.importedFiles()[v + '|' + l.txChannel]?.url, open: { view: 'transaction', channel: l.txChannel } }); }
+    if (this.isMsIncentiveLine(l)) { const f = this.store.msIncentiveInvoices()[v]?.[0]?.fileName; if (f) imported.push({ label: 'Manage Service Incentive file', file: f, url: this.store.importedFiles()[v + '|msIncentive']?.url, open: { view: 'msIncentive' } }); }
+    const duplicate = (name: string) => (run?.documents ?? []).some((d) => d.name === name);
+    for (let i = imported.length - 1; i >= 0; i--) if (duplicate(imported[i].file)) imported.splice(i, 1);
+    const batch = this.lines().map((x) => this.store.lineRun(v, x.key)).filter((r) => r && run?.submittedAt && r.submittedAt === run.submittedAt);
+    const adjustments = batch.flatMap((r) => r?.adjustments ?? []);
+    const data: ReviewFilesData = { title: l.label, subtitle: `${v} · ${this.contract()?.reference} · ${this.store.period()}`, imported, documents: run?.documents ?? [], adjustments, rejectReason: run?.status === 'Rejected' ? run.rejectReason : undefined };
+    const open: ReviewFilesOpen | undefined = await this.dialog.open(ReviewFilesDialogComponent, { data, panelClass: 'app-dialog-panel', autoFocus: false, ...DIALOG_SIZE.form }).afterClosed().toPromise();
+    if (!open) return;
+    if (open.channel) this.txChannelView.set(open.channel);
+    this.view.set(open.view);
   }
 
   /** Everything the vendor needs to see where a line's difference is: both amounts, what the line is linked to, and how our figure is built. */
@@ -571,7 +710,7 @@ export class ReconciliationComponent {
 
   /** One email to the vendor: each chosen line with the exact difference and how we calculated it, then the user's comment. */
   async emailVendor(onlyKey?: string) {
-    if (!this.ui.requires('Validate Invoice')) return;
+    if (!this.ui.requires('Approve Invoice')) return;
     const c = this.contract();
     const candidates = this.queryable();
     if (!c || !candidates.length) return;

@@ -7,7 +7,7 @@ import { MatIconModule } from '@angular/material/icon';
 export interface FormField {
   key: string;
   label: string;
-  type?: 'text' | 'number' | 'email' | 'date' | 'time' | 'select' | 'textarea' | 'multiselect' | 'file';
+  type?: 'text' | 'number' | 'email' | 'date' | 'time' | 'datetime-local' | 'select' | 'textarea' | 'multiselect' | 'file';
   options?: Array<string | { value: string; label: string }>;
   required?: boolean;
   placeholder?: string;
