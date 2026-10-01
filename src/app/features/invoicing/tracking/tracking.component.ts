@@ -40,11 +40,13 @@ const PAGE = 10;
             <option value="All" [selected]="item() === 'All'">All items</option>
             @for (i of itemOptions(); track i) { <option [value]="i" [selected]="i === item()">{{ i }}</option> }
           </select></label>
+        @if (!store.ownVendor()) {
         <label class="block"><span class="lbl">Vendor</span>
           <select [class]="field + ' mt-1'" (change)="setVendor($any($event.target).value)">
             <option value="All" [selected]="vendor() === 'All'">All vendors</option>
             @for (v of vendorOptions(); track v) { <option [value]="v" [selected]="v === vendor()">{{ v }}</option> }
           </select></label>
+        }
         <label class="block"><span class="lbl">Contract</span>
           <select [class]="field + ' mt-1'" (change)="contract.set($any($event.target).value); page.set(0)">
             <option value="All" [selected]="contract() === 'All'">All contracts</option>
@@ -57,7 +59,7 @@ const PAGE = 10;
           </select></label>
       </div>
       <div class="flex items-center justify-between mt-2.5 text-xs text-ink-500">
-        <span><b class="text-ink-700">{{ rows().length }}</b> of {{ store.payments().length }} invoice{{ store.payments().length === 1 ? '' : 's' }}</span>
+        <span><b class="text-ink-700">{{ rows().length }}</b> of {{ count('All') }} invoice{{ count('All') === 1 ? '' : 's' }}</span>
         <button type="button" (click)="reset()" class="font-semibold text-brand-700 hover:underline">Reset filters</button>
       </div>
     </div>
@@ -144,10 +146,11 @@ export class TrackingComponent {
   item = signal('All');
   vendor = signal('All');
   contract = signal('All');
-  status = signal<'All' | PaymentRecord['status']>('Pending');
+  status = signal<'All' | PaymentRecord['status']>(this.store.ownVendor() ? 'All' : 'Pending');
   page = signal(0);
 
-  private all = () => this.store.payments();
+  /** A vendor sees only the payments for its own invoices. */
+  private all = () => this.store.payments().filter((p) => !this.store.ownVendor() || p.vendorName === this.store.ownVendor());
   itemOptions = computed(() => [...new Set(this.all().flatMap((p) => (p.items ?? []).map((i) => i.label)))].sort((a, b) => a.localeCompare(b)));
   vendorOptions = computed(() => [...new Set(this.all().map((p) => p.vendorName))]);
   contractOptions = computed(() => [...new Set(this.all().filter((p) => this.vendor() === 'All' || p.vendorName === this.vendor()).map((p) => p.contract).filter((c): c is string => !!c))]);

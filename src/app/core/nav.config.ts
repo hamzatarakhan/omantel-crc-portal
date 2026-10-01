@@ -104,7 +104,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: 'Manage Service Incentive Files', path: 'ms-incentive-review', icon: 'fact_check', perms: ['Validate Invoice', 'Approve Invoice'] },
       { label: 'Payable Rule Config', path: 'rules', icon: 'tune', perms: ['Configure Payable Rules'] },
       { label: 'Payable Line Mapping', path: 'line-mapping', icon: 'link', perms: ['Configure Payable Rules'] },
-      { label: 'Payment Tracking', path: 'tracking', icon: 'view_kanban', perms: ['Approve Invoice'] },
+      { label: 'Payment Tracking', path: 'tracking', icon: 'view_kanban', perms: ['Approve Invoice', 'View Payments'] },
       { label: 'Payment Dashboard', path: 'dashboard', icon: 'dashboard', perms: ['Approve Invoice', 'Configure Payable Rules'], hidden: true },
     ],
   },

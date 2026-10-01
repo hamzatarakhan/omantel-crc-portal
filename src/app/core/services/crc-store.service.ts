@@ -156,12 +156,13 @@ export const PERMISSIONS: Permission[] = [
   { permission: 'Validate Invoice', module: 'Invoicing & Payments' },
   { permission: 'Configure Payable Rules', module: 'Invoicing & Payments' },
   { permission: 'Approve Invoice', module: 'Invoicing & Payments' },
+  { permission: 'View Payments', module: 'Invoicing & Payments' },
   { permission: 'Configure Claiming Period', module: 'Invoicing & Payments' },
 ];
 
 /** What each role may do, from the Vendor Invoice Claiming SRS. System Admin has everything. A vendor imports, validates and submits their own invoice lines (Validate Invoice); Billing, the CRC team, reviews the files and approves or rejects them (Approve Invoice). */
 const ROLE_GRANTS: Record<string, string[]> = {
-  Vendor: ['View Contracts', 'View Contract Details', 'View Leave & Attendance', 'Validate Invoice'],
+  Vendor: ['View Contracts', 'View Contract Details', 'View Leave & Attendance', 'Validate Invoice', 'View Payments'],
   Billing: ['View Contracts', 'View Contract Details', 'View Attachments', 'View Agent Profiles', 'View Leave & Attendance', 'Manage Leave & Attendance', 'Approve Invoice', 'Configure Payable Rules', 'Configure Claiming Period'],
 };
 
