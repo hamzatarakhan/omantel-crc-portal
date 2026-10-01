@@ -1209,6 +1209,18 @@ export class CrcStore {
    *  - resignations: pro-rata to the last day plus leave encashment
    *  - plus the 3 Clicks incentive on calls above the minimum duration
    */
+  /** Demo only: an amount added to a vendor's Salary calculation so it equals the vendor's claim. ponytail: remove when the real WFO/payroll data is connected. */
+  readonly demoSalaryAlign = signal<Record<string, number>>({});
+
+  alignSalaryForDemo(vendorName: string) {
+    const claim = this.vendorAnnexures()[vendorName]?.claim.salary;
+    if (claim === undefined) return;
+    const c = this.calculateInvoice(vendorName);
+    const gap = Math.round((claim - (c.salaryBase + c.newJoining.amount + c.resignation.amount)) * 1000) / 1000;
+    this.demoSalaryAlign.update((m) => ({ ...m, [vendorName]: Math.round(((m[vendorName] ?? 0) + gap) * 1000) / 1000 }));
+    this.log('Demo: Salary Aligned', vendorName, `Our Salary calculation was set equal to the vendor's claim (${gap >= 0 ? '+' : ''}${gap.toFixed(3)} OMR) for the demo.`);
+  }
+
   calculateInvoice(vendorName: string) {
     const key: Agent['vendor'] = vendorName.startsWith('Green') ? 'Green Umbrella' : 'Infoline';
     const att = this.attendance();
@@ -1249,7 +1261,7 @@ export class CrcStore {
     const base = tiers.reduce((s, t) => s + t.amount, 0);
     const overtimeBase = tiers.reduce((s, t) => s + t.overtime, 0);
     const performanceBase = tiers.reduce((s, t) => s + t.performance, 0);
-    const salaryBase = base;
+    const salaryBase = base + (this.demoSalaryAlign()[vendorName] ?? 0);
     const absenceDeduction = gross - base;
 
     const newJoiners = joiners.map((a) => {

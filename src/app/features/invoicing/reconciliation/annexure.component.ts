@@ -56,7 +56,12 @@ import { parseAnnexure } from '../../../core/services/annexure-import';
 
     @if (claim(); as c) {
       <div class="surface-card px-4 py-4 mb-4">
-        <h3 class="text-[13.5px] font-bold text-ink-900 mb-3">Vendor's claim vs. our calculation</h3>
+        <div class="flex items-center justify-between gap-3 flex-wrap mb-3">
+          <h3 class="text-[13.5px] font-bold text-ink-900">Vendor's claim vs. our calculation</h3>
+          @if (claimDiff() > 0.0005 || claimDiff() < -0.0005) {
+            <button type="button" class="inline-flex items-center gap-1 h-8 px-3 text-xs font-semibold rounded-lg border border-dashed border-brand-300 text-brand-700 bg-brand-50 hover:bg-brand-100" title="Demo only: sets our Salary calculation equal to the vendor's claim so the line passes validation" (click)="store.alignSalaryForDemo(vendor())"><mat-icon class="!text-base !w-4 !h-4">auto_fix_high</mat-icon>Demo: make calculations match</button>
+          }
+        </div>
         <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
           <div><div class="text-[10.5px] font-bold text-ink-400 uppercase tracking-wide">Our calculation</div><div class="text-lg font-bold text-ink-900 mt-1">{{ claimTotals().ours | number:'1.2-2' }} OMR</div></div>
           <div><div class="text-[10.5px] font-bold text-ink-400 uppercase tracking-wide">Vendor's claim</div><div class="text-lg font-bold text-ink-900 mt-1">{{ claimTotals().theirs | number:'1.2-2' }} OMR</div></div>
