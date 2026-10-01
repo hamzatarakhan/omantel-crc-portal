@@ -45,7 +45,7 @@ const kb = (n: number) => (n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Mat
         }
         <div class="rounded-lg border border-solid border-surface-border p-3">
           <div class="flex items-center justify-between gap-3">
-            <div class="text-sm font-semibold text-ink-900">Other documents <span class="text-[11px] font-normal text-ink-400">Optional · up to {{ max }} · {{ others().length }} added</span></div>
+            <div class="text-sm font-semibold text-ink-900">Supporting documents <span class="text-[11px] font-normal text-ink-400">Optional · up to {{ max }} · {{ others().length }} added</span></div>
             <label class="inline-flex items-center gap-1 h-8 px-3 text-xs font-semibold rounded-lg border border-solid border-brand-200 text-brand-700 bg-white hover:bg-brand-50 cursor-pointer" [style.opacity]="others().length >= max ? .45 : 1" [style.pointer-events]="others().length >= max ? 'none' : 'auto'"><mat-icon class="!text-base !w-4 !h-4">add</mat-icon>Add files
               <input type="file" multiple class="hidden" (change)="pickOthers($event)" /></label>
           </div>
