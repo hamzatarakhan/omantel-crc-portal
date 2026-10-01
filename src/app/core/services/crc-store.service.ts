@@ -1580,12 +1580,18 @@ export class CrcStore {
   }
 
   /** Validates one line or several at once; each line is checked against the tolerance on its own. Approved lines are skipped. */
+  /** Contract-share lines (Other Manage Service, Yearly Performance, Project): the vendor may request up to the calculated amount, so only going over it is a mismatch. */
+  private isCeilingLine(vendorName: string, key: string): boolean {
+    const l = this.payableLines(vendorName, key.split('|')[0]).find((x) => x.key === key);
+    return !!l && l.source === 'contract' && !l.txChannel && !l.msIncentive;
+  }
+
   validateLines(vendorName: string, lines: InvoiceLineDetail[]) {
     const tol = this.payableRules().deviationPct;
     const todo = lines.filter((l) => !['Approved for payment', 'Submitted for approval'].includes(this.lineRun(vendorName, l.key)?.status ?? ''));
     const runs: InvoiceRun[] = todo.map((l) => {
       const variancePct = l.calculated ? ((l.vendorAmount - l.calculated) / l.calculated) * 100 : 0;
-      return { vendor: vendorName, period: this.period(), lines: [l], calculatedTotal: l.calculated, vendorInvoiceAmount: l.vendorAmount, variancePct, status: (Math.abs(l.vendorAmount - l.calculated) >= 0.0005 && Math.abs(variancePct) > tol) || (l.key.endsWith('|salary') && this.annexureDuplicates(vendorName).length) ? 'Flagged for review' : 'Validated' };
+      return { vendor: vendorName, period: this.period(), lines: [l], calculatedTotal: l.calculated, vendorInvoiceAmount: l.vendorAmount, variancePct, status: (this.isCeilingLine(vendorName, l.key) ? l.vendorAmount - l.calculated >= 0.005 : Math.abs(l.vendorAmount - l.calculated) >= 0.0005 && Math.abs(variancePct) > tol) || (l.key.endsWith('|salary') && this.annexureDuplicates(vendorName).length) ? 'Flagged for review' : 'Validated' };
     });
     if (!runs.length) return runs;
     this.invoiceRuns.update((m) => ({ ...m, [vendorName]: [...(m[vendorName] ?? []), ...runs] }));

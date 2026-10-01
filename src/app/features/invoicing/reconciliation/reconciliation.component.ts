@@ -149,6 +149,12 @@ const STATUS_LEVEL: Record<LineStatus, StatusLevel> = { 'Annexure needed': 'ambe
           @if (store.can('Configure Payable Rules')) {
             <a routerLink="/invoicing/line-mapping" class="inline-flex items-center gap-1 text-xs font-semibold text-brand-600 hover:underline"><mat-icon class="!text-base">link</mat-icon>Payable Line Mapping</a>
           }
+          @if (canValidate() && !hasDemoItem('Other Manage Service')) {
+            <button type="button" [class]="btnSecondary + ' !border-dashed'" title="Demo: adds an Other Manage Service line (amount capped at the system-calculated share) to test requesting an amount" (click)="addDemoItem('Other Manage Service', null)"><mat-icon [class]="ico">add</mat-icon>Demo: Other Manage Service</button>
+          }
+          @if (canValidate() && !hasDemoItem('Manage Service Incentive')) {
+            <button type="button" [class]="btnSecondary + ' !border-dashed'" title="Demo: adds a Manage Service Incentive line you can fill by importing the vendor's incentive file" (click)="addDemoItem('Manage Service Incentive', 'msIncentive')"><mat-icon [class]="ico">add</mat-icon>Demo: MS Incentive</button>
+          }
           @if (canValidate()) {
             <button type="button" [class]="btnSecondary" (click)="validate(validatable())" [disabled]="!validatable().length"><mat-icon [class]="ico">fact_check</mat-icon>Validate selected @if (validatable().length) { <span [class]="pill">{{ validatable().length }}</span> }</button>
             <button type="button" [class]="btnPrimary" (click)="submit(submittable())" [disabled]="!submittable().length || claimingClosed()" [attr.title]="claimingClosed() ? 'The claiming period is closed' : ''"><mat-icon [class]="ico">outbox</mat-icon>Submit for approval @if (submittable().length) { <span class="bg-white/25 rounded-full px-1.5 text-[10px] leading-4">{{ submittable().length }}</span> }</button>
@@ -427,6 +433,16 @@ export class ReconciliationComponent {
 
   adjustmentNet(key: string) { return (this.store.lineRun(this.vendor(), key)?.adjustments ?? []).reduce((t, a) => t + (a.type === 'Addition' ? a.amount : -a.amount), 0); }
   adjustmentAbs(key: string) { return Math.abs(this.adjustmentNet(key)); }
+
+  hasDemoItem(label: string) { return this.store.customInvoiceItems().some((i) => i.label === label + ' (demo)' && i.contractRef === this.contract()?.reference); }
+
+  /** Demo only: adds a manual payable line (24,000 OMR a year) so the Other Manage Service cap and the MS Incentive import can be tried. */
+  addDemoItem(label: string, component: 'msIncentive' | null) {
+    const c = this.contract();
+    if (!c) return;
+    this.store.addInvoiceItem({ contractRef: c.reference, vendorName: this.vendor(), label: label + ' (demo)', scope: 'Demo line', allocated: 24000, component });
+    this.ui.toast(label + ' line added.');
+  }
 
   hasSubmission(key: string) {
     const st = this.store.lineRun(this.vendor(), key)?.status;
